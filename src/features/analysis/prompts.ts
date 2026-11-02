@@ -45,3 +45,13 @@ Reply with JSON only, matching exactly:
 export function qaUserPrompt(transcript: string, question: string): string {
   return `Transcript:\n"""\n${transcript}\n"""\n\nQuestion: ${question}`;
 }
+
+/**
+ * Step 2's user message: the transcript **only** (ARCH §9). The fenced form is what makes
+ * "the document is data, not instructions" testable — a prompt written inside the document
+ * arrives as quoted text, and `tests/unit/pipeline.test.ts` asserts it is never assembled
+ * into a system message.
+ */
+export function structureUserPrompt(transcript: string): string {
+  return `Transcript:\n"""\n${transcript}\n"""`;
+}

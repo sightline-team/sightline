@@ -133,7 +133,12 @@ export interface CheckResult {
 
 export type TrustPurpose = 'transcribe' | 'analyse' | 'qa';
 
-export type AttestationStatus = 'verified' | 'partial' | 'failed';
+/**
+ * `not_run` is Mode F: no service was called, so there was nothing to attest. Recording
+ * that as `failed` would be a claim about a check that never happened; `claimFor` gives it
+ * no rung either way, and the demo-data banner is what the user is told (AGENTS.md §4 rule 11).
+ */
+export type AttestationStatus = 'verified' | 'partial' | 'failed' | 'not_run';
 
 /**
  * `partial` is never displayed as "verified" (AGENTS.md §4 rule 5), and `claim`

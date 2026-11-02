@@ -5,10 +5,12 @@ import type { AppError, CaptureIssue, ErrorCode } from '@/types';
  * the per-`CaptureIssue` announcements `docs/PRD.md` §12 Q2 requires.
  *
  * Two rules shape this file (AGENTS.md §4):
- *  - No privacy or data-flow sentence lives here ("nothing was sent", "only the
- *    enclave can read this"). Those are computed from a `TrustRecord` in
- *    `features/trust/claims.ts`. A message here that starts asserting what left
- *    the device is a bug.
+ *  - No privacy or data-flow sentence lives here: nothing in this file may state that
+ *    bytes stayed on the device, that content is not stored, or that an enclave is the
+ *    only reader. Those are computed from a `TrustRecord` in `features/trust/claims.ts`
+ *    (AGENTS.md §4 rule 1), and `tests/unit/claims.test.ts` walks the source tree and
+ *    fails if a sentence of that shape appears anywhere else — so describe the failure,
+ *    never what it protected.
  *  - Never guess unreadable content, and never promise behaviour the code does
  *    not have yet.
  */

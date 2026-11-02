@@ -27,10 +27,13 @@ npm ci
 npm run dev:fixtures
 ```
 
-No `.env`, no API key, no account. Fixture mode replays recorded responses instead of calling the
-model, and it always shows the banner stating that it is demo data with no real privacy guarantee
-(requirement R9, `docs/PRD.md` §7). Today this starts the **shell only** — the four routes and the
-navigation — because the replay layer is item F-09 and the document flow is P-01…P-06.
+No `.env`, no API key, no account. Fixture mode replays local fixture files instead of calling the
+model, and it always shows the demo-data banner — that sentence is defined in
+`src/features/trust/claims.ts` and is deliberately not repeated here, so a README edit cannot make
+it disagree with the app (requirement R9, `docs/PRD.md` §7). The fixture files are **authored
+synthetic** responses until item S-11 records real ones; see `fixtures/README.md`. Today this starts
+the **shell only** — the four routes and the navigation — because the replay layer is item F-09 and
+the document flow is P-01…P-06.
 
 ## Live demo
 

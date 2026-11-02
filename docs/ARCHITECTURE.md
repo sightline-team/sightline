@@ -152,6 +152,25 @@ Notes:
 ### 5.2 Analyse (pasted text)
 Skip capture, transcription and image prep. Run attestation check, then the structure step. This path is also the **fallback if no TEE vision model is usable**.
 
+Built by **P-03** in `features/analysis/pipeline.ts` (`runPipeline`, text path). Three ordering
+rules the implementation is held to, each with a test in `tests/unit/pipeline.test.ts`:
+
+- The attestation gate is awaited **before** the request body is assembled, so a failed check
+  stops the run while there is still nothing document-derived to send (AGENTS.md §4 rule 6). A
+  failed gate therefore produces **zero** outbound calls, not a cancelled one.
+- The response's signature is checked against the **exact bytes** F-03 returned (`sentBody`,
+  un-trimmed `rawText`) and the completion id (ADR-19). An unverified signature discards the
+  analysis — but the `TrustRecord` is emitted first, so the receipt shows that a completion was
+  fetched and rejected instead of leaving silence where a check ran.
+- Mode F runs no gate and no signature check: the record carries `attestation.status: 'not_run'`
+  and the checks that could not run, and `claimFor` lands it on the demo-data rung. The analysis
+  is still shown, because fixture mode is a demo, not an error screen.
+
+The transcript is normalised once and that one object is what the UI shows, what `quoteFound` is
+checked against, and what goes inside the fenced user message. Text inside that fence is **data**
+(AGENTS.md §11): a prompt written in the document is sent as quoted transcript text and never
+assembled into a system message.
+
 ### 5.3 Ask a question
 Prompt = transcript + question + "answer only from the document". Response: `{ answer, notInDocument, sourceQuote }`. `sourceQuote` must be a substring of the transcript, else the answer is shown without a quote and flagged.
 
@@ -288,7 +307,10 @@ type UncertainSpan = { start: number; end: number; reason: 'illegible' | 'low_co
 type DocType = 'bill' | 'bank' | 'medical' | 'prescription' | 'legal' | 'government' | 'other';
 type FactKind = /* as KeyFact.kind above */;
 type TrustPurpose = 'transcribe' | 'analyse' | 'qa';
-type AttestationStatus = 'verified' | 'partial' | 'failed';
+type AttestationStatus = 'verified' | 'partial' | 'failed' | 'not_run';
+                                          // 'not_run' is Mode F only: no service was called,
+                                          // so there was nothing to attest. Recording that as
+                                          // 'failed' would describe a check that never happened.
 
 // Every row of §13 maps to exactly one code here; lib/errors.ts is `Record<ErrorCode, {userMessage, retryable}>`,
 // so a new failure without a plain-language message is a type error, not a forgotten string.
@@ -313,7 +335,8 @@ enforces it with a banned-pattern list over all 19 messages.
 
 **Rules**
 - `claim` is computed from `e2ee` and the check results. Copy shown in the UI is looked up from `claim`; there is no free-text claim anywhere.
-- `status: 'partial'` is never displayed as "verified".
+- The computation is `claimFor(record: ClaimInput)` in `features/trust/claims.ts`, and `ClaimInput = Omit<TrustRecord, 'claim'>` — a screen cannot hand a claim in to be confirmed, it can only be derived from the facts. The half of that a test cannot reach: passing a fresh literal that already carries `claim` is a `tsc` error.
+- `status: 'partial'` is never displayed as "verified"; its sentence is generated from the `ran`/`passed` list so the words always match the checks that happened.
 - `quoteFound` is computed by code. Facts with `quoteFound: false` are shown flagged or dropped, never presented as sourced.
 
 ## 8. Internal API surface
