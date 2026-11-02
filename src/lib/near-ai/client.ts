@@ -1,4 +1,3 @@
-import { notBuilt } from '@/lib/not_built';
 import { appError } from '@/lib/errors';
 import type { AppError, Mode } from '@/types';
 
@@ -240,8 +239,10 @@ export function createNearClient(config: NearClientConfig): NearClient {
   if (config.mode === 'fixtures') {
     // Mode F must never reach the network: it is the mode a reviewer with no key runs, and a
     // fixture client that fell through to fetch would spend someone's credits and show real
-    // bytes under a "demo data" banner. F-09 builds the replay client instead.
-    return notBuilt('F-09', 'Fixture-mode client') as never;
+    // bytes under a "demo data" banner. F-09 built the replay client for that, in
+    // `lib/fixtures/replay.ts`; this factory stays network-only so there is exactly one place
+    // that can open a socket.
+    throw new Error('createNearClient does not build a Mode F client. Use createFixtureClient() from lib/fixtures/replay.ts.');
   }
 
   const baseUrl = validateBaseUrl(config.mode, config.baseUrl);

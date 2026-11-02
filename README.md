@@ -27,13 +27,23 @@ npm ci
 npm run dev:fixtures
 ```
 
-No `.env`, no API key, no account. Fixture mode replays local fixture files instead of calling the
+No `.env`, no API key, no account. Fixture mode replays a local corpus instead of calling the
 model, and it always shows the demo-data banner — that sentence is defined in
 `src/features/trust/claims.ts` and is deliberately not repeated here, so a README edit cannot make
-it disagree with the app (requirement R9, `docs/PRD.md` §7). The fixture files are **authored
-synthetic** responses until item S-11 records real ones; see `fixtures/README.md`. Today this starts
-the **shell only** — the four routes and the navigation — because the replay layer is item F-09 and
-the document flow is P-01…P-06.
+it disagree with the app (requirement R9, `docs/PRD.md` §7).
+
+**What that runs today:** paste text — or choose one of three synthetic demo letters — and the whole
+flow completes in the browser: the pipeline answers, the results view shows Summary → Key facts →
+Actions → Warnings → Full text → Ask → Verification, and the receipt lists the checks that ran and
+the ones that did not. Proved by `tests/e2e/flow.spec.ts` (26 Playwright tests) against exactly these
+two commands. The corpus is **authored synthetic**, never recorded — no fixture has ever been on the
+wire (`fixtures/README.md`, item S-11) — and it is matched by content, so pasting your own document
+gets a refusal explaining that demo answers belong to demo documents, never an authored summary
+presented as a reading of your letter.
+
+**What it does not do:** read a photo (C-01…C-06), answer a question about the document (P-06), or
+run in relay/direct mode — T-01/T-02 are unbuilt, so those modes refuse rather than show an answer
+with no verification behind it.
 
 ## Live demo
 
@@ -58,8 +68,11 @@ filled by T-14 when `CheckResult` output is real):
 | Intel TDX quote | Not yet | — | T-01, gated on B-05; port plan in `src/lib/near-ai/verifier/` |
 | Response signature | Not yet | — | T-02 (procedure decided in ADR-19) |
 | End-to-end encryption to the enclave | Not yet | — | T-10; documented by NEAR, not yet demonstrated from a browser (ADR-16) |
+| Quote consistency (the only check fixture mode runs) | Yes, in fixture mode | Per fact: a quote that is not in the transcript is shown **flagged**, never as sourced | P-02; it proves consistency with our transcript, not correctness against the page |
 
-Nothing on this table has been run. Until it is, Sightline has no verification claim to make.
+None of the NEAR AI verification checks above has been run. Until it is, Sightline has no
+verification claim to make — which is why the receipt in fixture mode states the demo-data sentence
+from `claims.ts` instead of a list of checks that passed.
 
 ## Accuracy
 

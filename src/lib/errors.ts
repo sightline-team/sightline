@@ -95,6 +95,17 @@ const ERRORS: Record<ErrorCode, ErrorSpec> = {
     userMessage: 'Sightline only reads English documents at the moment.',
     retryable: false,
   },
+  /**
+   * Mode F only (item F-09). A demo answer exists for the demo documents and for nothing
+   * else, so pasting your own text in fixture mode gets this rather than an authored
+   * summary that looks like it describes it. Note this message asserts nothing about a
+   * "real model" being switchable on: Settings is a placeholder page, and a message that
+   * promises behaviour the code does not have is a bug (AGENTS.md §4).
+   */
+  no_fixture_for_input: {
+    userMessage: 'These are demo answers from demo documents. Your own text has no demo answer, so there is nothing to show for it.',
+    retryable: false,
+  },
   unknown: {
     userMessage: 'Something went wrong. Try again.',
     retryable: true,

@@ -160,6 +160,100 @@ input[type='text'] {
   color: var(--muted);
 }
 
+/* A programmatic focus target (results heading, error summary) must be visible as a focus
+   change even though it was never tab-reachable: `:focus-visible` would skip it. */
+h1:focus,
+div:focus {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+main > section,
+section {
+  margin-bottom: var(--space-3);
+}
+
+/* Touch targets sit in a row without bullet markers (demo document buttons). */
+.button-row {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: 0;
+  margin: var(--space-1) 0;
+}
+
+.fact-list {
+  display: grid;
+  grid-template-columns: minmax(8rem, 12rem) 1fr;
+  gap: var(--space-1) var(--space-2);
+  margin: var(--space-1) 0;
+}
+
+.fact-list dt {
+  font-weight: 600;
+}
+
+.fact-list dd {
+  margin: 0;
+}
+
+/* A fact whose quote was not found in the transcript (AGENTS.md §4 rule 8) is marked in the
+   text as well as by colour, so it survives greyscale and colour-blind reading. */
+.flag {
+  color: var(--warn-fg);
+  font-weight: 600;
+}
+
+.transcript {
+  white-space: pre-wrap;
+  font-family: inherit;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  padding: var(--space-2);
+}
+
+.check-list,
+.detail-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-1) 0;
+}
+
+.check-list li,
+.detail-list li {
+  border-bottom: 1px solid var(--border);
+  padding: var(--space-1) 0;
+}
+
+.check-passed,
+.check-failed,
+.check-skipped {
+  font-weight: 600;
+  margin-right: var(--space-1);
+}
+
+.check-passed {
+  color: var(--accent);
+}
+
+.check-failed,
+.check-skipped {
+  color: var(--warn-fg);
+}
+
+details summary {
+  min-height: var(--target);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+details summary:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

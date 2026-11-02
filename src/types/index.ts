@@ -181,6 +181,7 @@ export type ErrorCode =
   | 'rate_limited'
   | 'relay_disabled'
   | 'unsupported_language'
+  | 'no_fixture_for_input'
   | 'unknown';
 
 /**

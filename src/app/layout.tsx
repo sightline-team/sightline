@@ -5,6 +5,7 @@ import { FIXTURES_BANNER } from '@/features/trust/claims';
 import { publicConfig } from '@/lib/config';
 import { serverConfig } from '@/lib/server/env';
 import { AnnouncerProvider } from '@/lib/a11y/announcer';
+import { SessionProvider } from '@/lib/session/store';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -25,14 +26,13 @@ export const viewport: Viewport = {
 };
 
 /**
- * Structural shell: skip link, landmarks, one announcer, and the fixtures banner.
+ * Structural shell: skip link, landmarks, one announcer, one session store, and the fixtures banner.
  *
  * The banner is AGENTS.md §4 rule 11 — Mode F must always say it is demo data with no real
  * privacy guarantee — and its sentence is imported from `features/trust/claims.ts` rather than
  * written here, because a privacy claim typed into a component is a claim nobody recomputes when
  * the mode changes. A user-supplied key only exists in the browser, so server render can never
- * claim direct mode; that is why `directEnabled` is false here, exactly as on the home view
- * (one place to unify when P-05 rebuilds it).
+ * claim direct mode; that is why `directEnabled` is false here and in every other route read.
  */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const availability = { relayEnabled: serverConfig().relayEnabled, directEnabled: false };
@@ -69,9 +69,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               {FIXTURES_BANNER}
             </p>
           ) : null}
-          <main id="main" tabIndex={-1}>
-            {children}
-          </main>
+          {/* One session store for the whole tree (ADR-8: memory only). It sits under the
+              announcer because a run both writes state and speaks; it sits over `main` because
+              the document must survive the move from the paste view to the results view, which
+              is client-side navigation over an unmounted route, not a page load. */}
+          <SessionProvider mode={cfg.mode}>
+            <main id="main" tabIndex={-1}>
+              {children}
+            </main>
+          </SessionProvider>
         </AnnouncerProvider>
       </body>
     </html>

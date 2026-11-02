@@ -31,7 +31,10 @@ export function AnnouncerProvider({ children }: { children: ReactNode }) {
   return (
     <AnnouncerContext.Provider value={value}>
       {children}
-      <p role="status" aria-live="polite" aria-atomic="true" className="visually-hidden">
+      {/* `data-testid` is not only for the tests: `tests/e2e/flow.spec.ts` uses it to tell this
+          region apart from the one Next.js injects on client navigation, and that distinction is
+          an accessibility requirement rather than a selector convenience (AGENTS.md §8). */}
+      <p role="status" aria-live="polite" aria-atomic="true" className="visually-hidden" data-testid="announcer">
         {message}
       </p>
     </AnnouncerContext.Provider>

@@ -55,9 +55,10 @@ sightline/
 │
 ├─ src/
 │  ├─ app/
-│  │  ├─ layout.tsx               # <html lang>, skip link, landmarks, announcer mount, fixtures banner
-│  │  ├─ page.tsx                 # Add pages or paste text
-│  │  ├─ read/page.tsx            # Results + ask
+│  │  ├─ layout.tsx               # <html lang>, skip link, landmarks, announcer + session store mount, fixtures banner
+│  │  ├─ _flow/useDocumentRun.ts  # Composition root for one run: store, announcer, router, transport, pipeline. `_` = not a route
+│  │  ├─ page.tsx                 # Add pages or paste text (`features/paste/PasteView.tsx`)
+│  │  ├─ read/page.tsx            # Results + ask (`features/analysis/ResultsView.tsx`)
 │  │  ├─ trust/page.tsx           # Trust receipt, exact claim, checks that ran / did not
 │  │  ├─ settings/page.tsx        # Mode, API key (Mode A), read-aloud rate, high contrast
 │  │  ├─ globals.css              # Tokens, high-contrast theme
@@ -67,14 +68,15 @@ sightline/
 │  │
 │  ├─ features/
 │  │  ├─ capture/                 # CaptureView, PageList (remove, retake last), useCapture
+│  │  ├─ paste/PasteView.tsx      # Text input, demo document buttons, error summary focus
 │  │  ├─ analysis/                # pipeline.ts, prompts.ts, schemas.ts, grounding.ts, ResultsView
 │  │  ├─ qa/                      # ask.ts, AskPanel.tsx
 │  │  ├─ speech/                  # speak.ts, SpeakButton.tsx
-│  │  └─ trust/                   # claims.ts (record → claim → copy), TrustReceipt.tsx
+│  │  └─ trust/                   # claims.ts (record → claim → copy), TrustReceipt.tsx, TrustView.tsx
 │  │
 │  ├─ lib/
 │  │  ├─ near-ai/
-│  │  │  ├─ client.ts             # baseUrl + header provider; abort; one retry
+│  │  │  ├─ client.ts             # baseUrl + header provider; abort; one retry. Mode F is `fixtures/replay.ts`, never this
 │  │  │  ├─ models.ts             # Per-model metadata call (attestationSupported/providerType/inputModalities) + allowlist — NOT /v1/models (ADR-18)
 │  │  │  ├─ attestation.ts        # Nonce, fetch, call /api/verify, named checks
 │  │  │  ├─ signatures.ts         # fetch by chat id → rebuild hash pair → verify; retry "not found"; streaming trailing newlines (ADR-19)
@@ -82,23 +84,24 @@ sightline/
 │  │  │  └─ verifier/             # Ported from nearai-cloud-verifier ts/ (MIT; keep license + attribution); dcap-qvl-node for TDX quotes
 │  │  ├─ image/prepare.ts         # createImageBitmap resize, orientation, JPEG, EXIF strip
 │  │  ├─ a11y/announcer.tsx       # Single aria-live announcer + interval progress
-│  │  ├─ session/                 # reducer.ts, forget.ts
-│  │  ├─ fixtures/                # Replay layer for Mode F and tests
+│  │  ├─ session/                 # reducer.ts (state shape, page cap), store.tsx (provider + in-flight run registry), forget.ts
+│  │  ├─ fixtures/                # replay.ts (content-matched Mode F client, `transportFor`), cases.ts (authored synthetic demo corpus)
 │  │  ├─ server/                  # Server-only: env.ts, allowlist.ts, rateLimit.ts (all `import 'server-only'`)
 │  │  ├─ config.ts                # Env validation (zod); mode selection
 │  │  ├─ errors.ts                # AppError → plain-language messages
 │  │  └─ not_built.ts             # `NotBuilt` + `notBuilt(item, what)`: every scaffold stub throws this, naming its ROADMAP item
 │                                 # A stub that returned a plausible fake would let a pipeline 'work' on nothing
 │  │
-│  ├─ components/                 # Button, StatusMessage, SkipLink (native elements)
+│  ├─ components/                 # Button, StatusMessage (focusable, ref as prop), SkipLink (native elements)
 │  └─ types/index.ts
 │
 └─ tests/
-   ├─ unit/                       # config, server-env, session reducer, errors, nonce, grounding, schemas; claims ladder + image prep still to write
+   ├─ unit/                       # config, server-env, session reducer, errors, nonce, grounding, schemas, near-client, pipeline, fixtures; image prep still to write
    ├─ verification/               # attestation.test.ts: stubs refuse + strong claim unreachable; 9 `it.todo` rows name what T-01/T-02/T-05 must still prove
    ├─ relay/                      # relay.test.ts: both API routes answer 501, name their item, forward nothing, leak no key. A-09 adds rejected path/oversize/rate limit
    ├─ stubs/server-only.ts        # no-op stand-in so unit tests can import server modules (see vitest.config.mts)
    ├─ e2e/shell.spec.ts           # Playwright + axe on the four shell routes, skip link/tab order, one live region, zoomable viewport, off-origin request assertion
+   ├─ e2e/flow.spec.ts            # The whole Mode F flow with no key: demo document → fixed section order → flagged fact → receipt; refusals; focus; axe with content
    └─ a11y/manual-checklist.md    # Screen-reader scripts and results
 ```
 

@@ -33,6 +33,9 @@ test.describe('shell structure', () => {
     const live = page.locator('[aria-live]').first();
     await expect(live).toHaveAttribute('aria-live', 'polite');
     await expect(live).toHaveAttribute('role', 'status');
+    // Scope note: this is the *server-rendered* shell. The first client-side navigation makes
+    // Next.js inject a second region of its own; `flow.spec.ts` owns the assertion that it stays
+    // silent, because a screen-reader user hearing the same change twice is an AGENTS.md §8 defect.
   });
 
   test('gives landmarks to navigation and content', async ({ page }) => {

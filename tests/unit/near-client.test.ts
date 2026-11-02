@@ -1,5 +1,4 @@
 import { describe, expect, test, vi } from 'vitest';
-import { NotBuilt } from '@/lib/not_built';
 import { NearError, NEAR_PATHS, createNearClient } from '@/lib/near-ai/client';
 import type { NearClientConfig } from '@/lib/near-ai/client';
 
@@ -107,14 +106,18 @@ describe('paths are a closed set (AGENTS.md §4 rule 9)', () => {
     expect(() => createNearClient({ mode: 'direct', baseUrl: DIRECT_BASE, headers: () => ({}) })).not.toThrow();
   });
 
-  test('fixture mode refuses to build a network client (F-09 owns replay)', () => {
+  test('fixture mode refuses to build a network client (F-09 answers it in replay.ts)', () => {
+    // F-09 exists now, and this factory is still the wrong door for Mode F: exactly one place
+    // in the codebase may open a socket, and that place must never serve demo data.
+    const m = mockFetch([]);
     try {
-      createNearClient({ mode: 'fixtures', baseUrl: '/api/relay/v1' });
+      createNearClient({ mode: 'fixtures', baseUrl: RELAY_BASE, fetchImpl: m.impl });
       throw new Error('returned a client instead of refusing');
     } catch (e) {
-      expect(e).toBeInstanceOf(NotBuilt);
-      expect((e as NotBuilt).item).toBe('F-09');
+      expect(e).toBeInstanceOf(Error);
+      expect((e as Error).message).toMatch(/createFixtureClient/);
     }
+    expect(m.calls).toHaveLength(0);
   });
 });
 

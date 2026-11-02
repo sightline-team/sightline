@@ -192,7 +192,9 @@ Reset reducer state, revoke object URLs, abort in-flight requests with `AbortCon
 | `speech` | One read-aloud button, rate |
 | `trust` | `TrustRecord` store; mapping to the claims ladder statement |
 | `a11y` | Single announcer; focus helper; interval progress announcements; optional haptic and wake-lock |
-| `fixtures` | Recorded responses and replay layer for Mode F and tests |
+| `session/store` | The one `SessionProvider`: the reducer behind it, and the registry of in-flight `AbortController`s that Forget (P-10) uses to stop a run whose bytes are still leaving the device |
+| `app/_flow` | `useDocumentRun`: the composition root that joins store + announcer + router + transport + pipeline for one run. `_` is Next's "not a route" prefix. Live modes refuse here until T-01/T-02 exist |
+| `fixtures` | Mode F replay. `cases.ts` holds the authored synthetic corpus (`FixtureCase{name,title,text,analysis}`) and `replay.ts` answers a request **only** when the document in it is one of those, byte for byte; every attestation and signature call is refused, because there is no enclave to describe. `fixtures/{responses,attestation}/` stay empty until S-11 records real payloads |
 
 ## 7. Data models
 
@@ -318,7 +320,9 @@ type ErrorCode =
   | 'verification_failed' | 'verification_unreachable' | 'attestation_changed' | 'signature_invalid'
   | 'model_unavailable' | 'capture_issue' | 'too_many_pages' | 'image_too_large' | 'not_a_document'
   | 'illegible_content' | 'output_truncated' | 'model_refused' | 'invalid_model_output'
-  | 'network_lost' | 'aborted' | 'rate_limited' | 'relay_disabled' | 'unsupported_language' | 'unknown';
+  | 'network_lost' | 'aborted' | 'rate_limited' | 'relay_disabled' | 'unsupported_language'
+  | 'no_fixture_for_input'   // Mode F only: no authored demo answer exists for this text (F-09)
+  | 'unknown';
 
 interface AppError {
   code: ErrorCode;
@@ -331,7 +335,7 @@ interface AppError {
 `AppError.userMessage` deliberately contains no "nothing was sent"-style sentence: §13's failures
 are explained without asserting what left the device, because that assertion belongs to
 `features/trust/claims.ts` and a `TrustRecord` (AGENTS.md §4 rule 1). `tests/unit/errors.test.ts`
-enforces it with a banned-pattern list over all 19 messages.
+enforces it with a banned-pattern list over all 20 messages.
 
 **Rules**
 - `claim` is computed from `e2ee` and the check results. Copy shown in the UI is looked up from `claim`; there is no free-text claim anywhere.
@@ -440,6 +444,14 @@ CSP: `connect-src` limited to self and NEAR AI Cloud hosts (including `*.complet
 
 - Semantic structure: one `<h1>` per view, landmarks, real buttons, native `<details>` for technical details.
 - **One announcer** (`aria-live="polite"`; errors `assertive`). All status text goes through it. Progress during long waits announced at intervals (roughly every 10 s), not per tick.
+- **One title for every route, and that is an accessibility rule, not a branding choice.** Next.js
+  injects its own `role="alert"` live region the first time the app navigates on the client and
+  fills it from `document.title`, falling back to the first `<h1>` if the title is empty. With one
+  shared title (`Sightline`, set in `layout.tsx`, overridden by no page) the region has nothing to
+  say — measured silent on a `next build` run, measured *speaking the new heading* under
+  `next dev`, where the title is applied after the region's first read. A per-route
+  `metadata.title` therefore adds a second voice, assertively, in the one place AGENTS.md §8
+  forbids it. Guarded by `tests/e2e/flow.spec.ts`; decided properly by item **A-16**.
 - Focus moves to the new view's heading on route change; to the error summary on failure.
 - Results order: Summary → Key facts → Actions → Warnings → Full text → Ask → Trust receipt. "Skip to full text" link.
 - Read-aloud is opt-in and off by default.
@@ -465,6 +477,7 @@ plain-language message and one `retryable` decision, checked by `tests/unit/erro
 | Invalid JSON | One repair retry, then show transcript only |
 | Network loss or app backgrounded | Abort cleanly, keep session in memory, allow retry |
 | Rate limit (Mode B) | Plain message; suggest Mode A or try later |
+| Mode F asked about text it has no demo answer for | Show the demo-data explanation (`no_fixture_for_input`); do **not** replay an authored answer over the user's own words (F-09) |
 
 ## 14. Day 1 spike checklist (go/no-go)
 
