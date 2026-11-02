@@ -1,11 +1,11 @@
 # Sightline — Product Requirements Document
 
 > **Working title.** Rename freely.
-> **Version:** 0.2 (revised after hard-questions review, §12) · **Date:** 2 Nov 2026
+> **Version:** 0.3 (Day-1 spike reading folded in; claims ladder unchanged) · **Date:** 2 Nov 2026
 > **Hackathon:** NEAR Hackathon · **Track:** Privacy & Private AI (also eligible for Open Innovation)
 > **Hard deadline:** 14 Nov 2026, 23:59 UTC (public repo + X demo post + form)
 
-Markers: **[Verified]** = read in official docs or the event page. **[Unverified]** = assumption to check in the Day 1 spike (`ARCHITECTURE.md` §14). **[Certain] / [Likely] / [Guessing]** = my confidence in an analytical claim.
+Markers: **[Verified]** = read in official docs, the OpenAPI contract, vendor source code, or the event page. **[Measured]** = run against the live API (nothing is **[Measured]** yet — no key, ROADMAP blocker B-05). **[Unverified]** = assumption to check in the spike (`ARCHITECTURE.md` §14). **[Certain] / [Likely] / [Guessing]** = my confidence in an analytical claim.
 
 **What changed from v0.1:** the privacy claim is downgraded unless end-to-end encryption to the enclave is available; voice input, page reordering, local blur/brightness checks, spell-out speech, offline PWA and the PII classifier are cut; a paste-text path and a zero-config fixture mode are added. Reasons are in §12.
 
@@ -146,7 +146,7 @@ Encrypted local history, NEAR-account login or pay-per-use, live camera guidance
 ## 8. Privacy and trust requirements
 
 ### The open question that sets the claim
-Attestation proves an enclave exists and which key it holds. It does **not** by itself prove that *your upload* lands in that enclave. A web page cannot inspect or pin the TLS certificate of the server it talks to **[Certain]**, so the browser cannot check that the connection terminates inside the attested enclave. The only mechanism that closes this gap in a browser is **encrypting the request to the enclave's attested public key**. The NEAR agent skill mentions end-to-end encrypted chat **[Verified: mentioned; mechanism Unverified]**.
+Attestation proves an enclave exists and which key it holds. It does **not** by itself prove that *your upload* lands in that enclave. A web page cannot inspect or pin the TLS certificate of the server it talks to **[Certain]** — NEAR's own SDK states the same **[Verified]** — so the browser cannot check that the connection terminates inside the attested enclave. The only mechanism that closes this gap in a browser is **encrypting the request to the enclave's attested public key**. That mechanism **is documented**: E2EE protocol v2, X25519 + HKDF-SHA256 + XChaCha20-Poly1305, key from `model_attestations[0].signing_public_key` **[Verified: `SPIKE_RESULTS.md` §2]**. What is still **[Unverified]** is running it from a **browser** — only Python and Node examples exist, and the cipher is not a WebCrypto algorithm, so it needs `@noble/ciphers`. The claim printed in the UI stays on the lower rung until a live enclave decrypts our payload; nothing about the sentences in the ladder below changes before then.
 
 ### Claims ladder (show exactly one of these in the UI)
 | Situation | Statement we may show |
@@ -157,7 +157,7 @@ Attestation proves an enclave exists and which key it holds. It does **not** by 
 | **Fixture mode** | "Demo data. No real privacy guarantee." |
 
 ### Never claimed
-HIPAA/GDPR or any compliance; protection from a compromised device, extension or onlooker; that the model read the document *correctly*; that proxied third-party models are private (they are not covered **[Verified]**); that the relay mode hides content from our server (it does not).
+HIPAA/GDPR or any compliance; protection from a compromised device, extension or onlooker; that the model read the document *correctly*; that proxied third-party models are private (they are not covered **[Verified]**); that the relay mode hides content from our server (it does not today — only if T-10's browser E2EE is proven does that stop being true, ADR-16).
 
 ## 9. Success criteria
 
@@ -184,9 +184,9 @@ No scoring weights are published. Previous NEAR hackathons evaluated technical i
 
 | # | Risk | Likelihood | Mitigation |
 |---|---|---|---|
-| 1 | No usable TEE vision model, or poor on numbers | Medium | Day 1 spike; paste-text path (R10) keeps the product alive |
-| 2 | Browser calls to NEAR AI Cloud blocked (CORS) | Medium | Relay mode first; direct mode only if spike passes |
-| 3 | Full attestation verification (TDX quote, GPU evidence) too heavy to port | Medium–High | Ship the checks that work, label the rest "not verified" (§8) |
+| 1 | No usable TEE vision model, or poor on numbers | Medium — **lowered on the first half**: the catalog lists 6 image-capable `attestationSupported: true` models **[Verified]**; whether any is served, and how it reads numbers on bad photos, still needs a key | Day 1 spike; paste-text path (R10) keeps the product alive |
+| 2 | Browser calls to NEAR AI Cloud blocked (CORS) | Low — the server's CORS layer allows any origin on every non-`/v1/admin` path **[Verified in source]**; a live preflight is still outstanding | Relay mode first regardless; direct mode only after the preflight passes |
+| 3 | Full attestation verification (TDX quote, GPU evidence) too heavy to port | Low–Medium — the reference verifier ships **TypeScript** with `dcap-qvl-node` **[Verified]**, so this is a port; it still needs a real report to test against | Ship the checks that work, label the rest "not verified" (§8) |
 | 4 | Model misreads a number | High | Verbatim-first, quoted sources, uncertainty markers, safety notices; P1 verification pass |
 | 5 | Public demo key abused | Medium | Small prepaid budget, shared-store rate limit, path/model allowlist |
 | 6 | Reviewer agents cannot run the project without a key | **High** | R9 fixture mode |
@@ -225,10 +225,10 @@ Ranked by (likelihood × damage).
 
 | # | What breaks | Why | Conf. | Decision |
 |---|---|---|---|---|
-| 1 | **The privacy claim is stronger than the code.** | A browser cannot pin TLS, so it cannot prove the upload ended inside the attested enclave. Response signatures only detect misrouting *after* the document was sent. | Certain | Claims ladder (§8). Make E2EE the first thing the spike checks. If unavailable, ship the weaker true statement. |
+| 1 | **The privacy claim is stronger than the code.** | A browser cannot pin TLS, so it cannot prove the upload ended inside the attested enclave. Response signatures only detect misrouting *after* the document was sent. | Certain | Claims ladder (§8). Make E2EE the first thing the spike checks. If unavailable, ship the weaker true statement. **Update after spike reading:** E2EE *is* documented (protocol v2, `SPIKE_RESULTS.md` §2) and its primitives exist in `@noble/*`, so the strong claim is reachable — but "documented" ≠ "proven from a browser", so the ladder still governs what we print. |
 | 2 | **The grounding check gives false comfort.** | "Quote is an exact substring of the transcript" proves the summary matches the transcript, not that the transcript matches the page. A misread "£840" passes perfectly. | Certain | Say so in the README. P1 verification pass, triggered by spike data. Drop the model's self-reported "confidence" field; self-reported model confidence is poorly calibrated **[Likely]**. |
 | 3 | **Nobody can run it.** | Reviewer agents screen first and likely have no API key; real users cannot paste one. | Likely | R9 fixture mode; deployed relay URL. |
-| 4 | **The attestation verifier port.** | Reference verifier code may not be TypeScript; TDX quote verification needs Intel collateral and GPU evidence needs NVIDIA's service. 12 days is tight. | Likely | Define the minimum honest set (nonce binding, signature check, GPU-evidence token check) and label the rest "not verified". See `ARCHITECTURE.md` §10. |
+| 4 | **The attestation verifier port.** | Reference verifier code may not be TypeScript; TDX quote verification needs Intel collateral and GPU evidence needs NVIDIA's service. 12 days is tight. | **Lowered from Likely** — `nearai/nearai-cloud-verifier` is MIT *and* ships a native TypeScript `ts/` that uses `dcap-qvl-node` for TDX quotes **[Verified]**. Collateral mechanics are delegated to `dcap-qvl`, and we still need a real report to test against | Define the minimum honest set (nonce binding, signature check, GPU-evidence token check) and label the rest "not verified". See `ARCHITECTURE.md` §10, now decided. |
 | 5 | **Serverless limits on the relay.** | Request body size and execution time limits on common hosts can be smaller than five photographed pages plus a slow vision call **[Likely; check your plan's limits]**. | Likely | Downscale images hard, send pages in separate requests, stream responses, test with 5 pages on Day 3. |
 | 6 | **Capture is the real accuracy bottleneck.** | Blind users cannot frame a page; cut-off, rotated and glared photos are the common case, and brightness/blur metrics do not detect them. | Likely | Model-reported `captureIssues`, retake loop, eyes-closed test photos. |
 | 7 | **In-memory rate limiting does nothing on serverless.** | Instances do not share memory. | Likely | Use a shared store, or rely on a small prepaid key balance as the cap. |

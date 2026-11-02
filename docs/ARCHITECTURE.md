@@ -1,10 +1,10 @@
 # Sightline — Architecture
 
-> Version 0.2 (revised after hard-questions review) · 2 Nov 2026 · Companion to `PRD.md`. Short version: `ARCHITECTURE_ESSENTIALS.md`.
+> Version 0.3 (primary-source spike reading folded in) · 2 Nov 2026 · Companion to `PRD.md`. Short version: `ARCHITECTURE_ESSENTIALS.md`. Detailed findings with sources: `SPIKE_RESULTS.md`.
 
-Markers: **[Verified]** = read in NEAR AI Cloud docs or the event page. **[Unverified]** = check in the Day 1 spike (§14) before building on it. **[Certain] / [Likely] / [Guessing]** = my confidence in an analytical claim.
+Markers: **[Verified]** = read in official NEAR AI Cloud docs, the machine-readable OpenAPI contract, or the vendor's own source code, with the source named. **[Measured]** = run against the live API; **nothing here is [Measured] yet**, because there is no API key (ROADMAP blocker B-05). **[Unverified]** = still unknown; do not build on it. **[Certain] / [Likely] / [Guessing]** = my confidence in an analytical claim.
 
-**Changes from v0.1:** claims ladder instead of an unconditional "verify before send"; E2EE promoted to the first spike item; relay mode built first; local quality heuristics, voice pipeline, reorder UI, accessibility library and state library removed; fixture replay mode added; model-reported capture issues; rate limiting and spend control redesigned for serverless. Full reasoning: `PRD.md` §12 and §18 below.
+**Changes from v0.2:** E2EE protocol v2 documented in full (§2, ADR-16); attestation and signature endpoints resolved, and both proved to require a key (§3, ADR-17); the TEE flags moved from `/v1/models` to per-model metadata, changing F-04's design (ADR-18); response signing turned out to be a separate fetch over a hash pair, changing the check's shape (ADR-19); CORS read as permissive in server source, so Mode A stays in; the reference verifier ships TypeScript, so the TDX quote check is a port rather than a risk; the SDK is kept out of the trust path (ADR-20).
 
 **Tracking rule:** every contribution to this repo (code, tests, docs, config, fixtures, scripts) must update `ROADMAP.md` in the same commit: item status with evidence, an update-log entry, the dashboard, current focus and blockers. `ROADMAP.md` is the single source of truth for remaining work. See `AGENTS.md` §2.
 
@@ -28,15 +28,15 @@ Markers: **[Verified]** = read in NEAR AI Cloud docs or the event page. **[Unver
 | Inference in Intel TDX + NVIDIA GPU TEEs, with attestation | **[Verified]** |
 | Catalog has **TEE-hosted** and **proxied third-party** models; TEE guarantee does not cover proxied ones | **[Verified]** |
 | `/v1/models` reports input modalities (e.g. text, image) and features | **[Verified]** |
-| `Qwen/Qwen3-VL-30B-A3B-Instruct` documented as accepting `image_url` parts on `/v1/chat/completions` | **[Verified]** documented. **[Unverified]** that it is TEE-hosted and currently served |
+| `Qwen/Qwen3-VL-30B-A3B-Instruct` documented as accepting `image_url` parts on `/v1/chat/completions` | **[Verified]** documented, and **[Verified]** listed as `attestationSupported: true` on `https://near.ai/models` (2026-11-02). **[Unverified]** that it is currently served and callable — needs a key (S-02) |
 | Audio transcription, embeddings, reranking, image generation, PII classify/redact endpoints exist | **[Verified]** exist. Not needed for v1 |
-| Catalog metadata includes flags like `verifiable` / `attestationSupported` | **[Verified]** via a third-party client's docs. Confirm exact names live |
-| "Direct completions" hosts (`<slug>.completions.near.ai`) terminate TLS inside the model TEE | **[Verified]** pattern. **[Unverified]** that our model has a slug |
-| Attestation uses a client nonce (64 hex chars) and `signing_algo` `ecdsa` or `ed25519`; per-response signatures exist | **[Verified]** from the NEAR agent skill. Endpoint paths **[Unverified]**: copy from the reference verifier |
-| Reference verifiers: `github.com/nearai/nearai-cloud-verifier`, `github.com/near-examples/nearai-cloud-verification-example` | **[Verified]** exist. Language and portability **[Unverified]** |
+| Catalog metadata flags `attestationSupported` / `providerType` / `verifiable` | **[Verified]** — but **not on `/v1/models`**. They are on `GET /v1/model/{model_name}` and on the catalog page. See SPIKE §4 and ADR-18; this invalidated the F-04 design as first written |
+| "Direct completions" hosts (`<slug>.completions.near.ai`) terminate TLS inside the model TEE | **[Verified]** pattern, including the concrete signature-fetch URL shape (`https://{slug}.completions.near.ai/v1/signature/{chat_id}?signing_algo=ecdsa`). **[Unverified]** that our model has a slug |
+| Attestation uses a client nonce (64 hex chars) and `signing_algo` `ecdsa` or `ed25519`; per-response signatures exist | **[Verified]**, endpoints now known: `GET /v1/attestation/report`, `GET /v1/attestation/ita-token`, `GET /v1/signature/{chat_id}`. **[Verified]** that report and signature endpoints both **require an API key** — there is no keyless path (SPIKE §3) |
+| Reference verifiers: `github.com/nearai/nearai-cloud-verifier`, `github.com/near-examples/nearai-cloud-verification-example` | **[Verified]** both MIT, and the first ships a **native TypeScript `ts/` directory** that uses `dcap-qvl-node` for TDX quotes. Portability is a port, not a rewrite (SPIKE §7) |
 | Docs separate model verification, gateway verification and TLS attestation verification | **[Verified]** (page titles) |
-| End-to-end encrypted chat is supported | **[Verified]** mentioned in NEAR's agent skill. Mechanism **[Unverified]** |
-| Browser (CORS) access to `cloud-api.near.ai` | **[Unverified]** |
+| End-to-end encrypted chat is supported | **[Verified]** documented in full: protocol v2 = X25519 ECDH + HKDF-SHA256 (`info "ed25519_encryption"`) + XChaCha20-Poly1305, Ed25519 keys converted for ECDH, model key from `model_attestations[0].signing_public_key`, headers `X-Client-Pub-Key` / `X-Model-Pub-Key` / `X-Signing-Algo` / `X-Encryption-Version` (SPIKE §2). **[Unverified]** from a **browser**: only Python and Node examples are documented, and XChaCha20-Poly1305 is not a WebCrypto algorithm |
+| Browser (CORS) access to `cloud-api.near.ai` | **[Verified]** permissive in the server source: `crates/api/src/lib.rs:1075-1097` returns `true` for any origin on every non-`/v1/admin` path. **[Unverified]** by live preflight (S-06) — source reading is not a browser test |
 | TEE text-to-speech | **[Unverified]**, assume none; use on-device speech |
 
 ## 3. Tech stack
@@ -53,11 +53,11 @@ Markers: **[Verified]** = read in NEAR AI Cloud docs or the event page. **[Unver
 | Speech out | Web Speech `speechSynthesis`, single button | Private, free, optional | Voice picker, spell-out, auto-speak |
 | Question input | Text field (OS dictation allowed, disclosed) | Simple, accessible | Own recording + transcription pipeline |
 | AI | NEAR AI Cloud, TEE-hosted models only | The point | Proxied third-party models |
-| Crypto | `@noble/curves`, `@noble/hashes`, WebCrypto | In-browser signature verification | |
-| Attestation | Adapt the reference verifier; scope defined in §10 | Do not write from scratch | |
+| Crypto | `@noble/curves`, `@noble/hashes`, **`@noble/ciphers`**, WebCrypto | In-browser signature verification, and the E2EE cipher suite: XChaCha20-Poly1305 is **not** a WebCrypto algorithm, so `@noble/ciphers` is what makes T-10 possible in a browser with no WASM | |
+| Attestation | Port from the reference verifier's TypeScript `ts/` (MIT, uses `dcap-qvl-node`); scope decided in §10 | Do not write from scratch. PolyForm-licensed `cloud-api` may be read, never vendored | |
 | Rate limit / budget | Shared store (e.g. a hosted KV) **or** a small prepaid key balance as the cap | In-memory limits do not work on serverless **[Likely]** | Custom spend-cap module |
 | Tests | Vitest (unit), Playwright + axe (e2e, incl. network-host assertion), manual screen-reader script | Automation catches only part of accessibility problems | Separate integration mock server |
-| Fixtures | Recorded NEAR AI responses + sample attestation fixtures, served by a small replay layer | Serves tests **and** zero-credential running | |
+| Fixtures | NEAR AI responses + attestation fixtures replayed by a small layer. **[Unverified]** as "recorded" until a key exists: today's fixture files are **authored synthetic** and must be labelled as such, never described as recorded | Serves tests **and** zero-credential running | |
 | Hosting | Vercel or any Node host | Fast | |
 
 ## 4. System overview
@@ -98,12 +98,12 @@ flowchart LR
 |---|---|---|---|
 | Key held by | Our server env var | The user, in `sessionStorage` | None |
 | Path | Browser → our relay → NEAR AI Cloud | Browser → NEAR AI Cloud | Browser → local replay |
-| Server sees the document? | **Yes, in transit.** Not stored or logged | **No** | n/a |
+| Server sees the document? | **Yes, in transit.** Not stored or logged. If T-10 ships, the relay carries **ciphertext only** and this row changes (ADR-16) | **No** | n/a |
 | Audience | Judges, testers, a public demo | Developers, anyone who owns a key | Reviewer agents, offline development |
-| Needs | Shared-store rate limit or small prepaid key | CORS allowed **[Unverified]** | Recorded fixtures |
+| Needs | Shared-store rate limit or a capped key (`spendLimit` [Verified]) | CORS allowed **[Verified]** in server source for non-admin paths; live browser preflight still pending (S-06) | Fixture files (authored synthetic until a key) |
 | Claim shown | Per claims ladder, plus "relay in the trust path" unless E2EE | Per claims ladder | "Demo data, no real privacy guarantee" |
 
-**Why Mode B first:** it works regardless of CORS, and judges can use it. **Why Mode A is not the product:** the real target user will not paste an API key. If E2EE to the attested key exists, Mode B stops being a trust problem because the relay would carry only ciphertext. That is why E2EE is spike item #1.
+**Why Mode B first:** it works regardless of CORS, and judges can use it. **Why Mode A is not the product:** the real target user will not paste an API key — and in Mode A the key must be in the browser, because the attestation and signature endpoints require a key themselves (ADR-17). If E2EE to the attested key works from a browser, Mode B stops being a trust problem because the relay would carry only ciphertext. That is why E2EE is spike item #1.
 
 Implementation note: the NEAR client takes a `baseUrl` and a header provider, so A, B and F share one code path. If CORS fails, only Mode A is lost.
 
@@ -287,14 +287,14 @@ interface Settings {                   // localStorage, non-sensitive only
 | `/api/relay/*` | POST/GET | Mode B only. Forwards allowlisted requests with the server key | **Yes, in transit** |
 
 Relay rules:
-- **Exact-path allowlist** (e.g. chat completions, attestation, signature paths). No wildcard forwarding, which prevents the relay from being used as a general proxy or for host/path tricks.
+- **Exact-path allowlist**, now named against the real API (SPIKE §1, §3, §5): `POST /v1/chat/completions`, `GET /v1/attestation/report`, `GET /v1/signature/{chat_id}`. No wildcard forwarding, which prevents the relay from being used as a general proxy or for host/path tricks.
 - Target host is **fixed in code**; the client never supplies a URL.
-- Model allowlist (TEE-hosted only).
+- Model allowlist (TEE-hosted only). Determined by a per-model metadata call, not by `GET /v1/models` (ADR-18).
 - Request size cap; one page per request.
 - Per-IP rate limit via a **shared store**. (An in-memory counter is ineffective across serverless instances **[Likely]**.)
-- Budget control: use a **small prepaid key balance** as the hard cap **[Guessing that keys are credit-based; check]**. If not, add a shared counter.
+- Budget control: **[Verified]** a per-key cap exists — `PATCH /v1/workspaces/{workspace_id}/api-keys/{key_id}/spend-limit` with `spendLimit` in nano-USD (`null` removes it). Charges are split in exact integer nano-USD across the organization's active credit limits, priority `grant → staking_farm → transfer → payment → postpay`. So the "small prepaid key balance as the hard cap" plan is real, not a guess; whether it is reachable on the account type we get is still S-10.
 - Never log bodies, headers with keys, or document-derived values.
-- Stream responses to avoid execution-time limits on slow vision calls **[Likely relevant; check the host plan]**.
+- Stream responses to avoid execution-time limits on slow vision calls **[Likely relevant; check the host plan]**. If T-10 ships, the relay carries **ciphertext only** (ADR-16) and "server sees the document in transit" leaves the threat model; until then it does not.
 
 Removed: `/api/health`.
 
@@ -325,18 +325,30 @@ Removed: `/api/health`.
 |---|---|---|
 | Attestation report bound to our nonce | The report is fresh, not replayed | That our upload goes to that enclave |
 | Hardware evidence (CPU quote, GPU evidence) valid | Genuine confidential hardware ran a specific measured stack | That the stack is *good* beyond what the published measurement says |
-| Response signature valid against the attested key | This response came from something holding the enclave's key | That the *request* was not seen elsewhere before it arrived |
+| Response signature valid against the attested key | The enclave that holds that key saw those exact request bytes and produced those exact response bytes | That the *request* was not seen elsewhere before it arrived |
 | E2EE to the attested key (if available) | Only the enclave can decrypt the request | Correctness of the model output |
 
-**Why the browser cannot close the gap alone:** a web page cannot read or pin the TLS certificate of a server **[Certain]**, so it cannot confirm the TLS connection ended inside the attested enclave. The docs describe TLS attestation verification **[Verified: page exists]**, but that needs certificate access a browser does not give. E2EE to the attested public key is the browser-compatible fix. If it is unavailable, the claims ladder (PRD §8) states the weaker truth.
+**Why the browser cannot close the gap alone:** a web page cannot read or pin the TLS certificate of a server **[Certain]**, so it cannot confirm the TLS connection ended inside the attested enclave. The docs describe TLS attestation verification **[Verified: page exists]**, but that needs certificate access a browser does not give. **The vendor says the same thing about its own SDK [Verified]**: `nearai/inference-sdk` `js/README.md` — "Browser Fetch does not expose the TLS peer certificate, so the browser client cannot perform the attested TLS identity check provided by the Node entry point." E2EE to the attested public key is the browser-compatible fix. If it is unavailable, the claims ladder (PRD §8) states the weaker truth.
 
-### Minimum honest verification set (decide in the spike)
-1. Nonce binding in the report. **[Likely feasible]**
-2. Response signature verification with `@noble/curves`. **[Likely feasible]**
-3. GPU-evidence verdict check (NVIDIA's service returns a signed token; verifying that token is far simpler than raw evidence parsing). **[Guessing on exact format]**
-4. Intel TDX quote verification (collateral fetch, certificate chain, measurement check). **[Likely the hardest; may not ship]**
+### The signature check, as the API actually works (ADR-19)
 
-Each check is a named entry in `CheckResult[]` with `ran` and `passed`. If #4 does not ship, the UI says "hardware quote not independently verified in this build". That is acceptable. Overclaiming is not.
+The signature is **not** on the completion. `POST /v1/chat/completions` returns `choices`, `created`, `id`, `model`, `object`, `usage` and nothing else [Verified: openapi]. So:
+
+1. Send the request; keep the returned `id` (the `chat_id`) and the **exact** request body bytes and response payload string.
+2. `GET /v1/signature/{chat_id}?model={id}&signing_algo=…`.
+3. Rebuild the signed text: `signature_kind: provider_tee` → `{model_id}:{request_hash}:{response_hash}`; `gateway` → `{request_hash}:{response_hash}`. `request_hash` is SHA-256 of the exact JSON body sent over the wire; `response_hash` is SHA-256 of the exact response payload string.
+4. Verify: Ed25519 detached verify against the attested `signing_public_key`, or EIP-191 personal-sign for ECDSA with the address compared case-insensitively to the attested `signing_address`.
+
+Two operational facts the code must handle: **streaming bodies end with two newlines and they belong in the hash** (verbatim from the docs: "include them, or the hash changes"), and the lookup is served from the node that handled the completion, so it can transiently return `Chat id not found or expired` — **retry**. Raw bytes are retained for **60 minutes**, so the check cannot be deferred.
+
+### Minimum honest verification set (decided from SPIKE §3, §7; ADR-19)
+1. **Nonce binding.** **[Go]** — `request_nonce` must equal our 64-hex nonce; `report_data` binds the nonce in its final 32 bytes. Note **[Verified]** from the docs: `report_data` is "**Not currently returned in model reports**", so for a model attestation the binding check is `request_nonce` (+ the GPU token's `eat_nonce`), and the debug-mode/`td_attributes` check and `rt_mr3` replay come from the quote and event log instead.
+2. **Response signature verification with `@noble/curves`.** **[Go]** — the exact procedure is above; `provider_tee` vs `gateway` `signature_kind` must both be handled and reported distinctly.
+3. **GPU-evidence verdict check via NRAS.** **[Go]** — `https://nras.attestation.nvidia.com/v3/attest/gpu`, response `[["JWT", "…"], {"GPU-0": "…"}]`; we verify the signed token and match `eat_nonce`, which is far cheaper than parsing raw evidence.
+4. **Intel TDX quote verification.** **[Go, last]** — no longer the open question it was: the reference verifier ships a TypeScript implementation using `dcap-qvl-node` (MIT), so this is a port. Sequence it after 1–3 and gate it on B-05 (needs a real report to test against). If it does not ship, the UI says "hardware quote not independently verified in this build".
+5. **Measurement/replay checks** (`app_compose` hash → `mr_config_id`, IMR-3 extend → `rt_mr3`, debug-bit abort): part of the ported verifier, so they come with #4 rather than being separate promises.
+
+Each check is a named entry in `CheckResult[]` with `ran` and `passed`. Overclaiming is not acceptable; an omitted check is a documented omission.
 
 ### Where heavy checks run
 - Running them on `/api/verify` means the user trusts our server's verdict for those checks. Disclose it. The endpoint never sees documents.
@@ -391,18 +403,22 @@ CSP: `connect-src` limited to self and NEAR AI Cloud hosts (including `*.complet
 ## 14. Day 1 spike checklist (go/no-go)
 
 Record answers in `docs/SPIKE_RESULTS.md`. Ordered by how much each answer changes the project.
+Status column as of 2026-11-02: **read** = closed by primary-source reading; **key** = needs B-05 (an API
+key) and cannot be closed by reading further.
 
-1. **E2EE to the enclave:** is it available, how does it work, how hard is it from a browser? *Sets the privacy claim and whether a relay is acceptable.*
-2. **Models:** which are TEE-hosted and accept images? Latency and price per page.
-3. **Accuracy on real photos:** 10 documents, **including bad photos taken eyes-closed** (glare, angle, cut-off, a table-heavy bill, a medicine label). Count numeric misreads. *Trigger for the P1 verification pass.*
-4. **Attestation:** fetch with a nonce; run the reference verifier; list which checks it actually performs and in what language. *Decides the minimum honest verification set (§10).*
-5. **Signature verification** end to end.
-6. **CORS** from a browser origin. *Decides whether Mode A exists.*
-7. **Direct-completions slug** for the chosen model.
-8. **Host limits** (request body size, execution time) on the hosting plan you will use, tested with a 5-page upload.
-9. **Cost per document**, measured.
-10. **Key behaviour:** is balance-based capping possible for the demo key?
-11. Record fixtures (real responses + attestation samples) for Mode F.
+| # | Question | Status now |
+|---|---|---|
+| 1 | **E2EE to the enclave:** available, how, how hard from a browser? | **read** (protocol v2 documented end to end, SPIKE §2) + **key** (browser path undemonstrated). Affects ADR-16, T-10 |
+| 2 | **Models:** TEE-hosted and accept images? Latency, price per page | **read** (6 image-capable `attestationSupported: true` entries; flags are per-model, not on `/v1/models`) + **key** (liveness, latency, price) |
+| 3 | **Accuracy on real photos** incl. eyes-closed bad ones; count numeric misreads | **key** only (S-03) |
+| 4 | **Attestation:** nonce, reference verifier, which checks and in what language | **read** closed it: MIT project with a native TS `ts/` using `dcap-qvl-node` → the minimum honest set in §10 is decided |
+| 5 | **Signature verification** end to end | **read** reshaped it (separate endpoint, hash-pair payload) + **key** for the live check |
+| 6 | **CORS** from a browser origin | **read** (server source is open for non-admin paths) → T-13 stays in; **key** for the live preflight |
+| 7 | **Direct-completions slug** for the chosen model | **key** (S-07) |
+| 8 | **Host limits** (body size, execution time) with a 5-page upload | **key** + B-06 (deploy target) |
+| 9 | **Cost per document**, measured | **key** (S-09); pricing objects exist per model |
+| 10 | **Key behaviour:** balance-based capping for the demo key | **read** — `spendLimit` PATCH exists, nano-USD; reachability on our account type still **key** |
+| 11 | Record fixtures (real responses + attestation samples) for Mode F | **key** — until then `fixtures/` holds **authored synthetic** files, labelled as such, never "recorded" |
 
 **Rules:** no usable TEE vision model or poor numeric accuracy → ship the paste-text path as the core and keep images as "experimental". No E2EE → ship the weaker claim. CORS fails → no Mode A.
 
@@ -439,6 +455,11 @@ Record answers in `docs/SPIKE_RESULTS.md`. Ordered by how much each answer chang
 | ADR-13 | Fixture replay mode | Separate test-only mock | Same effort serves tests and zero-credential review |
 | ADR-14 | Fail closed on verification failure (v1) | Offer informed override | Keeps the claim clean; revisit with real user input |
 | ADR-15 | Every commit updates `ROADMAP.md`; enforced by `npm run roadmap:check` in a git hook and CI | Convention only | Prose rules get forgotten; a check does not. Keeps one source of truth for status across humans and agents |
+| ADR-16 | Build the relay so it can carry **ciphertext only** once browser E2EE is demonstrated; keep the weaker claim until then | Treat the relay as trusted-but-honest | The E2EE protocol is documented (§2, SPIKE §2) and its primitives are available in `@noble/*`, so the relay's "sees the document in transit" line can be removed from the threat model — but only after a live enclave decrypts our payload. Until then AGENTS §4.2 applies |
+| ADR-17 | Mode A keeps the user's key in the browser (`sessionStorage`); no keyless Mode A is possible | A server-side escrow for Mode A keys | `GET /v1/attestation/report` and `GET /v1/signature/{chat_id}` both require an API key [Verified, SPIKE §3]. So verification in Mode A is only meaningful if the browser holds the key. Reinforces that Mode A is for developers, not the target user |
+| ADR-18 | The TEE allowlist is built from **per-model** metadata (`GET /v1/model/{model_name}` → `metadata.attestationSupported`, `providerType`, `architecture.inputModalities`), not from `GET /v1/models` | Filter the model list | Those flags are absent from the `/v1/models` `ModelInfo` schema [Verified by absence in openapi.json]. A list-only filter cannot tell a TEE model from a proxied one, which is rule §4.3 of AGENTS.md |
+| ADR-19 | Signature checking is `completion → GET /v1/signature/{chat_id} → rebuild `{model_id}:{request_hash}:{response_hash}` → verify`, with retry on "not found or expired" and the streaming trailing newlines included | Verify a signature attached to the response | The completion body carries no signature [Verified]. The signed thing is a hash pair, so both wire payloads must be retained for the check, and byte retention is documented at 60 minutes |
+| ADR-20 | Do not put `@nearai/inference-sdk` in the trust path; use it only as a cross-checking tool in `scripts/` | Ship the SDK and report its verdict | Sightline's product *is* the receipt naming the checks that ran. If the checks live inside a dependency we do not read, the receipt describes the SDK, not us. `@noble/*` is auditable, WASM-free and already in ARCH §3 |
 
 ## 18. Hard questions: technical deep-dives
 

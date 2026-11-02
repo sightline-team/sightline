@@ -1,6 +1,6 @@
-# Sightline — Project Structure (v0.2)
+# Sightline — Project Structure (v0.3)
 
-> Companion to `ARCHITECTURE.md`. Trimmed after the hard-questions review: fewer files, fewer scripts, fewer rules. Everything removed is listed in §8.
+> Companion to `ARCHITECTURE.md`. Trimmed after the hard-questions review: fewer files, fewer scripts, fewer rules. Everything removed is listed in §8. v0.3 reflects the Day-1 spike reading: `models.ts` needs a per-model call (ADR-18), `signatures.ts` has a concrete fetch-and-rebuild shape (ADR-19), `e2ee.ts` has a named cipher stack, `verifier/` ports from the reference verifier's TypeScript directory, and `scripts/crosscheck.ts` is new (ADR-20).
 >
 > **Tracking rule:** every contribution to this repo (code, tests, docs, config, fixtures, scripts) must update `ROADMAP.md` in the same commit: item status with evidence, an update-log entry, the dashboard, current focus and blockers. `ROADMAP.md` is the single source of truth for remaining work. See `AGENTS.md` §2.
 
@@ -36,14 +36,17 @@ sightline/
 │  ├─ manifest.webmanifest        # Icons only; no offline mode
 │  └─ sample-docs/                # Synthetic documents only, incl. deliberately bad photos
 │
-├─ fixtures/                      # Recorded NEAR AI responses + sample attestation reports
+├─ fixtures/                      # NEAR AI responses + attestation reports replayed in Mode F
 │  ├─ responses/                  # transcribe / structure / qa samples
 │  └─ attestation/                # good, tampered, expired
+│                                 # Until a key exists (B-05) these are AUTHORED SYNTHETIC files and must be
+│                                 # labelled that way; "recorded" is only true after S-11
 │
 ├─ scripts/
 │  ├─ spike.ts                    # Day 1: list models, fetch attestation, run reference verifier, time calls
 │  ├─ record-fixtures.ts          # Saves real responses to fixtures/
 │  ├─ run-golden.ts               # Runs sample-docs through the pipeline; prints fact accuracy
+│  ├─ crosscheck.ts               # Official SDK as a *second opinion* against our own verifier output (ADR-20); never in the app bundle
 │  └─ roadmap-check.ts            # Fails if a commit skips ROADMAP.md, dashboard counts are wrong, or [x] lacks Evidence
 │
 ├─ src/
@@ -68,11 +71,11 @@ sightline/
 │  ├─ lib/
 │  │  ├─ near-ai/
 │  │  │  ├─ client.ts             # baseUrl + header provider; abort; one retry
-│  │  │  ├─ models.ts             # Catalog, TEE + modality filter, allowlist
+│  │  │  ├─ models.ts             # Per-model metadata call (attestationSupported/providerType/inputModalities) + allowlist — NOT /v1/models (ADR-18)
 │  │  │  ├─ attestation.ts        # Nonce, fetch, call /api/verify, named checks
-│  │  │  ├─ signatures.ts
-│  │  │  ├─ e2ee.ts               # Only if the spike shows it is available
-│  │  │  └─ verifier/             # Adapted reference verifier (keep license + attribution)
+│  │  │  ├─ signatures.ts         # fetch by chat id → rebuild hash pair → verify; retry "not found"; streaming trailing newlines (ADR-19)
+│  │  │  ├─ e2ee.ts               # X25519 ECDH + HKDF-SHA256 + XChaCha20-Poly1305 via @noble/*; T-10, gated on the browser path being proven
+│  │  │  └─ verifier/             # Ported from nearai-cloud-verifier ts/ (MIT; keep license + attribution); dcap-qvl-node for TDX quotes
 │  │  ├─ image/prepare.ts         # createImageBitmap resize, orientation, JPEG, EXIF strip
 │  │  ├─ a11y/announcer.tsx       # Single aria-live announcer + interval progress
 │  │  ├─ session/                 # reducer.ts, forget.ts
@@ -142,7 +145,7 @@ Nothing secret may start with `NEXT_PUBLIC_`. The user's own key (Mode A) lives 
 | Script | Purpose |
 |---|---|
 | `dev` | Run with the configured mode |
-| `dev:fixtures` | Run with **no credentials**, replaying recorded fixtures (R9) |
+| `dev:fixtures` | Run with **no credentials**, replaying fixtures (R9). Until S-11 records real ones, these files are authored synthetic and labelled as such |
 | `build` / `start` | Production |
 | `lint` / `typecheck` | ESLint, `tsc --noEmit` |
 | `test` | Vitest (unit, verification, relay) |
@@ -150,6 +153,7 @@ Nothing secret may start with `NEXT_PUBLIC_`. The user's own key (Mode A) lives 
 | `spike` | `scripts/spike.ts` |
 | `fixtures:record` | `scripts/record-fixtures.ts` |
 | `golden` | `scripts/run-golden.ts` |
+| `crosscheck` | `scripts/crosscheck.ts` — official SDK as a second opinion against our verifier output; dev-only, never imported by the app (ADR-20, T-15) |
 | `roadmap:check` | `scripts/roadmap-check.ts` (`-- --write` refreshes the ROADMAP dashboard) |
 
 ## 6. Build order (maps to PRD timeline)

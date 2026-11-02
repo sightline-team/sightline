@@ -1,7 +1,7 @@
-# Sightline — Architecture Essentials (v0.2)
+# Sightline — Architecture Essentials (v0.3)
 
-Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.md` §12.
-**[V]** verified in docs · **[U]** unverified, check in Day 1 spike.
+Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.md` §12. Spike findings with sources: `SPIKE_RESULTS.md`.
+**[V]** verified in official docs / the OpenAPI contract / vendor source · **[M]** measured against the live API (nothing is **[M]** yet — no key, blocker B-05) · **[U]** unverified, check in the spike.
 
 ## What it is
 - Web app. Blind/low-vision user photographs (or pastes text of) a sensitive document → private AI explains it and answers questions → app shows exactly what was verified.
@@ -9,7 +9,7 @@ Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.m
 - Track: Privacy & Private AI. Deadline 14 Nov 2026, 23:59 UTC.
 
 ## Stack
-- TypeScript strict · Next.js App Router · native HTML + plain CSS · one `useReducer` + context · zod · `@noble/curves` · Vitest + Playwright + axe
+- TypeScript strict · Next.js App Router · native HTML + plain CSS · one `useReducer` + context · zod · `@noble/curves` + `@noble/hashes` + `@noble/ciphers` · Vitest + Playwright + axe
 - AI: NEAR AI Cloud, OpenAI-compatible, `https://cloud-api.near.ai/v1` **[V]**
 - No database, no accounts, no server-side document storage
 - **Not using:** React Aria, Zustand, local blur/brightness checks, voice pipeline, reorder UI, offline shell
@@ -18,7 +18,7 @@ Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.m
 1. **Claims are computed, not written.** UI statement comes from `TrustRecord.claim` (`e2ee_enclave` | `attested_model_signed_responses` | `partial` | `fixtures`).
 2. **Browser cannot prove upload ends in the enclave** (cannot read/pin TLS). Only E2EE to the attested key closes this. No E2EE → use the weaker statement.
 3. **TEE-hosted models only.** Proxied models have no TEE guarantee **[V]**.
-4. **Fresh nonce per session.** Check attestation before sending; verify response signature after every call.
+4. **Fresh nonce per session** (32 random bytes, 64 hex). Check attestation before sending; fetch and verify the response signature after every call — it is a separate keyed request, not a header (ADR-19).
 5. **`partial` is never shown as "verified".** List checks with `ran` + `passed`.
 6. **Server stores/logs no content.** Relay is stateless, fixed host, exact-path allowlist, size cap.
 7. **`quoteFound` is code-computed.** It proves consistency with the transcript, **not** correctness against the page. Never describe it as page-verified.
@@ -28,9 +28,9 @@ Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.m
 11. **Every contribution updates `ROADMAP.md` in the same commit** (status + evidence, log entry, dashboard, current focus, blockers). Enforced by `npm run roadmap:check` (hook + CI). Agents: see `AGENTS.md` §2.
 
 ## Modes
-- **B. Relay (build first):** browser → our stateless relay → NEAR. Relay is in the trust path unless E2EE. Needs shared-store rate limit or small prepaid key.
-- **A. Direct, BYO key:** browser → NEAR. Strongest privacy; for developers/judges only. Needs CORS **[U]**.
-- **F. Fixtures:** recorded responses; banner "Demo data, no real privacy guarantee". For reviewer agents and tests.
+- **B. Relay (build first):** browser → our stateless relay → NEAR. Relay is in the trust path unless E2EE works from a browser; then it carries ciphertext only (ADR-16). Needs shared-store rate limit or a capped key (`spendLimit` **[V]**).
+- **A. Direct, BYO key:** browser → NEAR. Strongest privacy; for developers/judges only. CORS **[V]** open for non-admin paths in server source; live preflight **[U]**. The user's key must be in the browser — the attestation and signature endpoints require a key, so there is no keyless Mode A (ADR-17).
+- **F. Fixtures:** replayed responses; banner "Demo data, no real privacy guarantee". For reviewer agents and tests. Today's fixtures are **authored synthetic**, not recorded **[U]**.
 - One client, `baseUrl` + header provider → one code path.
 
 ## Pipeline
@@ -46,10 +46,13 @@ Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.m
 10. **Paste-text path** skips 2–5. It is also the fallback if no TEE vision model works.
 11. **P1 (only if spike shows numeric misreads):** verification pass per numeric fact.
 
-## Verification scope (decide in spike)
-- Likely feasible: nonce binding, response signature, GPU-evidence verdict token
-- Likely hardest: Intel TDX quote verification → may not ship; label "not independently verified"
-- Heavy checks on `/api/verify` mean users trust our verdict for those → disclose
+## Verification scope (decided — ARCH §10, ADR-19)
+- **Go:** nonce binding (`request_nonce`, GPU token `eat_nonce`), response signature, GPU-evidence verdict via NRAS.
+- **Go, sequenced last:** Intel TDX quote via the reference verifier's TypeScript `ts/` + `dcap-qvl-node` **[V]** — a port, not a rewrite. If it does not ship, the receipt says "hardware quote not independently verified in this build".
+- Signature checking is a **second request**: `completion id → GET /v1/signature/{chat_id} → rebuild `{model_id}:{request_hash}:{response_hash}` → verify`. Streaming responses end in two newlines that belong in the hash; lookups can transiently say "not found" → retry; raw bytes live 60 minutes.
+- `@nearai/inference-sdk` stays out of the trust path; it is a cross-check tool in `scripts/` (ADR-20).
+- Heavy checks on `/api/verify` mean users trust our verdict for those → disclose.
+- The TEE allowlist needs a **per-model** metadata call; `/v1/models` does not carry `attestationSupported` / `providerType` / `verifiable` (ADR-18).
 
 ## Data (summary)
 - `Session { mode, input, pages, transcript, analysis, qa, trust, status }`
@@ -77,7 +80,7 @@ Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.m
 1. Privacy claim > code (TLS/E2EE) → claims ladder
 2. Grounding ≠ correctness → P1 verification pass, honest README
 3. Nobody can run it (no key) → fixtures + deployed relay
-4. Verifier port too heavy → minimum honest set
+4. Verifier port → **lowered risk**: reference verifier ships TypeScript + `dcap-qvl-node` **[V]**; still needs a real report to test against
 5. Serverless body/time limits → downscale, one page per request, stream, Day 3 load test
 6. Capture quality is the real bottleneck → model `captureIssues`, eyes-closed test photos
 7. In-memory rate limit useless on serverless → shared store or prepaid key
@@ -87,8 +90,9 @@ Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.m
 Cut-off / rotated / glared pages · tables and forms · handwriting · not a document · model refusal · truncated output · invalid JSON · injection text · English only · attestation changes mid-session · long waits · large images · relay abuse
 
 ## Day 1 spike (ordered by impact)
-1. E2EE available? 2. TEE + image models, latency, price 3. Accuracy on 10 docs **incl. bad photos** 4. Reference verifier: which checks, what language 5. Signature check 6. CORS 7. Direct slug 8. Host limits with 5-page upload 9. Cost/doc 10. Key capping 11. Record fixtures
-- No usable vision → paste-text core · No E2EE → weaker claim · CORS fails → no Mode A
+Read-only answers are in `SPIKE_RESULTS.md`; items 3, 5(live), 7, 8, 9 and 11 need a key (B-05).
+1. E2EE available? — **[V]** protocol v2 documented; browser path **[U]** 2. TEE + image models — **[V]** flags are per-model; live/latency/price **[U]** 3. Accuracy on 10 docs **incl. bad photos** **[U-key]** 4. Reference verifier: which checks, TS port **[V]** 5. Signature check: shape **[V]**, live **[U-key]** 6. CORS: source **[V]** open, preflight **[U-key]** 7. Direct slug **[U-key]** 8. Host limits with 5-page upload **[U-key]** 9. Cost/doc **[U-key]** 10. Key capping: `spendLimit` **[V]** 11. Record fixtures **[U-key]**
+- No usable vision → paste-text core · No browser E2EE → weaker claim · CORS fails → no Mode A
 
 ## Decisions already made
-Computed claims · TEE-only · two-step pipeline · native camera · relay first · fixtures · paste-text P0 · model capture issues · no voice pipeline · no payments in v1 (ADR-9)
+Computed claims · TEE-only · two-step pipeline · native camera · relay first · fixtures · paste-text P0 · model capture issues · no voice pipeline · no payments in v1 (ADR-9) · relay designed to carry ciphertext only once browser E2EE is proven (ADR-16) · Mode A key lives in the browser (ADR-17) · per-model metadata for the allowlist (ADR-18) · signature check = fetch + rebuild hashes + verify (ADR-19) · SDK out of the trust path (ADR-20)
