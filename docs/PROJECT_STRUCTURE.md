@@ -12,6 +12,7 @@ sightline/
 ├─ AGENTS.md                      # Instructions for any coding agent (incl. the ROADMAP rule)
 ├─ CLAUDE.md                      # Imports AGENTS.md + Claude Code specifics
 ├─ ROADMAP.md                     # Source of truth for remaining work; updated on EVERY contribution
+├─ HACKATHON.md                   # Official event rules, committed as evidence; re-read before submitting
 ├─ LICENSE
 ├─ package.json
 ├─ tsconfig.json                  # strict: true
