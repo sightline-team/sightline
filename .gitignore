@@ -1,0 +1,28 @@
+# Dependencies and build output
+node_modules/
+.next/
+out/
+build/
+coverage/
+
+# Environment and secrets — the app must run with NO .env (fixtures mode)
+.env
+.env.*
+!.env.example
+
+# Local agent/human scratch files that must never be committed
+CLAUDE.local.md
+*.local.md
+
+# Test output
+test-results/
+playwright-report/
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/

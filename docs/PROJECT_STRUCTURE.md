@@ -15,7 +15,10 @@ sightline/
 ├─ LICENSE
 ├─ package.json
 ├─ tsconfig.json                  # strict: true
-├─ next.config.ts                 # CSP + security headers
+├─ next.config.ts                 # CSP + security headers, production responses only
+├─ eslint.config.mjs              # flat config extending eslint-config-next
+├─ vitest.config.mts              # .mts because Vite loads a .ts config as CommonJS; aliases @, stubs server-only
+├─ playwright.config.mts          # one chromium project; see the honesty note inside
 ├─ .env.example                   # No secrets. App must run with NO .env (fixtures)
 ├─ .gitignore
 │
@@ -84,6 +87,7 @@ sightline/
    ├─ unit/                       # signatures, nonce, grounding, claims ladder, schemas, image prep
    ├─ verification/               # good/tampered/expired fixtures → fail-closed, partial ≠ verified
    ├─ relay/                      # rejected paths, size cap, rate limit, no content in logs
+   ├─ stubs/server-only.ts        # no-op stand-in so unit tests can import server modules (see vitest.config.mts)
    ├─ e2e/                        # Playwright + axe per route + network-host assertion
    └─ a11y/manual-checklist.md    # Screen-reader scripts and results
 ```
@@ -121,7 +125,14 @@ RATE_LIMIT_STORE_URL=            # shared store; in-memory limits do not work on
 
 NEXT_PUBLIC_NEAR_AI_BASE_URL=https://cloud-api.near.ai/v1
 NEXT_PUBLIC_DEFAULT_MODE=fixtures   # fixtures | relay | direct
+NEXT_PUBLIC_ALLOW_DIRECT=false     # Mode A stays off until spike item S-06
 ```
+
+Enforced in `lib/server/env.ts`, not just documented: in production the relay reports
+`relayDisabledReason: 'no_rate_limit_store'` and stays off unless `RATE_LIMIT_STORE_URL` is
+set, because an in-memory counter does nothing across serverless instances. A requested mode
+the deployment cannot honour falls back to fixtures rather than silently changing the privacy
+story (`lib/config.ts`).
 
 Nothing secret may start with `NEXT_PUBLIC_`. The user's own key (Mode A) lives only in the browser.
 

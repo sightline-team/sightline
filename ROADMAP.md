@@ -15,7 +15,7 @@
 |---|---|---|---|---|---|---|---|
 | D — Documentation and planning | 6 | 0 | 0 | 1 | 0 | 7 | 86% |
 | S — Day 1 spike | 0 | 0 | 0 | 14 | 0 | 14 | 0% |
-| F — Foundation | 0 | 0 | 0 | 13 | 0 | 13 | 0% |
+| F — Foundation | 3 | 0 | 0 | 10 | 0 | 13 | 23% |
 | U — User research | 0 | 0 | 0 | 5 | 0 | 5 | 0% |
 | P — Paste-text path, results, Q&A | 0 | 0 | 0 | 10 | 0 | 10 | 0% |
 | C — Capture and transcription | 0 | 0 | 0 | 10 | 0 | 10 | 0% |
@@ -23,7 +23,7 @@
 | A — Accessibility and hardening | 0 | 0 | 0 | 15 | 0 | 15 | 0% |
 | R — Release readiness | 0 | 0 | 0 | 13 | 0 | 13 | 0% |
 | X — Submission | 0 | 0 | 0 | 7 | 0 | 7 | 0% |
-| **All P0 work** | **6** | | | | | **108** | **6%** |
+| **All P0 work** | **9** | | | | | **108** | **8%** |
 <!-- progress:end -->
 
 **Last updated:** 2026-11-02 (UTC) · **Time to deadline at last update:** 12 days · **Repo exists yet:** yes — `sightline-team/sightline`, docs only, no code yet
@@ -32,10 +32,11 @@
 
 Update this list on every contribution. Keep it to 3–5 items.
 
-1. **D-07** (human) Answer the four open questions from `docs/PRD.md` §12. Blocks the testing plan and claim wording.
-2. **S-00 → S-03** Get a NEAR AI Cloud key; check E2EE, TEE vision models, and accuracy on 10 documents incl. bad photos.
-3. **U-01** Start looking for one real blind or low-vision person to talk to. This has a long lead time, so start now.
-4. **F-01** Initialise the repo once S-00 is done (the spike scripts live in it).
+1. **S-00 (human, ~15 minutes, unblocks everything)** Get a NEAR AI Cloud API key at `https://cloud.near.ai`; $10 of credits can be claimed by joining NEAR Builders at `https://nearbuilders.org/join` (HACKATHON.md Q-000). Until a key exists, S-01…S-13 cannot be run, which means the privacy claim, the vision model choice and the cost figure all stay undecided. Blocker B-05.
+2. **Agent track, no key needed:** F-07 and F-10 (types, reducer, `AppError`), then T-04/T-05 `claims.ts` and its tests, then P-01…P-06 to reach Gate 2 (fixture demo). Build continues in fixtures mode; real-mode code is written behind the same `baseUrl` + header-provider client so a key drops in without redesign.
+3. **D-07** (human) Answer the four open questions from `docs/PRD.md` §12: which devices and screen readers exist, whether one real blind or low-vision user is reachable by Day 3, acceptance of the weaker true privacy sentence if E2EE is unavailable, and who pays per document. Blocks the testing plan and claim wording. Blocker B-01.
+4. **U-01** Start looking for one real blind or low-vision person to talk to. Long lead time, so start now.
+5. ~~F-01~~ done 2026-11-02; repo is initialised and `main` is green.
 
 ## 3. Update protocol (every contribution)
 
@@ -118,8 +119,8 @@ Outputs go in `docs/SPIKE_RESULTS.md`. Do not build product code on a `[Unverifi
 
 ### Phase F — Foundation (2026-11-03 → 11-05)
 
-- [ ] **F-01** Initialise repo: Next.js (App Router), TypeScript strict, ESLint, Vitest, Playwright; commit docs to `docs/`, and `AGENTS.md`, `CLAUDE.md`, `ROADMAP.md` to root. _Done when:_ `npm run lint`, `typecheck`, `test` run (even with no tests).
-- [ ] **F-02** `.env.example`, `lib/config.ts` (zod). _Done when:_ app starts with **no `.env`** and defaults to fixtures mode.
+- [x] **F-01** Initialise repo: Next.js (App Router), TypeScript strict, ESLint, Vitest, Playwright; commit docs to `docs/`, and `AGENTS.md`, `CLAUDE.md`, `ROADMAP.md` to root. _Evidence:_ `npx eslint .`, `npx tsc --noEmit` and `npx vitest run` (20 tests in 2 files) all exit 0; `npx next build` exits 0 with route `/`. Next 16.4.4, React 19.3.1, TS 5.9.3 pinned in `package.json`. Vitest/Playwright configs use `.mts` because Vite 7 loads a `.ts` config as CommonJS.
+- [x] **F-02** `.env.example`, `lib/config.ts` (zod). _Done when:_ app starts with **no `.env`** and defaults to fixtures mode. _Evidence:_ `npx next dev` with no `.env` file present returned HTTP 200 and rendered `Running mode: fixtures · Relay enabled: false · Direct mode allowed: false`; `tests/unit/config.test.ts` (13 tests) covers the fail-closed downgrade of relay and direct to fixtures, an unknown mode name throwing, and a non-URL base throwing. `NEXT_PUBLIC_ALLOW_DIRECT` defaults to false until S-06 proves CORS.
 - [ ] **F-03** `lib/near-ai/client.ts`: baseUrl + header provider, abort, one retry, no content logging. _Done when:_ unit tests with a mocked fetch.
 - [ ] **F-04** `lib/near-ai/models.ts`: catalog fetch, TEE + modality filter, allowlist; refuses non-TEE models. _Done when:_ test proves a proxied model is rejected.
 - [ ] **F-05** `/api/relay/[...path]`: fixed host, exact-path allowlist, model allowlist, size cap, streaming, no body logging. _Deps:_ F-03, S-08. _Done when:_ A-09 tests exist and pass for rejected path/oversize.
@@ -130,7 +131,7 @@ Outputs go in `docs/SPIKE_RESULTS.md`. Do not build product code on a `[Unverifi
 - [ ] **F-10** `lib/errors.ts`: `AppError` codes → plain-language messages. _Done when:_ every error in ARCH §13 has a message.
 - [ ] **F-11** `scripts/roadmap-check.ts` + `npm run roadmap:check` (+ `--write` regenerates the dashboard): fails if any non-merge commit in the range does not touch `ROADMAP.md`, if dashboard counts are wrong, or if an `[x]` item has no `Evidence`. Add a git hook and CI step. _Done when:_ a commit without a ROADMAP change is rejected locally and in CI.
 - [ ] **F-12** CI workflow: lint, typecheck, test, `roadmap:check`. _Deps:_ F-01, F-11. _Done when:_ green on the default branch.
-- [ ] **F-13** `.gitignore` (`.env*`, build output), `server-only` guard on `lib/server` and `app/api`. _Done when:_ importing server code into a client component fails the build.
+- [x] **F-13** `.gitignore` (`.env*`, build output), `server-only` guard on `lib/server` and `app/api`. _Done when:_ importing server code into a client component fails the build. _Evidence:_ a temporary `src/app/probe/page.tsx` marked `'use client'` that imported `serverConfig` made `npx next build` exit **1** with `You're importing a module that depends on "server-only"` and the chain `./src/lib/server/env.ts [Client Component Browser] ← ./src/app/probe/page.tsx`; the probe was then deleted and the build returned to exit 0. First probe attempt in `src/app/_probe/` proved nothing (an underscore folder is a Next private folder, never compiled) — that is why the route was re-made routable. `.gitignore` covers `.env`, `.env.*` with `!.env.example`. `app/api/*` route handlers will import the same guard when F-05 creates them.
 
 ### Phase U — User research (parallel; first session by 2026-11-05)
 
@@ -246,6 +247,8 @@ Built first because it needs no vision model, works in fixture mode, and is the 
 | B-02 | E2EE availability (S-01) | Privacy claim, T-10 | Human/agent | 2026-11-02 | Open |
 | B-03 | CORS (S-06) | T-13, Mode A | Agent | 2026-11-02 | Open |
 | B-04 | TEE-hosted vision model (S-02) | C-03, whole image path | Agent | 2026-11-02 | Open |
+| B-05 | **No NEAR AI Cloud API key.** `npm run spike`, S-00 and every measured spike item (S-01…S-03, S-05, S-08…S-11) need one. HACKATHON.md Q-000 says the dashboard at `https://cloud.near.ai` issues the key and $10 of credits can be claimed by joining `https://nearbuilders.org/join`. Fixture-mode building continues regardless. | S-phase, Gate 3, the measured privacy claim, cost per document | Human | 2026-11-02 | Open |
+| B-06 | A deploy target for the relay demo (Vercel or any Node host) needs an account and, for a public key, a billing decision. HACKATHON.md Q-012 says a local-only demo is acceptable if the README is reproducible, so this blocks R-01 only, not submission. | R-01, live demo URL | Human | 2026-11-02 | Open |
 
 ## 9. Risk watchlist (trigger → action)
 
@@ -265,6 +268,7 @@ Built first because it needs no vision model, works in fixture mode, and is the 
 
 Format: `date (UTC) · who · item IDs · summary · files/areas · evidence · follow-ups`
 
+- **2026-11-02 · Qoder agent (for `abrcrmb`) · F-01, F-02, F-13** · Scaffolded the toolchain and the two configuration boundaries. `package.json` pins Next 16.4.4 / React 19.3.1 / TS **5.9.3** (deliberately not TS 7.0.2, which npm offers as `latest`: the whole toolchain is built against 5.x and an unverifiable compiler swap is not worth the risk) / zod 4.6.7 / @noble 2.4.0 / Vitest 5.1.0 / Playwright 1.64.1, all exact-pinned per `docs/PROJECT_STRUCTURE.md` §3. `src/lib/config.ts` (client-safe, zod) resolves the running mode and **fails closed to fixtures**; `src/lib/server/env.ts` (`server-only`) decides relay availability and refuses to enable the relay in production without a shared rate-limit store. CSP applied to production responses only, `connect-src` pinned to self + NEAR AI Cloud hosts; the `script-src 'unsafe-inline'` concession is recorded as a known limitation in the config comment for the README. Added `NEXT_PUBLIC_ALLOW_DIRECT=false` so Mode A cannot be reached until S-06. · files: `package.json`, `package-lock.json`, `tsconfig.json`, `next.config.ts`, `eslint.config.mjs`, `vitest.config.mts`, `playwright.config.mts`, `.gitignore`, `.env.example`, `src/app/{layout,page}.tsx`, `src/app/globals.css`, `src/lib/config.ts`, `src/lib/server/env.ts`, `tests/unit/{config,server-env}.test.ts`, `tests/stubs/server-only.ts`, `docs/PROJECT_STRUCTURE.md` §1/§4, `ROADMAP.md` · evidence: `eslint` 0 errors, `tsc --noEmit` exit 0, `vitest run` 20/20 passing in 2 files, `next build` exit 0; `next dev` with **no `.env` file present** returned 200 and rendered `Running mode: fixtures · Relay enabled: false · Direct mode allowed: false`; F-13 guard proven by a temporary client route that made `next build` exit 1 naming `server-only` (first attempt in a `_probe` private folder compiled nothing and was redone). Two mistakes found and fixed in place: three guessed `@types/*` versions that do not exist made the first `npm install` fail behind a `| tail` pipe that hid the exit code, and a zod `.default()` placed after `.transform()` would have returned the untransformed string `''` where a boolean was typed. · follow-ups: F-07/F-10 next, then T-04 `claims.ts`; F-11 `roadmap:check` still missing so the checks above were done by hand; Playwright browsers are not installed yet, so no e2e run has been claimed.
 - **2026-11-02 · Qoder agent (for `abrcrmb`) · D-01 – D-06 (evidence now in-repo)** · First real commit to `sightline-team/sightline`: the seven planning docs were untracked on disk and are now committed and pushed to `main`. Placed per `docs/PROJECT_STRUCTURE.md` §1 — `AGENTS.md`, `CLAUDE.md`, `ROADMAP.md` at root; `PRD.md`, `ARCHITECTURE.md`, `ARCHITECTURE_ESSENTIALS.md`, `PROJECT_STRUCTURE.md` under `docs/`. Fixed the two bare `PRD.md` references in §2 and R-12 to `docs/PRD.md`; no item status changed, dashboard counts unchanged (D phase still 6/7). · files: `docs/*`, `AGENTS.md`, `CLAUDE.md`, `ROADMAP.md` · evidence: commit pushed to `main`, `git ls-files` lists all seven; `docs/SPIKE_RESULTS.md` still absent (created by S-12) · follow-ups: D-07 (human answers), S-00; `roadmap:check` (F-11) must be taught the root/`docs/` split when it lands.
 - **2026-11-02 · Claude (chat) · D-05, D-06** · Created `ROADMAP.md`, `AGENTS.md`, `CLAUDE.md`; added the "every contribution updates ROADMAP.md" rule to PRD, ARCHITECTURE, ARCHITECTURE_ESSENTIALS and PROJECT_STRUCTURE; added ADR-15 and a `roadmap:check` script to the structure. · files: root instruction files, `docs/*` · evidence: files delivered; no repo yet · follow-ups: D-07, S-00.
 - **2026-11-02 · Claude (chat) · D-01 – D-04** · Revised PRD/ARCHITECTURE/ESSENTIALS/STRUCTURE from v0.1 to v0.2 after the hard-questions review: claims ladder, fixtures mode, paste-text path, cuts (voice pipeline, reorder UI, local blur checks, extra libraries). · files: `docs/*` · evidence: documents delivered · follow-ups: S-phase.
