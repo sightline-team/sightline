@@ -164,8 +164,8 @@ Reset reducer state, revoke object URLs, abort in-flight requests with `AbortCon
 |---|---|
 | `capture` | File input, page list (remove, retake last) |
 | `image/prepare` | Resize via `createImageBitmap`, orientation, JPEG, EXIF strip |
-| `near-ai/client` | Typed fetch wrapper; base URL + header provider; abort; one retry on transient errors |
-| `near-ai/models` | Catalog fetch; TEE and modality filtering; allowlist |
+| `near-ai/client` | Typed fetch wrapper; base URL + header provider; abort; one retry on transient errors. Returns the **exact bytes sent and received** alongside the parsed JSON, because ADR-19's hashes are of the wire form, not of a re-serialisation |
+| `near-ai/models` | Candidate list + **per-model metadata call** (ADR-18: the TEE flags are not on `/v1/models`); TEE and modality filtering; exact-id allowlist |
 | `near-ai/attestation` | Nonce, fetch report, call `/api/verify`, short-lived cache, produce named checks |
 | `near-ai/signatures` | Fetch and verify per-response signatures |
 | `analysis` | Pipeline, prompts, zod schemas, grounding check |
@@ -327,6 +327,8 @@ Relay rules:
 - **Exact-path allowlist**, now named against the real API (SPIKE §1, §3, §5): `POST /v1/chat/completions`, `GET /v1/attestation/report`, `GET /v1/signature/{chat_id}`. No wildcard forwarding, which prevents the relay from being used as a general proxy or for host/path tricks.
 - ADR-18 adds a **fifth** path, `GET /v1/model/{model_name}`, because the TEE flags exist only on the per-model call, so the allowlist cannot be built from `GET /v1/models`. `GET /v1/models` itself stays **out** of the relay: the browser can read that catalog directly, and a path with no document in it is still a path the relay could be pointed at. ROADMAP F-05 carries this as a follow-up so the set is widened deliberately, in that item's commit, with its own test.
 - Target host is **fixed in code**; the client never supplies a URL.
+- **Wire contract with `lib/near-ai/client.ts` (F-03):** the client's relay base is the same-origin path `/api/relay/v1`, so the catch-all handler receives `v1/<endpoint>` and must map it to the identical path upstream. `createNearClient` refuses any other relay base, and refuses an absolute or `..`-containing one.
+- Path parameters arrive **percent-encoded as one segment** (`model/Qwen%2FQwen3-VL-30B-A3B-Instruct`), because a model id contains a slash and must not become two segments. F-05 must therefore match its allowlist on the encoded segment, and how Next hands `%2F` to `params.path` has to be observed live (B-05) rather than assumed.
 - Model allowlist (TEE-hosted only). Determined by a per-model metadata call, not by `GET /v1/models` (ADR-18).
 - Request size cap; one page per request.
 - Per-IP rate limit via a **shared store**. (An in-memory counter is ineffective across serverless instances **[Likely]**.)
