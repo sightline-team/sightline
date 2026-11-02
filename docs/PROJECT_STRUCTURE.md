@@ -1,6 +1,8 @@
-# Sightline — Project Structure (v0.3)
+# Sightline — Project Structure (v0.4)
 
 > Companion to `ARCHITECTURE.md`. Trimmed after the hard-questions review: fewer files, fewer scripts, fewer rules. Everything removed is listed in §8. v0.3 reflects the Day-1 spike reading: `models.ts` needs a per-model call (ADR-18), `signatures.ts` has a concrete fetch-and-rebuild shape (ADR-19), `e2ee.ts` has a named cipher stack, `verifier/` ports from the reference verifier's TypeScript directory, and `scripts/crosscheck.ts` is new (ADR-20).
+>
+> v0.4 is the **as-built** tree after item F-14 scaffolded every directory in §1 on 2026-11-02. Three files this document did not name were added by the scaffold and are now part of the structure: `src/lib/not_built.ts` (the throwing stub contract), `public/icons/icon.svg` (the manifest needs an icon), and the `README.md` files inside `fixtures/`, `fixtures/responses/`, `fixtures/attestation/` and `public/sample-docs/`, which hold the authored-vs-recorded labelling rules and the golden-set case list rather than payloads. §1 entries that describe intent were rewritten to describe behaviour that exists, and the two test directories that had placeholders state which assertions are still `it.todo`.
 >
 > **Tracking rule:** every contribution to this repo (code, tests, docs, config, fixtures, scripts) must update `ROADMAP.md` in the same commit: item status with evidence, an update-log entry, the dashboard, current focus and blockers. `ROADMAP.md` is the single source of truth for remaining work. See `AGENTS.md` §2.
 
@@ -33,8 +35,10 @@ sightline/
 │  └─ ACCESSIBILITY_REPORT.md     # What was tested, on what, what failed, what was not tested
 │
 ├─ public/
-│  ├─ manifest.webmanifest        # Icons only; no offline mode
+│  ├─ manifest.webmanifest        # Icons only; no offline mode (referenced from layout metadata)
+│  ├─ icons/icon.svg              # The manifest + favicon icon
 │  └─ sample-docs/                # Synthetic documents only, incl. deliberately bad photos
+│                                 # README.md here is the golden-set case list (C-09/S-03); empty until then
 │
 ├─ fixtures/                      # NEAR AI responses + attestation reports replayed in Mode F
 │  ├─ responses/                  # transcribe / structure / qa samples
@@ -80,19 +84,21 @@ sightline/
 │  │  ├─ a11y/announcer.tsx       # Single aria-live announcer + interval progress
 │  │  ├─ session/                 # reducer.ts, forget.ts
 │  │  ├─ fixtures/                # Replay layer for Mode F and tests
-│  │  ├─ server/                  # Server-only: rateLimit.ts, allowlist.ts
+│  │  ├─ server/                  # Server-only: env.ts, allowlist.ts, rateLimit.ts (all `import 'server-only'`)
 │  │  ├─ config.ts                # Env validation (zod); mode selection
-│  │  └─ errors.ts                # AppError → plain-language messages
+│  │  ├─ errors.ts                # AppError → plain-language messages
+│  │  └─ not_built.ts             # `NotBuilt` + `notBuilt(item, what)`: every scaffold stub throws this, naming its ROADMAP item
+│                                 # A stub that returned a plausible fake would let a pipeline 'work' on nothing
 │  │
 │  ├─ components/                 # Button, StatusMessage, SkipLink (native elements)
 │  └─ types/index.ts
 │
 └─ tests/
-   ├─ unit/                       # signatures, nonce, grounding, claims ladder, schemas, image prep
-   ├─ verification/               # good/tampered/expired fixtures → fail-closed, partial ≠ verified
-   ├─ relay/                      # rejected paths, size cap, rate limit, no content in logs
+   ├─ unit/                       # config, server-env, session reducer, errors, nonce, grounding, schemas; claims ladder + image prep still to write
+   ├─ verification/               # attestation.test.ts: stubs refuse + strong claim unreachable; 9 `it.todo` rows name what T-01/T-02/T-05 must still prove
+   ├─ relay/                      # relay.test.ts: both API routes answer 501, name their item, forward nothing, leak no key. A-09 adds rejected path/oversize/rate limit
    ├─ stubs/server-only.ts        # no-op stand-in so unit tests can import server modules (see vitest.config.mts)
-   ├─ e2e/                        # Playwright + axe per route + network-host assertion
+   ├─ e2e/shell.spec.ts           # Playwright + axe on the four shell routes, skip link/tab order, one live region, zoomable viewport, off-origin request assertion
    └─ a11y/manual-checklist.md    # Screen-reader scripts and results
 ```
 

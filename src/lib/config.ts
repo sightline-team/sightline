@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Mode } from '@/types';
 
 /**
  * Client-safe configuration. This module may be imported from a client
@@ -6,8 +7,9 @@ import { z } from 'zod';
  * `lib/server/env.ts`, which is guarded by the `server-only` package.
  */
 
-export const MODES = ['fixtures', 'relay', 'direct'] as const;
-export type Mode = (typeof MODES)[number];
+// The union itself is owned by `src/types/index.ts` so the session state and the
+// configuration cannot drift apart.
+export const MODES = ['fixtures', 'relay', 'direct'] as const satisfies readonly Mode[];
 
 const booleanFromEnv = z
   .enum(['true', 'false', '1', '0', ''])

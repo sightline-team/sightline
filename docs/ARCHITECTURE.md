@@ -1,8 +1,10 @@
 # Sightline — Architecture
 
-> Version 0.3 (primary-source spike reading folded in) · 2 Nov 2026 · Companion to `PRD.md`. Short version: `ARCHITECTURE_ESSENTIALS.md`. Detailed findings with sources: `SPIKE_RESULTS.md`.
+> Version 0.4 (F-14 structural scaffold built; §7 now carries the error types) · 2 Nov 2026 · Companion to `PRD.md`. Short version: `ARCHITECTURE_ESSENTIALS.md`. Detailed findings with sources: `SPIKE_RESULTS.md`.
 
 Markers: **[Verified]** = read in official NEAR AI Cloud docs, the machine-readable OpenAPI contract, or the vendor's own source code, with the source named. **[Measured]** = run against the live API; **nothing here is [Measured] yet**, because there is no API key (ROADMAP blocker B-05). **[Unverified]** = still unknown; do not build on it. **[Certain] / [Likely] / [Guessing]** = my confidence in an analytical claim.
+
+**Changes from v0.3:** the scaffold exists, so §7 gained the `ErrorCode`/`AppError` types §13 implies and §13 now names the module that implements it; §8's `POST /api/relay` allowlist needs a fifth path (`GET /v1/model/{model_name}`, ADR-18) — recorded as a follow-up on F-05 rather than widened silently. No decision in §17 changed.
 
 **Changes from v0.2:** E2EE protocol v2 documented in full (§2, ADR-16); attestation and signature endpoints resolved, and both proved to require a key (§3, ADR-17); the TEE flags moved from `/v1/models` to per-model metadata, changing F-04's design (ADR-18); response signing turned out to be a separate fetch over a hash pair, changing the check's shape (ADR-19); CORS read as permissive in server source, so Mode A stays in; the reference verifier ships TypeScript, so the TDX quote check is a port rather than a risk; the SDK is kept out of the trust path (ADR-20).
 
@@ -274,6 +276,41 @@ interface Settings {                   // localStorage, non-sensitive only
 // API key (Mode A): sessionStorage by default. Never in env, never in URLs.
 ```
 
+Added at scaffold time (item F-07), because §13's failure table needs a type and the reducer
+needs the aliases — `src/types/index.ts` is the source of truth and this block describes it:
+
+```ts
+type Mode = 'relay' | 'direct' | 'fixtures';   // owned here; lib/config imports it, so a mode
+                                               // name cannot drift between state and config
+type InputKind = 'images' | 'text';
+type SessionStatus = /* the nine status values in Session.status above */;
+type UncertainSpan = { start: number; end: number; reason: 'illegible' | 'low_contrast' | 'cropped' };
+type DocType = 'bill' | 'bank' | 'medical' | 'prescription' | 'legal' | 'government' | 'other';
+type FactKind = /* as KeyFact.kind above */;
+type TrustPurpose = 'transcribe' | 'analyse' | 'qa';
+type AttestationStatus = 'verified' | 'partial' | 'failed';
+
+// Every row of §13 maps to exactly one code here; lib/errors.ts is `Record<ErrorCode, {userMessage, retryable}>`,
+// so a new failure without a plain-language message is a type error, not a forgotten string.
+type ErrorCode =
+  | 'verification_failed' | 'verification_unreachable' | 'attestation_changed' | 'signature_invalid'
+  | 'model_unavailable' | 'capture_issue' | 'too_many_pages' | 'image_too_large' | 'not_a_document'
+  | 'illegible_content' | 'output_truncated' | 'model_refused' | 'invalid_model_output'
+  | 'network_lost' | 'aborted' | 'rate_limited' | 'relay_disabled' | 'unsupported_language' | 'unknown';
+
+interface AppError {
+  code: ErrorCode;
+  userMessage: string;                 // plain language; **never** a privacy or data-flow claim
+  retryable: boolean;
+  context?: { page?: number };         // metadata only — no document content, ever
+}
+```
+
+`AppError.userMessage` deliberately contains no "nothing was sent"-style sentence: §13's failures
+are explained without asserting what left the device, because that assertion belongs to
+`features/trust/claims.ts` and a `TrustRecord` (AGENTS.md §4 rule 1). `tests/unit/errors.test.ts`
+enforces it with a banned-pattern list over all 19 messages.
+
 **Rules**
 - `claim` is computed from `e2ee` and the check results. Copy shown in the UI is looked up from `claim`; there is no free-text claim anywhere.
 - `status: 'partial'` is never displayed as "verified".
@@ -288,6 +325,7 @@ interface Settings {                   // localStorage, non-sensitive only
 
 Relay rules:
 - **Exact-path allowlist**, now named against the real API (SPIKE §1, §3, §5): `POST /v1/chat/completions`, `GET /v1/attestation/report`, `GET /v1/signature/{chat_id}`. No wildcard forwarding, which prevents the relay from being used as a general proxy or for host/path tricks.
+- ADR-18 adds a **fifth** path, `GET /v1/model/{model_name}`, because the TEE flags exist only on the per-model call, so the allowlist cannot be built from `GET /v1/models`. `GET /v1/models` itself stays **out** of the relay: the browser can read that catalog directly, and a path with no document in it is still a path the relay could be pointed at. ROADMAP F-05 carries this as a follow-up so the set is widened deliberately, in that item's commit, with its own test.
 - Target host is **fixed in code**; the client never supplies a URL.
 - Model allowlist (TEE-hosted only). Determined by a per-model metadata call, not by `GET /v1/models` (ADR-18).
 - Request size cap; one page per request.
@@ -385,6 +423,9 @@ CSP: `connect-src` limited to self and NEAR AI Cloud hosts (including `*.complet
 - Manual screen-reader checklist in `tests/a11y/manual-checklist.md`, run on the devices you have, with untested platforms listed in the README.
 
 ## 13. Error handling
+
+Implemented as `ErrorCode` + `lib/errors.ts` (item F-10): one row below is one code with one
+plain-language message and one `retryable` decision, checked by `tests/unit/errors.test.ts`.
 
 | Failure | Behaviour |
 |---|---|

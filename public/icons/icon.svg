@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Sightline">
+  <title>Sightline</title>
+  <rect width="512" height="512" rx="112" fill="#101014"/>
+  <path d="M96 256c56-72 128-108 160-108s104 36 160 108c-56 72-128 108-160 108S152 328 96 256Z" fill="none" stroke="#4ea1ff" stroke-width="28" stroke-linejoin="round"/>
+  <circle cx="256" cy="256" r="52" fill="#4ea1ff"/>
+  <path d="M180 356h152" stroke="#b6b6c2" stroke-width="24" stroke-linecap="round"/>
+</svg>

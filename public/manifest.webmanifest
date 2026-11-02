@@ -1,0 +1,21 @@
+{
+  "name": "Sightline",
+  "short_name": "Sightline",
+  "description": "Understand a sensitive document with private AI, and see exactly what was verified.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#101014",
+  "theme_color": "#101014",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "prefer_related_applications": false
+}

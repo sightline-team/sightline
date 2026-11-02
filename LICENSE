@@ -19,3 +19,17 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+Attributions (full detail in `src/lib/near-ai/verifier/README.md` and `docs/ARCHITECTURE.md` §17):
+
+- `nearai/nearai-cloud-verifier` — MIT. Its TypeScript directory is the port source for the TDX
+  quote checks (T-01). No code has been copied yet; when it is, this notice travels with it.
+- `nearai/cloud-api` — **PolyForm Strict**, not MIT. Read as documentation only; nothing from it is
+  vendored, copied or translated into this repository.
+- `@noble/curves`, `@noble/hashes` — MIT (CC0-1.0 OR MIT), used for signature verification.
+- Next.js, React, zod, Vitest, Playwright, axe-core — their respective licences, all permissive.
+
+Sightline's own accuracy, accessibility and verification statements are in `README.md` and
+`docs/ACCESSIBILITY_REPORT.md` and carry no warranty.

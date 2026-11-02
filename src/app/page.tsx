@@ -18,7 +18,7 @@ export default function Home() {
   return (
     <>
       <h1>Sightline</h1>
-      <p>Nothing has been read yet. Add a document to begin.</p>
+      <p>Nothing has been read yet. Adding a document — by photo or pasted text — is item P-05.</p>
       <h2>Build state</h2>
       <p className="muted">
         Running mode: <code>{cfg.mode}</code>

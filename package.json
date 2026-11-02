@@ -20,6 +20,7 @@
     "spike": "tsx --env-file-if-exists=.env scripts/spike.ts",
     "fixtures:record": "tsx --env-file-if-exists=.env scripts/record-fixtures.ts",
     "golden": "tsx --env-file-if-exists=.env scripts/run-golden.ts",
+    "crosscheck": "tsx --env-file-if-exists=.env scripts/crosscheck.ts",
     "roadmap:check": "tsx scripts/roadmap-check.ts"
   },
   "dependencies": {

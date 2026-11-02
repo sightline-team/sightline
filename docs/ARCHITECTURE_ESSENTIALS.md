@@ -1,4 +1,4 @@
-# Sightline — Architecture Essentials (v0.3)
+# Sightline — Architecture Essentials (v0.4)
 
 Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.md` §12. Spike findings with sources: `SPIKE_RESULTS.md`.
 **[V]** verified in official docs / the OpenAPI contract / vendor source · **[M]** measured against the live API (nothing is **[M]** yet — no key, blocker B-05) · **[U]** unverified, check in the spike.
@@ -9,7 +9,9 @@ Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.m
 - Track: Privacy & Private AI. Deadline 14 Nov 2026, 23:59 UTC.
 
 ## Stack
-- TypeScript strict · Next.js App Router · native HTML + plain CSS · one `useReducer` + context · zod · `@noble/curves` + `@noble/hashes` + `@noble/ciphers` · Vitest + Playwright + axe
+- TypeScript strict · Next.js App Router · native HTML + plain CSS · one `useReducer` + context · zod · `@noble/curves` + `@noble/hashes` · Vitest + Playwright + axe
+- `@noble/ciphers` is the E2EE cipher (XChaCha20-Poly1305, T-10) and is **not installed** — it needs a human to approve the dependency first (AGENTS.md §5). Nothing imports it.
+- Scaffold contract (F-14): an unfinished function throws `NotBuilt` naming its ROADMAP item instead of returning a plausible fake; route handlers answer 501 and forward nothing; placeholder pages say which item builds them.
 - AI: NEAR AI Cloud, OpenAI-compatible, `https://cloud-api.near.ai/v1` **[V]**
 - No database, no accounts, no server-side document storage
 - **Not using:** React Aria, Zustand, local blur/brightness checks, voice pipeline, reorder UI, offline shell
