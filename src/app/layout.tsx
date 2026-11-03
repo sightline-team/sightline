@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import Link from 'next/link';
 import { SkipLink } from '@/components/SkipLink';
 import { ForgetButton } from '@/components/ForgetButton';
+import { HighContrastTheme } from '@/app/_flow/HighContrastTheme';
 import { FIXTURES_BANNER } from '@/features/trust/claims';
 import { publicConfig } from '@/lib/config';
 import { serverConfig } from '@/lib/server/env';
@@ -44,6 +45,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <SkipLink />
+        {/* Renders nothing of its own: it puts A-15's stored theme onto `<html>`, which sits outside
+            React's tree, so the choice holds on every route and updates the moment it is made. */}
+        <HighContrastTheme />
         <AnnouncerProvider>
           {/* One session store for the whole tree (ADR-8: memory only). It sits under the
               announcer because a run both writes state and speaks; it sits over the nav as well

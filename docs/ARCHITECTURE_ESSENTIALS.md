@@ -61,8 +61,11 @@ Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.m
 - `Transcript { text, uncertain[], captureIssues[], pageOffsets }`
 - `KeyFact { kind, label, value, sourceQuote, quoteFound, numbersRechecked? }`
 - `TrustRecord { model, endpoint, e2ee, attestation{checks[], status}, signature, claim }`
-- Everything in memory. Key in `sessionStorage`. Settings (rate, high-contrast, mode) in `localStorage`
-  as one validated blob at `sightline.settings`; the read-aloud rate is re-read on every press (P-09).
+- Everything in memory. Key in `sessionStorage`. Settings (rate, high-contrast) in `localStorage` as
+  one validated blob at `sightline.settings`, written only by `lib/settings.ts`; the read-aloud rate
+  is re-read on every press (P-09) and the Settings page's control is what writes it (A-15). The run
+  **mode** is not a stored setting: it comes from the environment, fails closed, and selects the
+  privacy sentence — so Settings shows it and does not offer it (ADR-21).
 - **Forget** (P-10) clears the tab's own memory: session state, the typed-but-unsent text, running
   requests, object URLs, and `sessionStorage` under the `sightline.` prefix — which is the rule that
   makes a future key or setting forgettable, so store under it or say so in the README. What it
@@ -78,6 +81,10 @@ Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.m
 - Result order: Summary → Key facts → Actions → Warnings → Full text → Ask → Trust receipt
 - Read-aloud = one opt-in play/stop button (P-09), no auto-play, stops on Forget; reads only the
   summary and Sightline's own cautions, never the model's warnings; screen-reader users mostly won't use it
+- Settings (A-15) = four named speeds in a native radio group (a value that is heard should be a word,
+  not "1.35") and one contrast checkbox, whole rows ≥ 44 px, state driven by the store so a refused
+  write snaps back. Speed change: no extra announcement (the reader says the newly selected radio);
+  theme change: announced, because a colour change is otherwise silent
 - Plain language; jargon only in details (`<details>`)
 
 ## Safety

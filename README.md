@@ -127,8 +127,17 @@ default: nothing is spoken until it is pressed, and it reads Sightline's own sum
 own cautions — the two parts of the screen whose wording we control. It is not a screen reader and is
 not meant to replace one; the key facts, the actions and the full text stay on the page for the
 reader or magnifier a person already uses. Pressing it again, leaving the screen, or pressing Forget
-stops it. The speed is a setting (0.5–2), read when the button is pressed; the control to change it is
-item A-15, and until then the speed is normal.
+stops it. The speed is a setting (0.5–2), read when the button is pressed, and the control to change
+it is on the Settings screen (item A-15): four named speeds — Slow, Normal, Fast, Very fast — which
+apply to the next press without a reload.
+
+Settings holds two things, because those are the two that are about the app rather than about a
+document: the reading speed, and the high-contrast theme (black, white, yellow — the palette
+`prefers-contrast` cannot reach but a person can choose). Both are kept in one `localStorage` blob
+under `sightline.settings`, and both survive forgetting a document. The run mode is *not* one of
+them: it is set by the deployment and shown on that page as a readout, because the guarantee shown
+beside a result is chosen by the mode, and a second copy of that decision in a browser would be a
+claim nobody recomputes.
 
 One limit belongs with this button rather than buried: the speech engine is the device's own and is
 outside Sightline's control. Some browsers offer voices that are synthesised over the network rather

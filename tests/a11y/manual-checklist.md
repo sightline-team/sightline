@@ -43,6 +43,9 @@ Run in this order. Each cell: heard correctly? (Y/N), what was actually spoken, 
 | 13 | 200% zoom / largest text | Nothing is clipped or requires horizontal scrolling | |
 | 14 | High contrast (Settings) | Colours change and text stays ≥ 4.5:1 | |
 | 15 | Reduced motion | No animation is required to understand a state change | |
+| 16 | Read the answer aloud (P-09) | Nothing is spoken before the press; the button's own label change is heard; the summary and Sightline's cautions are the words read, not the model's warnings; a second press, leaving the screen, or Forget stops it; the device's route announcer does not talk over it | |
+| 17 | Choose a reading speed (A-15) | Each radio is announced with its word ("Fast"), not a number; the next reading uses it; no second announcement follows the selection; the off-list case (a hand-edited 1.8) says what it means | |
+| 18 | Turn on high contrast (A-15) | "High contrast is on." reaches the live region; colours change on every route and after a reload; text stays ≥ 4.5:1 to the eye, not only to axe | |
 
 ## Keyboard-only pass (A-05) — can be run today
 

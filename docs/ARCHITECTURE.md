@@ -243,11 +243,12 @@ Two things that are **not** in the sentence above but are in the build: the word
 | `qa` | Grounded Q&A: `ask.ts` (one `readCompletion` → grounding), `prompts.ts`, `schemas.ts`, `AskPanel` (question field, prepared questions, answers in the order asked) |
 | `safety` | `notices.ts` (P-07): the only sentences Sightline writes about document content, computed from the validated `Analysis`, with the fixed order and the plain-language limits in §13 |
 | `speech` | One read-aloud button, rate. `speak.ts` is the engine call with the synthesizer injected (Node has no `speechSynthesis`) plus `chunkForSpeech`; `SpeakButton.tsx` is the play/stop toggle, off by default, never auto-played, absent when the browser has no engine. What it reads is built by `app/_flow/spoken_answer.ts`, because the summary and Sightline's own cautions come from two features (**P-09**, §12) |
+| `settings` | `lib/settings.ts` is the whole feature and the only code that touches `localStorage['sightline.settings']`: the validated read (`speechRate`, `highContrast`), the read-modify-write that re-validates before storing, `applyHighContrast`, and the external store the controls subscribe to so a refused write snaps back. The UI is `app/_flow/SettingsControls.tsx` (four named speeds, one contrast checkbox) with `app/_flow/HighContrastTheme.tsx` mounted in the layout because the theme is a property of the app, not of the page it was chosen on (**A-15**, ADR-21) |
 | `trust` | `record.ts` builds the only `TrustRecord`s; `claims.ts` maps record → rung → copy; `TrustReceipt` shows one block per call |
 | `a11y` | Single announcer; focus helper; interval progress announcements; optional haptic and wake-lock |
 | `session/store` | The one `SessionProvider`: the reducer behind it, the registry of in-flight `AbortController`s and object URLs, and `forget()` — which supplies `lib/session/forget.ts`'s injected collaborators from the browser and dispatches `forgotten` (**P-10**) |
 | `session/forget` | The pure half of **Forget**: `forgetSession(targets)` aborts → revokes → clears, in that order, attempts every target even when one throws, and returns a `ForgetReport` of what actually happened. Plus `sessionKeysOwnedBy`, which is the `sightline.` prefix rule that makes a stored value forgettable (**P-10**) |
-| `app/_flow` | `useDocumentRun`: the composition root that joins store + announcer + router + transport + pipeline for one run. `_` is Next's "not a route" prefix. Live modes refuse here until T-01/T-02 exist |
+| `app/_flow` | The composition roots — the only place two features may meet (AGENTS.md §7). `useDocumentRun`: store + announcer + router + transport + pipeline for one run; `useAskAboutDocument`: the same for a question; `useForget`: P-10's press; `ReadAloud` + `spoken_answer.ts`: the text the voice reads (P-09); `SettingsControls` + `HighContrastTheme` + `useStoredSettings`: A-15's two controls; `refused_steps.ts`: what a live mode says it did not do. `_` is Next's "not a route" prefix. Live modes refuse here until T-01/T-02 exist |
 | `fixtures` | Mode F replay. `cases.ts` holds the authored synthetic corpus (`FixtureCase{name,title,text,analysis}`) and `replay.ts` answers a request **only** when the document in it is one of those, byte for byte; every attestation and signature call is refused, because there is no enclave to describe. `fixtures/{responses,attestation}/` stay empty until S-11 records real payloads |
 
 ## 7. Data models
@@ -345,17 +346,30 @@ interface TrustRecord {
 }
 
 interface Settings {                   // localStorage, non-sensitive only
-  mode: 'relay' | 'direct' | 'fixtures';
   speechRate: number;                  // 0.5..2
   highContrast: boolean;
 }
 // API key (Mode A): sessionStorage by default. Never in env, never in URLs.
 //
-// As built (P-09): one JSON blob under `localStorage['sightline.settings']`, and `speechRate` is the
-// only field with a reader yet — `lib/settings.ts` validates it on every read (0.5..2, else normal)
-// and ignores a sibling it does not know, so A-15 can add `mode` and `highContrast` beside it without
-// breaking the reading speed. Nothing document-derived may ever be stored in that blob (rule 7); a
-// rate is also one of the few values that legitimately survives Forget, because it is not a document.
+// As built (P-09 read path, A-15 write path): one JSON blob under `localStorage['sightline.settings']`
+// and `src/lib/settings.ts` is the only code that reads or writes it. Both fields carry a default in
+// the schema, so a blob holding only one of them is still valid — which is what keeps an A-15 write
+// from breaking P-09's reading speed and the other way round — and an unknown sibling is stripped
+// rather than rejected. `mode` came out of this type when A-15 shipped: see ADR-21, and
+// `docs/PROJECT_STRUCTURE.md` for the two controls that exist instead of a mode picker.
+//
+// Three rules the writer is built around, each because the alternative makes the page say something
+// untrue. A **write** is read-modify-write and the whole result is re-validated before it is stored:
+// a bad read costs one default speed, a bad write poisons every later read, so a rate outside 0.5–2
+// throws and nothing is filed. `localStorage.setItem` genuinely throws in some private-browsing modes,
+// and the writer returns `saved: false` rather than swallowing it, because a settings page that said
+// "Saved" to a refused write would be claiming persistence it does not have (the same reasoning as
+// `lib/session/forget.ts` counting what it could not remove). And the controls are driven *by the
+// store*, through `useSyncExternalStore`, so a refused write makes the control snap back instead of
+// sitting on a value the app will not use.
+//
+// Nothing document-derived may ever join that blob (rule 7); a rate and a theme are the two values
+// that legitimately survive Forget, because neither is a document (proved in `tests/e2e/flow.spec.ts`).
 ```
 
 Added at scaffold time (item F-07), because §13's failure table needs a type and the reducer
@@ -544,9 +558,9 @@ CSP: `connect-src` limited to self and NEAR AI Cloud hosts (including `*.complet
     here has been listened to, A-03/A-04]** — and `speechSynthesis.speak()` queues, so no event
     plumbing is needed to keep them in order;
   - **the speed is `localStorage['sightline.settings'].speechRate`,** validated on read (0.5–2,
-    else normal) and read again on every press, so item **A-15**'s control applies without a reload.
-    A rate is the only thing this file may hold: it survives Forget by design, and a document's words
-    must not (AGENTS.md §4 rule 7);
+    else normal) and read again on every press, so **A-15**'s control applies without a reload. A
+    reading speed and a theme are the only two things this file may hold: both survive Forget by
+    design, and a document's words must not (AGENTS.md §4 rule 7);
   - **no engine, no control:** where `speechSynthesis` is absent the button is not rendered, rather
     than being a button that says nothing;
   - **Forget stops it** (P-10): `app/_flow/useForget.ts` calls `stopSpeaking()`, which is why the
@@ -555,7 +569,17 @@ CSP: `connect-src` limited to self and NEAR AI Cloud hosts (including `*.complet
   network-synthesised, so no sentence anywhere in the app claims that reading aloud stays on the
   device, and README states that limit rather than this file inferring it.
 - Haptic and wake-lock are optional enhancements, feature-detected, never required.
-- Colour tokens meeting 4.5:1; one high-contrast mode.
+- Colour tokens meeting 4.5:1; one high-contrast mode (ADR-5's "at most one" is what `globals.css`
+  implements: a `prefers-contrast: more` token shift and one opt-in black/white/yellow theme, never a
+  theme picker).
+- **Settings (A-15) as built:** four named speeds in a native radio group rather than a slider, because
+  the value is heard — a label says "Fast", a range input says "1.35" — with the whole row as the 44 px
+  target; a checkbox for the theme; every control driven from the store, so a refused write snaps back
+  instead of showing a value the app will not use. A speed is *not* announced through the live region
+  after a change (the reader says the newly selected radio itself, and P-09's rule against double speech
+  applies), while the theme **is**, because a colour change is otherwise silent to a screen reader.
+  A stored speed the app does not offer is named by its number with nothing selected, never rounded to
+  the nearest choice. See ADR-21 for what the page deliberately does not hold.
 - Manual screen-reader checklist in `tests/a11y/manual-checklist.md`, run on the devices you have, with untested platforms listed in the README.
 
 ## 13. Error handling
@@ -687,6 +711,7 @@ key) and cannot be closed by reading further.
 | ADR-18 | The TEE allowlist is built from **per-model** metadata (`GET /v1/model/{model_name}` → `metadata.attestationSupported`, `providerType`, `architecture.inputModalities`), not from `GET /v1/models` | Filter the model list | Those flags are absent from the `/v1/models` `ModelInfo` schema [Verified by absence in openapi.json]. A list-only filter cannot tell a TEE model from a proxied one, which is rule §4.3 of AGENTS.md |
 | ADR-19 | Signature checking is `completion → GET /v1/signature/{chat_id} → rebuild `{model_id}:{request_hash}:{response_hash}` → verify`, with retry on "not found or expired" and the streaming trailing newlines included | Verify a signature attached to the response | The completion body carries no signature [Verified]. The signed thing is a hash pair, so both wire payloads must be retained for the check, and byte retention is documented at 60 minutes |
 | ADR-20 | Do not put `@nearai/inference-sdk` in the trust path; use it only as a cross-checking tool in `scripts/` | Ship the SDK and report its verdict | Sightline's product *is* the receipt naming the checks that ran. If the checks live inside a dependency we do not read, the receipt describes the SDK, not us. `@noble/*` is auditable, WASM-free and already in ARCH §3 |
+| ADR-21 | Settings (A-15) holds the reading speed and the contrast theme only. The mode is a **readout**, and there is no key field | A mode picker and an API key box on the same page | The privacy sentence shown beside a result is selected *by* the mode (AGENTS §4.1), and `lib/config.ts` already decides it from `NEXT_PUBLIC_DEFAULT_MODE` plus what the deployment can honour, failing closed. A browser-stored second copy would be a claim nobody recomputes, and it would be the copy a user can change without understanding it. The key belongs to T-13, which is conditional on the S-06 CORS measurement (B-03) and has no running mode to use it in (F-04, F-05, B-05): a field that collects a credential with nothing to spend it on is risk without function. **Open: a human may reverse this if a live mode ships** |
 
 ## 18. Hard questions: technical deep-dives
 

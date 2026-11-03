@@ -192,6 +192,47 @@ section {
   margin: var(--space-1) 0;
 }
 
+/* A-15's settings controls. The whole row is the tap target, not the dot: a 44 px row that a
+   magnification user can hit beside the visible label is the requirement (AGENTS.md §8), and the
+   native control keeps its own keyboard behaviour — radios by arrow keys, checkbox by space. */
+.setting-group {
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2);
+  margin: var(--space-1) 0;
+}
+
+.setting-group legend {
+  padding: 0 var(--space-1);
+}
+
+.setting-options {
+  list-style: none;
+  display: grid;
+  gap: var(--space-1);
+  padding: 0;
+  margin: 0;
+}
+
+.setting-options label,
+.setting-row label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--target);
+}
+
+.setting-row {
+  margin: var(--space-1) 0;
+}
+
+.setting-options input[type='radio'],
+.setting-row input[type='checkbox'] {
+  width: 1.5rem;
+  height: 1.5rem;
+  accent-color: var(--accent);
+}
+
 .fact-list {
   display: grid;
   grid-template-columns: minmax(8rem, 12rem) 1fr;

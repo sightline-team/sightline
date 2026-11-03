@@ -83,12 +83,19 @@ const ERRORS: Record<ErrorCode, ErrorSpec> = {
     userMessage: 'Sightline stopped because you left or the request was cancelled. You can try again.',
     retryable: true,
   },
+  /**
+   * Both of these used to end with "or add your own key in Settings". A-15 built that page and it
+   * has no key field, on purpose (ADR-21): the field belongs to **T-13**, which is conditional on
+   * the CORS measurement and has no running mode to use a key in. A message that sends a reader to
+   * a control that does not exist is the bug this file exists to avoid, so the advice goes until the
+   * thing it advises exists — T-13 puts it back with the field.
+   */
   rate_limited: {
-    userMessage: 'Too many requests just now. Wait a minute and try again, or add your own key in Settings.',
+    userMessage: 'Too many requests just now. Wait a minute and try again.',
     retryable: true,
   },
   relay_disabled: {
-    userMessage: 'This deployment does not allow the shared service. Use your own key in Settings, or run fixture mode.',
+    userMessage: 'This deployment does not allow the shared service. The demo mode works without it.',
     retryable: false,
   },
   unsupported_language: {
@@ -99,8 +106,9 @@ const ERRORS: Record<ErrorCode, ErrorSpec> = {
    * Mode F only (item F-09). A demo answer exists for the demo documents and for nothing
    * else, so pasting your own text in fixture mode gets this rather than an authored
    * summary that looks like it describes it. Note this message asserts nothing about a
-   * "real model" being switchable on: Settings is a placeholder page, and a message that
-   * promises behaviour the code does not have is a bug (AGENTS.md §4).
+   * "real model" being switchable on: Settings holds a speed and a theme and offers no mode
+   * switch (ADR-21), and a message that promises behaviour the code does not have is a bug
+   * (AGENTS.md §4).
    */
   no_fixture_for_input: {
     userMessage: 'These are demo answers from demo documents. Your own text has no demo answer, so there is nothing to show for it.',

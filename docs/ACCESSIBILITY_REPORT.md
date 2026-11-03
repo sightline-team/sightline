@@ -28,18 +28,24 @@ are the honest current state of each.
 | 9 | The Forget control (P-10) is reachable on all four routes, and one press empties the screen, says so through the announcer, moves focus to the heading of what is left, and is ≥ 44 px | Playwright `toBeFocused()` + `boundingBox()`, same file | 2026-11-03 | Pass (47 tests: 12 shell, 35 flow) |
 | 10 | The read-aloud control (P-09): nothing is spoken before a press; the label and `aria-pressed` change together and revert when the engine reports the end; the rate comes from the stored setting and an unreadable one falls back to normal; Forget cancels it; no button appears where there is no answer or no engine; the section order does not move | Playwright, same file, with `window.speechSynthesis` replaced by a recorder before the app loads | 2026-11-03 | Pass (58 tests: 12 shell, 46 flow) |
 
-**What these rows do not mean.** All ten are automated checks in one headless browser. Nothing here was
+| 11 | The Settings controls (A-15) meet the target minimum as **rows**, not as 20 px native inputs; a speed chosen there is the speed the next reading uses; the theme reaches `globals.css`, is announced through the single live region, survives client navigation and a reload, and is not applied unless asked for; Forget leaves both values alone | Playwright, `tests/e2e/flow.spec.ts` ("Settings a person can change"), with the speech engine replaced by a recorder so the rate is read off the utterance | 2026-11-03 | Pass (69 tests: 12 shell, 57 flow) |
+| 12 | axe over `/settings` **with the controls on screen, in both themes** — default and high contrast | `AxeBuilder` twice in the same test, same file | 2026-11-03 | 0 serious or critical violations in either theme. This is an axe colour-contrast pass, **not** the 200%-zoom / real-device contrast check A-08 still owes |
+
+**What these rows do not mean.** All twelve are automated checks in one headless browser. Nothing here was
 heard through a screen reader, and a green axe run cannot tell whether the announcer reads well, whether
 the document flow is comprehensible non-visually, or whether VoiceOver on iOS behaves the same. A-03..A-06
 remain open and blocked on B-01. Row 10 is the sharpest version of that limit: it records the **calls the
 app makes to the device's speech engine**, which is not evidence that anyone can hear the result clearly,
-at a usable speed, over their own reader.
+at a usable speed, over their own reader. Row 11 inherits it: the rate the tests prove is the rate *sent*,
+not a speed anyone found comfortable.
 
 Row 3 says "one live region" about the **server-rendered shell**. It is still true, but it is now a
 narrower statement than it sounds: see the Next.js route announcer in "Known gaps" below.
 
-Not yet run, though now cheap: 200% zoom / high contrast / reduced motion (A-08), and the full keyboard
-traversal of the results view headings and links (row 7 covers the input view's stops, not the answer's).
+Not yet run, though now cheap: 200% zoom / reduced motion / `prefers-contrast` on a real device (A-08 —
+the app's own high-contrast theme now has an axe pass in row 12 and a manual checklist line that can
+finally be run), and the full keyboard traversal of the results view headings and links (row 7 covers the
+input view's stops, not the answer's).
 
 ## Not tested (and therefore not claimed)
 
@@ -51,6 +57,7 @@ traversal of the results view headings and links (row 7 covers the input view's 
 | macOS VoiceOver | No machine | A-06 |
 | Braille display / embosser path | Never covered by any item; PRD §12 assumption, unverified | — |
 | The read-aloud voice (P-09), and which device voices synthesise over the network | The tests record the calls the app makes; nobody has listened to the result, and whether a given browser voice is on-device is a property of the device | A-03, A-04 |
+| Whether four named speeds is the right set, and whether the theme is usable at high contrast on a real screen | The control exists and is checked structurally; whether it is *right* is a person's judgement, and the first one available is U-01 | A-08, U-01, B-01 |
 | Real user session | U-01 open | U-02, U-03 |
 | Screen magnification / 200% zoom, `prefers-contrast`, `prefers-reduced-motion` | Not exercised since the styles exist | A-08 |
 | Dynamic text / OS font scaling | Not exercised | A-08 |

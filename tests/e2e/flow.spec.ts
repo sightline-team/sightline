@@ -55,6 +55,116 @@ async function tabUntilFocused(page: Page, id: string) {
   throw new Error(`Tab never reached #${id} — an unexpected tab order or a focus trap`);
 }
 
+/* ---------------------------------------------------------------------------------------------
+ * Shared speech recorder (P-09, reused by A-15's rate test).
+ *
+ * The device's own speech engine is replaced with a recorder before any app script runs, because
+ * every claim in both groups is about a **call the app makes**: was anything spoken without a
+ * press, at what rate, and did a second press — or Forget — stop it. A headless browser has no
+ * voice to listen to, and hearing it would prove nothing a check cannot do; whether the speech is
+ * *usable* on a real device is A-03/A-04's job and remains blocked on B-01.
+ *
+ * A-15 needs the same recorder for a different reason: the whole point of its rate control is that
+ * the next reading honours it, so the proof is the rate on the utterance, seen from Settings.
+ * ------------------------------------------------------------------------------------------- */
+
+const READ = { name: 'Read the answer aloud' };
+const STOP = { name: 'Stop reading' };
+
+interface SpokenUtterance {
+  text: string;
+  rate: number;
+}
+
+interface SpeechState {
+  spoken: SpokenUtterance[];
+  cancels: number;
+}
+
+function installSpeechRecorder(): void {
+  const speech = {
+    spoken: [] as SpokenUtterance[],
+    cancels: 0,
+    pending: [] as { onend?: (() => void) | null }[],
+    finishLast() {
+      const last = speech.pending.pop();
+      if (last?.onend) last.onend();
+    },
+  };
+  function Utterance(this: { text: string; rate: number; onend: (() => void) | null }, text: string) {
+    this.text = text;
+    this.rate = 1;
+    this.onend = null;
+  }
+  Object.defineProperty(window, 'SpeechSynthesisUtterance', { value: Utterance, writable: true, configurable: true });
+  Object.defineProperty(window, 'speechSynthesis', {
+    writable: true,
+    configurable: true,
+    value: {
+      speak(utterance: { text: string; rate: number; onend?: (() => void) | null }) {
+        speech.spoken.push({ text: utterance.text, rate: utterance.rate });
+        speech.pending.push(utterance);
+      },
+      cancel() {
+        speech.cancels += 1;
+        speech.pending = [];
+      },
+      getVoices() {
+        return [];
+      },
+    },
+  });
+  (window as unknown as { __speech: typeof speech }).__speech = speech;
+}
+
+function readSpeechState(): SpeechState {
+  const speech = (window as unknown as { __speech: SpeechState }).__speech;
+  return { spoken: speech.spoken, cancels: speech.cancels };
+}
+
+const spoken = (page: Page) => page.evaluate(readSpeechState);
+
+async function endTheReading(page: Page) {
+  await page.evaluate(() => {
+    (window as unknown as { __speech: { finishLast(): void } }).__speech.finishLast();
+  });
+}
+
+/** Run a demo document through the real flow and wait for the results screen. */
+async function readABill(page: Page) {
+  const text = await chooseDemoDocument(page, DEMO.bill);
+  await runText(page, text);
+  await expect(page.getByTestId('results-heading')).toBeVisible();
+}
+
+/**
+ * Put a blob in the app's own settings slot, exactly as a hand-edited store or an older build
+ * would. The key is a literal here on purpose: `page.evaluate` sends the *function* to the browser,
+ * so a variable from this file's scope would arrive undefined. `tests/unit/settings-writer.test.ts`
+ * pins the same constant, and Playwright does not resolve the `@/` alias (see the top of this file).
+ */
+async function storeSettingsRaw(page: Page, value: string) {
+  await page.evaluate((stored) => window.localStorage.setItem('sightline.settings', stored), value);
+}
+
+/** What the app's own controls wrote, read back from the browser. */
+async function storedSettings(page: Page): Promise<string | null> {
+  return page.evaluate(() => window.localStorage.getItem('sightline.settings'));
+}
+
+/** The theme attribute the way `globals.css` and `applyHighContrast` see it. */
+async function contrastAttribute(page: Page): Promise<string | null | undefined> {
+  return page.evaluate(() => document.documentElement.getAttribute('data-high-contrast'));
+}
+
+/**
+ * The same look, retried. The theme is written by an effect after a control is used, so a single
+ * immediate read could report the frame before it — a test that passes by timing rather than by
+ * proof. `A-15`'s reload case genuinely does start unthemed (see `HighContrastTheme`), which is
+ * exactly the kind of state a one-shot read would flake on.
+ */
+const seenContrast = (page: Page) => expect.poll(() => contrastAttribute(page));
+
 test.describe('the demo flow, with no credentials (F-09 done-when)', () => {
   test('reads a demo document from paste to results, in the fixed section order', async ({ page }) => {
     const text = await chooseDemoDocument(page, DEMO.bill);
@@ -659,95 +769,9 @@ test.describe('Forgetting the document (P-10)', () => {
 });
 
 test.describe('Reading the answer aloud (P-09)', () => {
-  /**
-   * The device's own speech engine is replaced with a recorder before any app script runs, because
-   * every claim in this group is about a **call the app makes**: was anything spoken without a
-   * press, at what rate, and did a second press — or Forget — stop it. A headless browser has no
-   * voice to listen to, and hearing it would prove nothing a check cannot do; whether the speech is
-   * *usable* on a real device is A-03/A-04's job and remains blocked on B-01.
-   *
-   * `sightline.settings` is spelled out here rather than imported: Playwright does not resolve the
-   * `@/` alias (see the top of this file). A duplicated key name is a much smaller drift risk than
-   * the duplicated corpus was, and `tests/unit/speech.test.ts` pins the same constant.
-   */
-  const READ = { name: 'Read the answer aloud' };
-  const STOP = { name: 'Stop reading' };
-
-  interface SpokenUtterance {
-    text: string;
-    rate: number;
-  }
-
-  interface SpeechState {
-    spoken: SpokenUtterance[];
-    cancels: number;
-  }
-
-  function install(): void {
-    const speech = {
-      spoken: [] as SpokenUtterance[],
-      cancels: 0,
-      pending: [] as { onend?: (() => void) | null }[],
-      finishLast() {
-        const last = speech.pending.pop();
-        if (last?.onend) last.onend();
-      },
-    };
-    function Utterance(this: { text: string; rate: number; onend: (() => void) | null }, text: string) {
-      this.text = text;
-      this.rate = 1;
-      this.onend = null;
-    }
-    Object.defineProperty(window, 'SpeechSynthesisUtterance', { value: Utterance, writable: true, configurable: true });
-    Object.defineProperty(window, 'speechSynthesis', {
-      writable: true,
-      configurable: true,
-      value: {
-        speak(utterance: { text: string; rate: number; onend?: (() => void) | null }) {
-          speech.spoken.push({ text: utterance.text, rate: utterance.rate });
-          speech.pending.push(utterance);
-        },
-        cancel() {
-          speech.cancels += 1;
-          speech.pending = [];
-        },
-        getVoices() {
-          return [];
-        },
-      },
-    });
-    (window as unknown as { __speech: typeof speech }).__speech = speech;
-  }
-
-  function readState(): SpeechState {
-    const speech = (window as unknown as { __speech: SpeechState }).__speech;
-    return { spoken: speech.spoken, cancels: speech.cancels };
-  }
-
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(install);
+    await page.addInitScript(installSpeechRecorder);
   });
-
-  /** Run a demo document through the real flow and wait for the results screen. */
-  async function readABill(page: Page) {
-    const text = await chooseDemoDocument(page, DEMO.bill);
-    await runText(page, text);
-    await expect(page.getByTestId('results-heading')).toBeVisible();
-  }
-
-  const spoken = (page: Page) => page.evaluate(readState);
-
-  async function endTheReading(page: Page) {
-    await page.evaluate(() => {
-      (window as unknown as { __speech: { finishLast(): void } }).__speech.finishLast();
-    });
-  }
-
-  async function storeTheRate(page: Page, value: string) {
-    // The key is a literal here on purpose: `page.evaluate` sends the *function* to the browser, so
-    // a variable from this file's scope would arrive undefined.
-    await page.evaluate((stored) => window.localStorage.setItem('sightline.settings', stored), value);
-  }
 
   test('nothing is read until the button is pressed', async ({ page }) => {
     // The done-when for this item, in its first half: no auto-play, and off by default. The run,
@@ -816,7 +840,7 @@ test.describe('Reading the answer aloud (P-09)', () => {
 
   test('the rate comes from Settings, read when the button is pressed', async ({ page }) => {
     await readABill(page);
-    await storeTheRate(page, '{"speechRate":1.8}');
+    await storeSettingsRaw(page, '{"speechRate":1.8}');
     await page.getByRole('button', READ).click();
     const pieces = (await spoken(page)).spoken;
     expect(pieces.length).toBeGreaterThan(1);
@@ -825,13 +849,13 @@ test.describe('Reading the answer aloud (P-09)', () => {
 
   test('an unreadable stored rate falls back to normal speed rather than failing', async ({ page }) => {
     await readABill(page);
-    await storeTheRate(page, 'not json at all');
+    await storeSettingsRaw(page, 'not json at all');
     await page.getByRole('button', READ).click();
     const pieces = (await spoken(page)).spoken;
     expect(pieces.length).toBeGreaterThan(1);
     for (const piece of pieces) expect(piece.rate).toBe(1);
 
-    await storeTheRate(page, '{"speechRate":9}');
+    await storeSettingsRaw(page, '{"speechRate":9}');
     await page.getByRole('button', STOP).click();
     await page.getByRole('button', READ).click();
     for (const piece of (await spoken(page)).spoken) expect(piece.rate).toBe(1);
@@ -887,5 +911,224 @@ test.describe('Reading the answer aloud (P-09)', () => {
     const summaryIndex = order.findIndex((entry) => entry.includes('summary-heading'));
     expect(speakIndex).toBeGreaterThanOrEqual(0);
     expect(speakIndex).toBeLessThan(summaryIndex);
+  });
+});
+
+test.describe('Settings a person can change (A-15)', () => {
+  /**
+   * Two controls, proved where they actually work: in a browser, against real `localStorage`, and
+   * with the speech engine replaced by a recorder so a rate claim can be read off the utterance
+   * rather than listened for. The Node side (`tests/unit/settings-writer.test.ts`) covers the
+   * writer's rules; this group covers the four things a unit test cannot see — that the page and
+   * the storage agree, that the theme reaches `globals.css`, that the next reading honours the
+   * speed, and that a screen reader is told about the colour change and not told twice about the
+   * one it just announced itself.
+   *
+   * The mode switcher and the API key field are absent by decision, not by omission, and one test
+   * below asserts their absence: a settings page that offers a mode the deployment cannot honour
+   * would be offering a privacy claim nobody computed (AGENTS.md §4 rule 1).
+   */
+  const SPEEDS = ['Slow', 'Normal', 'Fast', 'Very fast'] as const;
+
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(installSpeechRecorder);
+  });
+
+  const radio = (page: Page, name: string) => page.getByRole('radio', { name, exact: true });
+  const contrastBox = (page: Page) => page.getByRole('checkbox', { name: 'High contrast' });
+
+  /**
+   * The speeds a reader would find selected, retried until it settles. The retry is not decoration:
+   * this page is server-rendered from the defaults and only reads the store after hydration, so a
+   * single immediate look can land between the two and report a speed nobody chose. `expect.poll`
+   * waits for the app to agree with its own storage, which is the assertion worth making.
+   */
+  const speedNames = (page: Page) =>
+    expect.poll(async () => {
+      const names: string[] = [];
+      for (const name of SPEEDS) {
+        if (await radio(page, name).isChecked()) names.push(name);
+      }
+      return names;
+    });
+
+  test('the page holds the two controls, the mode readout, and no field a key could go into', async ({ page }) => {
+    await page.goto('/settings');
+    await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible();
+    for (const name of SPEEDS) await expect(radio(page, name)).toBeVisible();
+    await expect(contrastBox(page)).toBeVisible();
+
+    // The mode is reported, never chosen here.
+    await expect(page.getByText('Running mode:')).toBeVisible();
+    expect(await page.locator('main h2').allTextContents()).toEqual(['Reading aloud', 'Screen', 'Build state']);
+    await expect(page.getByRole('radio', { name: /relay|fixtures|direct/i })).toHaveCount(0);
+    await expect(page.getByRole('combobox')).toHaveCount(0);
+
+    // T-13 owns the key field, and nothing is built that would use one. A credential box on this
+    // page would be a risk with no function, so its absence is asserted rather than assumed.
+    await expect(page.locator('input[type="password"], input[type="text"], textarea')).toHaveCount(0);
+    await expect(page.getByLabel(/key|token|secret/i)).toHaveCount(0);
+  });
+
+  test('nothing is chosen and nothing is themed before anyone asks', async ({ page }) => {
+    // The default state, which is also the state after a Forget: the app must not pick a theme or a
+    // speed nobody selected, and the controls must show the truth rather than a placeholder.
+    await page.goto('/settings');
+    await speedNames(page).toEqual(['Normal']);
+    await expect(contrastBox(page)).not.toBeChecked();
+    await seenContrast(page).toBeNull();
+    expect(await storedSettings(page)).toBeNull();
+  });
+
+  test('choosing a speed writes the setting at once, names it on screen, and is not announced twice', async ({ page }) => {
+    await page.goto('/settings');
+    await radio(page, 'Fast').click();
+
+    expect(await storedSettings(page)).toBe('{"speechRate":1.5,"highContrast":false}');
+    await speedNames(page).toEqual(['Fast']);
+    await expect(page.getByText('Current speed: Fast', { exact: false })).toBeVisible();
+    // There is nothing pending, so there is nothing to save.
+    await expect(page.getByRole('button', { name: /save|apply/i })).toHaveCount(0);
+    // The screen reader already says "Fast, radio button, selected" from the real `<label>`; a
+    // second sentence through the announcer would be the double speech P-09 refuses.
+    await expect(page.getByTestId('announcer')).toHaveText('');
+  });
+
+  test('the speed chosen here is the speed the next reading uses, with no reload', async ({ page }) => {
+    // A-15's whole purpose, and the half of P-09 that could only be proved once a writer existed:
+    // the rate is read at press time from the same blob these controls write. Navigating away and
+    // back is client-side, so the document is still in memory and the button is still there.
+    await readABill(page);
+    await page.getByRole('link', { name: 'Settings' }).click();
+    await expect(page).toHaveURL(/\/settings$/);
+    await radio(page, 'Fast').click();
+    expect(await storedSettings(page)).toContain('"speechRate":1.5');
+
+    await page.getByRole('link', { name: 'What Sightline read' }).click();
+    await expect(page.getByTestId('results-heading')).toBeVisible();
+    await page.getByRole('button', READ).click();
+
+    const pieces = (await spoken(page)).spoken;
+    expect(pieces.length).toBeGreaterThan(1);
+    for (const piece of pieces) expect(piece.rate).toBe(1.5);
+  });
+
+  test('the arrow keys change the speed, because it is a radio group and not a styled list', async ({ page }) => {
+    await page.goto('/settings');
+    await radio(page, 'Normal').focus();
+    await page.keyboard.press('ArrowRight');
+
+    await speedNames(page).toEqual(['Fast']);
+    expect(await storedSettings(page)).toContain('"speechRate":1.5');
+  });
+
+  test('a stored speed the app does not offer is named by its number, with nothing selected', async ({ page }) => {
+    // Reachable because the blob is writable by anything on the origin, and P-09's own tests write
+    // 1.8. The honest page shows no false selection and says the number it will actually speak.
+    //
+    // `/` first: `localStorage` belongs to an origin, and a page that has not been there yet —
+    // `about:blank` — refuses to read or write it. Then a fresh load, because a write made from
+    // outside the app fires no `storage` event in this tab, so nothing would tell the page to look.
+    await page.goto('/');
+    await storeSettingsRaw(page, '{"speechRate":1.8,"highContrast":false}');
+    await page.goto('/settings');
+
+    await speedNames(page).toEqual([]);
+    await expect(page.getByText('Current speed: 1.8 times normal speed', { exact: false })).toBeVisible();
+
+    await storeSettingsRaw(page, '{"speechRate":1.8}');
+    await page.goto('/settings');
+    await expect(page.getByText('1.8 times normal speed', { exact: false })).toBeVisible();
+    await expect(contrastBox(page)).not.toBeChecked();
+  });
+
+  test('high contrast themes the whole app, says so, and comes back after a reload', async ({ page }) => {
+    await page.goto('/settings');
+    await contrastBox(page).check();
+
+    await seenContrast(page).toBe('true');
+    expect(await storedSettings(page)).toBe('{"speechRate":1,"highContrast":true}');
+    await expect(page.getByTestId('announcer')).toHaveText('High contrast is on.');
+    // The theme is the CSS that exists for it, not a class the test only looked at.
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe('rgb(0, 0, 0)');
+
+    // Another route, still without a page load: the applier lives in the layout, not this page.
+    await page.getByRole('link', { name: 'What Sightline read' }).click();
+    await seenContrast(page).toBe('true');
+
+    // A real reload, which discards the session and re-reads the store. This is the one-frame limit
+    // `HighContrastTheme` documents, measured rather than asserted away: the server render carries
+    // no theme, the first effect removes the attribute it did not set, the client read then puts it
+    // back. Polling is the honest check — it proves the state settles, and a single look would only
+    // prove that the test happened to be late.
+    await page.reload();
+    await seenContrast(page).toBe('true');
+    await expect(contrastBox(page)).toBeChecked();
+  });
+
+  test('turning high contrast off takes the attribute away rather than writing “false”', async ({ page }) => {
+    await page.goto('/settings');
+    await contrastBox(page).check();
+    await seenContrast(page).toBe('true');
+
+    await contrastBox(page).uncheck();
+    await seenContrast(page).toBeNull();
+    expect(await storedSettings(page)).toBe('{"speechRate":1,"highContrast":false}');
+    await expect(page.getByTestId('announcer')).toHaveText('High contrast is off.');
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).not.toBe('rgb(0, 0, 0)');
+  });
+
+  test('changing the speed leaves the theme alone, and the other way round', async ({ page }) => {
+    // The merge rule, seen through the UI: each control writes its own field and the writer reads
+    // the blob first. The bug this is watching for is a rate control that switches someone's
+    // contrast theme off every time they slow the voice down.
+    await page.goto('/settings');
+    await contrastBox(page).check();
+    await radio(page, 'Slow').click();
+
+    expect(await storedSettings(page)).toBe('{"speechRate":0.75,"highContrast":true}');
+    await seenContrast(page).toBe('true');
+
+    await contrastBox(page).uncheck();
+    expect(await storedSettings(page)).toBe('{"speechRate":0.75,"highContrast":false}');
+    await speedNames(page).toEqual(['Slow']);
+  });
+
+  test('Forgetting the document leaves the settings where they are', async ({ page }) => {
+    // P-10's rule from the other side: Forget clears what the app holds *about a document*. A
+    // reading speed and a theme are not somebody's invoice, so they must survive the press — and
+    // the theme must not flicker off because the storage it reads was wiped.
+    await page.goto('/settings');
+    await radio(page, 'Fast').click();
+    await contrastBox(page).check();
+
+    await page.getByRole('link', { name: 'Document' }).click();
+    const text = await chooseDemoDocument(page, DEMO.bill);
+    await runText(page, text);
+    await expect(page.getByTestId('results-heading')).toBeVisible();
+    await page.getByRole('button', { name: 'Forget this document' }).click();
+    await expect(page.getByTestId('nothing-read')).toBeVisible();
+
+    expect(await storedSettings(page)).toBe('{"speechRate":1.5,"highContrast":true}');
+    await seenContrast(page).toBe('true');
+  });
+
+  test('the settings controls meet the 44px minimum and axe finds nothing among them, themed or not', async ({ page }) => {
+    // The rows, not the 20px native controls inside them: the label is the target (AGENTS.md §8).
+    await page.goto('/settings');
+    const tooSmall: string[] = [];
+    for (const label of await page.locator('.setting-options label, .setting-row label').all()) {
+      const box = await label.evaluate((el) => Math.round(el.getBoundingClientRect().height));
+      const text = (await label.textContent())?.trim() ?? '';
+      if (box < 44) tooSmall.push(`"${text}" is ${box}px tall`);
+    }
+    expect(tooSmall, 'AGENTS.md §8: no touch target under 44px').toEqual([]);
+
+    for (const theme of ['default', 'high contrast'] as const) {
+      if (theme === 'high contrast') await contrastBox(page).check();
+      const results = await new AxeBuilder({ page }).analyze();
+      const serious = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
+      expect(serious, `axe with the ${theme} theme`).toEqual([]);
+    }
   });
 });

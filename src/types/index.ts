@@ -208,10 +208,18 @@ export interface AppError {
   context?: { page?: number };
 }
 
+/**
+ * What the app keeps after the tab closes. `lib/settings.ts` is the only reader and writer, and its
+ * `StoredSettings` is the as-built shape of this interface — one validated JSON blob under
+ * `sightline.settings`, both fields defaulted, unknown siblings stripped.
+ *
+ * `mode` was here until **A-15** decided the page must not hold it (ADR-21): the mode picks the
+ * privacy sentence shown beside a result, so it is computed from the environment and what the
+ * deployment can honour (`lib/config.ts`, failing closed) rather than chosen in a browser.
+ */
 export interface Settings {
-  /** localStorage — non-sensitive values only. Never a key, never document data. */
-  mode: Mode;
-  /** 0.5..2 */
+  /** 0.5..2. Read again on every press, so a change needs no reload. */
   speechRate: number;
+  /** Opt-in only: the default colours are the AA ones, so a theme nobody asked for is not applied. */
   highContrast: boolean;
 }
