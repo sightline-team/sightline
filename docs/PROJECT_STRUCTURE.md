@@ -63,8 +63,10 @@ sightline/
 │  │  ├─ _flow/useAskAboutDocument.ts # Same shape for one question (P-06); reads the mode off the session, not the build
 │  │  ├─ _flow/useForget.ts       # Same shape for Forget (P-10): store + announcer + the read-aloud stop, and the sentence built from what was counted
 │  │  ├─ _flow/refused_steps.ts   # Live modes refuse at the door (T-01/T-02 unbuilt) with one shared sentence
+│  │  ├─ _flow/ReadAloud.tsx      # Composition root for the read-aloud control (P-09): session store + the words to speak
+│  │  ├─ _flow/spoken_answer.ts   # `spokenAnswer(analysis)` — summary + Sightline's own cautions, and the button's label (P-09)
 │  │  ├─ page.tsx                 # Add pages or paste text (`features/paste/PasteView.tsx`)
-│  │  ├─ read/page.tsx            # Results + ask (`features/analysis/ResultsView.tsx`)
+│  │  ├─ read/page.tsx            # Results, ask and read-aloud: the only file that knows all three (`ResultsView` slots)
 │  │  ├─ trust/page.tsx           # Trust receipt, exact claim, checks that ran / did not
 │  │  ├─ settings/page.tsx        # Mode, API key (Mode A), read-aloud rate, high contrast
 │  │  ├─ globals.css              # Tokens, high-contrast theme
@@ -78,7 +80,7 @@ sightline/
 │  │  ├─ analysis/                # pipeline.ts, prompts.ts, schemas.ts, grounding.ts, ResultsView
 │  │  ├─ qa/                      # ask.ts (grounded Q&A), prompts.ts, schemas.ts, AskPanel.tsx
 │  │  ├─ safety/notices.ts        # P-07: Sightline's own cautions (medicine, money, deadline, English-only), computed from the validated Analysis — never the model's warnings, never a privacy sentence
-│  │  ├─ speech/                  # speak.ts, SpeakButton.tsx
+│  │  ├─ speech/                  # speak.ts (`speak`/`stopSpeaking` with the engine injected, `chunkForSpeech`), SpeakButton.tsx (play/stop, off by default, absent with no engine) — P-09
 │  │  └─ trust/                   # claims.ts (record → claim → copy), record.ts (the only TrustRecord builder), TrustReceipt.tsx, TrustView.tsx
 │  │
 │  ├─ lib/
@@ -98,6 +100,7 @@ sightline/
 │  │  ├─ fixtures/                # replay.ts (content-matched Mode F client, `transportFor`), cases.ts (authored synthetic demo corpus)
 │  │  ├─ server/                  # Server-only: env.ts, allowlist.ts, rateLimit.ts (all `import 'server-only'`)
 │  │  ├─ config.ts                # Env validation (zod); mode selection
+│  │  ├─ settings.ts              # `sightline.settings` in localStorage: the read-aloud rate, validated on every read (P-09). Non-sensitive only — A-15 adds the controls that write it
 │  │  ├─ errors.ts                # AppError → plain-language messages
 │  │  └─ not_built.ts             # `NotBuilt` + `notBuilt(item, what)`: every scaffold stub throws this, naming its ROADMAP item
 │                                 # A stub that returned a plausible fake would let a pipeline 'work' on nothing
@@ -106,12 +109,12 @@ sightline/
 │  └─ types/index.ts
 │
 └─ tests/
-   ├─ unit/                       # config, server-env, session reducer, errors, nonce, grounding, schemas, near-client, pipeline, fixtures, qa, roadmap-check, forget (P-10); image prep still to write
+   ├─ unit/                       # config, server-env, session reducer, errors, nonce, grounding, schemas, near-client, pipeline, fixtures, qa, roadmap-check, forget (P-10), speech (P-09); image prep still to write
    ├─ verification/               # attestation.test.ts: stubs refuse + strong claim unreachable; 9 `it.todo` rows name what T-01/T-02/T-05 must still prove
    ├─ relay/                      # relay.test.ts: both API routes answer 501, name their item, forward nothing, leak no key. A-09 adds rejected path/oversize/rate limit
    ├─ stubs/server-only.ts        # no-op stand-in so unit tests can import server modules (see vitest.config.mts)
    ├─ e2e/shell.spec.ts           # Playwright + axe on the four shell routes, skip link/tab order, one live region, zoomable viewport, off-origin request assertion
-   ├─ e2e/flow.spec.ts            # The whole Mode F flow with no key: demo document → fixed section order → flagged fact → questions and answers → receipt; refusals; focus; axe with content
+   ├─ e2e/flow.spec.ts            # The whole Mode F flow with no key: demo document → fixed section order → flagged fact → questions and answers → receipt; refusals; focus; Forget; read-aloud with the speech engine replaced by a recorder; axe with content
    └─ a11y/manual-checklist.md    # Screen-reader scripts and results
 ```
 

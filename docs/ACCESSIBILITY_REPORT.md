@@ -25,11 +25,15 @@ are the honest current state of each.
 | 6 | Section order (Summary → Key facts → Actions → Warnings → Full text → Ask → Verification) is what a reader navigates by | `main h2` text asserted as an array | 2026-11-03 | Pass |
 | 7 | The ungrounded fact is flagged in **words**, not by colour; every `main button` is ≥ 44 px tall; the keyboard path reaches the text box and the submit control in order | Playwright, same file | 2026-11-03 | Pass |
 | 8 | Only one `role="status"` region exists during client navigation, and the route title is identical on every route | Playwright, same file | 2026-11-03 | Pass |
+| 9 | The Forget control (P-10) is reachable on all four routes, and one press empties the screen, says so through the announcer, moves focus to the heading of what is left, and is ≥ 44 px | Playwright `toBeFocused()` + `boundingBox()`, same file | 2026-11-03 | Pass (47 tests: 12 shell, 35 flow) |
+| 10 | The read-aloud control (P-09): nothing is spoken before a press; the label and `aria-pressed` change together and revert when the engine reports the end; the rate comes from the stored setting and an unreadable one falls back to normal; Forget cancels it; no button appears where there is no answer or no engine; the section order does not move | Playwright, same file, with `window.speechSynthesis` replaced by a recorder before the app loads | 2026-11-03 | Pass (58 tests: 12 shell, 46 flow) |
 
-**What these rows do not mean.** All eight are automated checks in one headless browser. Nothing here was
+**What these rows do not mean.** All ten are automated checks in one headless browser. Nothing here was
 heard through a screen reader, and a green axe run cannot tell whether the announcer reads well, whether
 the document flow is comprehensible non-visually, or whether VoiceOver on iOS behaves the same. A-03..A-06
-remain open and blocked on B-01.
+remain open and blocked on B-01. Row 10 is the sharpest version of that limit: it records the **calls the
+app makes to the device's speech engine**, which is not evidence that anyone can hear the result clearly,
+at a usable speed, over their own reader.
 
 Row 3 says "one live region" about the **server-rendered shell**. It is still true, but it is now a
 narrower statement than it sounds: see the Next.js route announcer in "Known gaps" below.
@@ -46,6 +50,7 @@ traversal of the results view headings and links (row 7 covers the input view's 
 | NVDA + Firefox on Windows | No machine | A-05 |
 | macOS VoiceOver | No machine | A-06 |
 | Braille display / embosser path | Never covered by any item; PRD §12 assumption, unverified | — |
+| The read-aloud voice (P-09), and which device voices synthesise over the network | The tests record the calls the app makes; nobody has listened to the result, and whether a given browser voice is on-device is a property of the device | A-03, A-04 |
 | Real user session | U-01 open | U-02, U-03 |
 | Screen magnification / 200% zoom, `prefers-contrast`, `prefers-reduced-motion` | Not exercised since the styles exist | A-08 |
 | Dynamic text / OS font scaling | Not exercised | A-08 |

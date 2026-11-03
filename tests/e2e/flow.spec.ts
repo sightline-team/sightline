@@ -657,3 +657,235 @@ test.describe('Forgetting the document (P-10)', () => {
     expect(box.height, 'AGENTS.md §8: no touch target under 44px').toBeGreaterThanOrEqual(44);
   });
 });
+
+test.describe('Reading the answer aloud (P-09)', () => {
+  /**
+   * The device's own speech engine is replaced with a recorder before any app script runs, because
+   * every claim in this group is about a **call the app makes**: was anything spoken without a
+   * press, at what rate, and did a second press — or Forget — stop it. A headless browser has no
+   * voice to listen to, and hearing it would prove nothing a check cannot do; whether the speech is
+   * *usable* on a real device is A-03/A-04's job and remains blocked on B-01.
+   *
+   * `sightline.settings` is spelled out here rather than imported: Playwright does not resolve the
+   * `@/` alias (see the top of this file). A duplicated key name is a much smaller drift risk than
+   * the duplicated corpus was, and `tests/unit/speech.test.ts` pins the same constant.
+   */
+  const READ = { name: 'Read the answer aloud' };
+  const STOP = { name: 'Stop reading' };
+
+  interface SpokenUtterance {
+    text: string;
+    rate: number;
+  }
+
+  interface SpeechState {
+    spoken: SpokenUtterance[];
+    cancels: number;
+  }
+
+  function install(): void {
+    const speech = {
+      spoken: [] as SpokenUtterance[],
+      cancels: 0,
+      pending: [] as { onend?: (() => void) | null }[],
+      finishLast() {
+        const last = speech.pending.pop();
+        if (last?.onend) last.onend();
+      },
+    };
+    function Utterance(this: { text: string; rate: number; onend: (() => void) | null }, text: string) {
+      this.text = text;
+      this.rate = 1;
+      this.onend = null;
+    }
+    Object.defineProperty(window, 'SpeechSynthesisUtterance', { value: Utterance, writable: true, configurable: true });
+    Object.defineProperty(window, 'speechSynthesis', {
+      writable: true,
+      configurable: true,
+      value: {
+        speak(utterance: { text: string; rate: number; onend?: (() => void) | null }) {
+          speech.spoken.push({ text: utterance.text, rate: utterance.rate });
+          speech.pending.push(utterance);
+        },
+        cancel() {
+          speech.cancels += 1;
+          speech.pending = [];
+        },
+        getVoices() {
+          return [];
+        },
+      },
+    });
+    (window as unknown as { __speech: typeof speech }).__speech = speech;
+  }
+
+  function readState(): SpeechState {
+    const speech = (window as unknown as { __speech: SpeechState }).__speech;
+    return { spoken: speech.spoken, cancels: speech.cancels };
+  }
+
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(install);
+  });
+
+  /** Run a demo document through the real flow and wait for the results screen. */
+  async function readABill(page: Page) {
+    const text = await chooseDemoDocument(page, DEMO.bill);
+    await runText(page, text);
+    await expect(page.getByTestId('results-heading')).toBeVisible();
+  }
+
+  const spoken = (page: Page) => page.evaluate(readState);
+
+  async function endTheReading(page: Page) {
+    await page.evaluate(() => {
+      (window as unknown as { __speech: { finishLast(): void } }).__speech.finishLast();
+    });
+  }
+
+  async function storeTheRate(page: Page, value: string) {
+    // The key is a literal here on purpose: `page.evaluate` sends the *function* to the browser, so
+    // a variable from this file's scope would arrive undefined.
+    await page.evaluate((stored) => window.localStorage.setItem('sightline.settings', stored), value);
+  }
+
+  test('nothing is read until the button is pressed', async ({ page }) => {
+    // The done-when for this item, in its first half: no auto-play, and off by default. The run,
+    // the navigation to /read and the focus move all happen without one utterance reaching the
+    // engine, and a second route change does not start one either.
+    await readABill(page);
+    await expect(page.getByTestId('announcer')).not.toHaveText('');
+    expect(await spoken(page)).toEqual({ spoken: [], cancels: 0 });
+
+    await page.getByRole('link', { name: 'Verification' }).click();
+    await expect(page).toHaveURL(/\/trust$/);
+    expect((await spoken(page)).spoken).toEqual([]);
+  });
+
+  test('one press reads the summary the screen shows, with Sightline’s cautions, in pieces the engine will finish', async ({ page }) => {
+    await readABill(page);
+    await page.getByRole('button', READ).click();
+
+    const said = (await spoken(page)).spoken.map((utterance) => utterance.text).join(' ');
+    expect(said).toContain('Summary. A care trust invoice for 840 pounds, issued 2 February 2026');
+    expect(said).toContain('Sightline’s cautions.');
+    expect(said).toContain('Before you pay anything, check the amount with the sender');
+    expect(said).toContain('Sightline reads English documents only.');
+    // Chunking (the engine stops part-way through a long single utterance in some browsers): no
+    // piece the app hands over is longer than the cap, and the summary did not arrive as one blob.
+    const pieces = (await spoken(page)).spoken;
+    expect(pieces.length).toBeGreaterThan(1);
+    for (const piece of pieces) expect(piece.text.length).toBeLessThanOrEqual(200);
+
+    await expect(page.getByRole('button', STOP)).toHaveAccessibleName(STOP.name);
+    await expect(page.getByRole('button', STOP)).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('the reading is the screen’s own sentences: not the model’s warnings, not the receipt', async ({ page }) => {
+    await readABill(page);
+    await page.getByRole('button', READ).click();
+    const said = (await spoken(page)).spoken.map((utterance) => utterance.text).join(' ');
+    // Nothing about where the bytes went — that claim belongs to `claims.ts`, computed from a
+    // TrustRecord, and the spoken text is not allowed to paraphrase it (AGENTS.md §4 rule 1).
+    expect(said).not.toMatch(/enclave|encrypt|attest|verif|private|stored|sent/i);
+    // The trust receipt is on the screen; it is not folded into the answer being read.
+    expect(said).not.toContain('Verification');
+  });
+
+  test('a second press stops the reading and the label says so', async ({ page }) => {
+    await readABill(page);
+    const button = page.getByRole('button', READ);
+    await button.click();
+    expect((await spoken(page)).cancels).toBe(0);
+
+    await page.getByRole('button', STOP).click();
+    expect((await spoken(page)).cancels).toBe(1);
+    await expect(page.getByRole('button', READ)).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test('the button goes back on its own when the engine finishes', async ({ page }) => {
+    // Without this the control would sit claiming to be a Stop button after the voice had already
+    // stopped — a toggle that lies about its own state, on the one screen this feature exists for.
+    await readABill(page);
+    await page.getByRole('button', READ).click();
+    await expect(page.getByRole('button', STOP)).toBeVisible();
+    await endTheReading(page);
+    await expect(page.getByRole('button', READ)).toBeVisible();
+    await expect(page.getByRole('button', READ)).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test('the rate comes from Settings, read when the button is pressed', async ({ page }) => {
+    await readABill(page);
+    await storeTheRate(page, '{"speechRate":1.8}');
+    await page.getByRole('button', READ).click();
+    const pieces = (await spoken(page)).spoken;
+    expect(pieces.length).toBeGreaterThan(1);
+    for (const piece of pieces) expect(piece.rate).toBe(1.8);
+  });
+
+  test('an unreadable stored rate falls back to normal speed rather than failing', async ({ page }) => {
+    await readABill(page);
+    await storeTheRate(page, 'not json at all');
+    await page.getByRole('button', READ).click();
+    const pieces = (await spoken(page)).spoken;
+    expect(pieces.length).toBeGreaterThan(1);
+    for (const piece of pieces) expect(piece.rate).toBe(1);
+
+    await storeTheRate(page, '{"speechRate":9}');
+    await page.getByRole('button', STOP).click();
+    await page.getByRole('button', READ).click();
+    for (const piece of (await spoken(page)).spoken) expect(piece.rate).toBe(1);
+  });
+
+  test('Forget stops the reading (P-10 hands this rule to the speech feature)', async ({ page }) => {
+    // The second half of this item’s done-when, and the half P-10 wired: `useForget` calls
+    // `stopSpeaking()` before it says anything about what it cleared.
+    await readABill(page);
+    await page.getByRole('button', READ).click();
+    expect((await spoken(page)).spoken.length).toBeGreaterThan(0);
+
+    await page.getByRole('button', { name: 'Forget this document' }).click();
+    await expect(page.getByTestId('nothing-read')).toBeVisible();
+    // At least one `cancel()` — `useForget` stops the voice, and the control's own unmount cleanup
+    // runs when the answer it was reading disappears. Counting them exactly would be testing React's
+    // development double-mount, not a promise made to a user.
+    expect((await spoken(page)).cancels).toBeGreaterThanOrEqual(1);
+  });
+
+  test('there is no control where there is no answer to read', async ({ page }) => {
+    await page.goto('/read');
+    await expect(page.getByTestId('nothing-read')).toBeVisible();
+    await expect(page.getByRole('button', READ)).toHaveCount(0);
+
+    await readABill(page);
+    await page.getByRole('button', { name: 'Forget this document' }).click();
+    await expect(page.getByRole('button', READ)).toHaveCount(0);
+  });
+
+  test('a browser with no speech engine gets no button rather than a button that says nothing', async ({ page }) => {
+    // Installed after the recorder, so it wins: this is the shape of a browser where
+    // `speechSynthesis` exists but carries no engine.
+    await page.addInitScript(() => {
+      Object.defineProperty(window, 'speechSynthesis', { value: undefined, writable: true, configurable: true });
+    });
+    await readABill(page);
+    await expect(page.getByRole('heading', { name: 'Summary' })).toBeVisible();
+    await expect(page.getByRole('button', READ)).toHaveCount(0);
+    // The rest of the screen is unaffected, and nothing was spoken into a missing engine.
+    expect((await spoken(page)).spoken).toEqual([]);
+  });
+
+  test('the control is inside the fixed section order, above it', async ({ page }) => {
+    // §8 fixes the order of the *sections*; the read-aloud control is an action on the screen and
+    // must not become an eighth heading or push the receipt anywhere.
+    await readABill(page);
+    expect(await page.locator('main h2').allTextContents()).toEqual(SECTION_ORDER);
+    const order = await page.evaluate(() =>
+      [...document.querySelectorAll('main > *')].map((el) => el.tagName.toLowerCase() + ':' + (el.getAttribute('aria-labelledby') ?? el.textContent ?? '').trim().slice(0, 24)),
+    );
+    const speakIndex = order.findIndex((entry) => entry.includes('Read the answer aloud'));
+    const summaryIndex = order.findIndex((entry) => entry.includes('summary-heading'));
+    expect(speakIndex).toBeGreaterThanOrEqual(0);
+    expect(speakIndex).toBeLessThan(summaryIndex);
+  });
+});

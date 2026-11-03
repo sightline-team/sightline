@@ -183,6 +183,15 @@ section {
   margin: var(--space-1) 0;
 }
 
+/* The read-aloud control and its "nothing is read until you press this" line (P-09). */
+.speak-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: var(--space-1) 0;
+}
+
 .fact-list {
   display: grid;
   grid-template-columns: minmax(8rem, 12rem) 1fr;

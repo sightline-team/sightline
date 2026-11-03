@@ -242,7 +242,7 @@ Two things that are **not** in the sentence above but are in the build: the word
 | `analysis` | Pipeline, prompts, zod schemas, grounding check |
 | `qa` | Grounded Q&A: `ask.ts` (one `readCompletion` → grounding), `prompts.ts`, `schemas.ts`, `AskPanel` (question field, prepared questions, answers in the order asked) |
 | `safety` | `notices.ts` (P-07): the only sentences Sightline writes about document content, computed from the validated `Analysis`, with the fixed order and the plain-language limits in §13 |
-| `speech` | One read-aloud button, rate |
+| `speech` | One read-aloud button, rate. `speak.ts` is the engine call with the synthesizer injected (Node has no `speechSynthesis`) plus `chunkForSpeech`; `SpeakButton.tsx` is the play/stop toggle, off by default, never auto-played, absent when the browser has no engine. What it reads is built by `app/_flow/spoken_answer.ts`, because the summary and Sightline's own cautions come from two features (**P-09**, §12) |
 | `trust` | `record.ts` builds the only `TrustRecord`s; `claims.ts` maps record → rung → copy; `TrustReceipt` shows one block per call |
 | `a11y` | Single announcer; focus helper; interval progress announcements; optional haptic and wake-lock |
 | `session/store` | The one `SessionProvider`: the reducer behind it, the registry of in-flight `AbortController`s and object URLs, and `forget()` — which supplies `lib/session/forget.ts`'s injected collaborators from the browser and dispatches `forgotten` (**P-10**) |
@@ -350,6 +350,12 @@ interface Settings {                   // localStorage, non-sensitive only
   highContrast: boolean;
 }
 // API key (Mode A): sessionStorage by default. Never in env, never in URLs.
+//
+// As built (P-09): one JSON blob under `localStorage['sightline.settings']`, and `speechRate` is the
+// only field with a reader yet — `lib/settings.ts` validates it on every read (0.5..2, else normal)
+// and ignores a sibling it does not know, so A-15 can add `mode` and `highContrast` beside it without
+// breaking the reading speed. Nothing document-derived may ever be stored in that blob (rule 7); a
+// rate is also one of the few values that legitimately survives Forget, because it is not a document.
 ```
 
 Added at scaffold time (item F-07), because §13's failure table needs a type and the reducer
@@ -522,7 +528,32 @@ CSP: `connect-src` limited to self and NEAR AI Cloud hosts (including `*.complet
   Warnings holds two named lists (§13, P-07): Sightline's own notices first, then the reading's own
   warnings under an `<h3>`. Adding content there rather than a section is deliberate — the order
   above is what a returning reader navigates by.
-- Read-aloud is opt-in and off by default.
+- **Read-aloud is opt-in and off by default** (item **P-09**, `features/speech/`). As built: one
+  play/stop toggle at the top of the results screen — an action on the screen, placed above the first
+  section so the fixed order above is untouched — speaking the summary field and `safetyNotices()`
+  output, i.e. **only sentences the screen already renders**, in the same functions. The model's own
+  `warnings` array is not read aloud, because a listener cannot tell whose sentence it is and the two
+  lists may disagree (AGENTS.md §8, §13). Details that are decisions rather than defaults:
+  - **nothing reaches the engine before a press.** `SpeakButton` never calls `speak()` on mount, and
+    the unmount cleanup stops only what that control started (`started` ref), because React's
+    StrictMode runs a mount–cleanup–mount cycle in development;
+  - **the live region stays out of it.** The voice is the feedback; announcing "reading started"
+    would put two speech streams over each other, which is `docs/PRD.md` §12 Q1 row 9's whole point;
+  - **long readings are handed over in pieces** (`chunkForSpeech`, ≤ 200 characters, sentence ends
+    first) because some engines stop part-way through one long utterance — **[Unverified: no device
+    here has been listened to, A-03/A-04]** — and `speechSynthesis.speak()` queues, so no event
+    plumbing is needed to keep them in order;
+  - **the speed is `localStorage['sightline.settings'].speechRate`,** validated on read (0.5–2,
+    else normal) and read again on every press, so item **A-15**'s control applies without a reload.
+    A rate is the only thing this file may hold: it survives Forget by design, and a document's words
+    must not (AGENTS.md §4 rule 7);
+  - **no engine, no control:** where `speechSynthesis` is absent the button is not rendered, rather
+    than being a button that says nothing;
+  - **Forget stops it** (P-10): `app/_flow/useForget.ts` calls `stopSpeaking()`, which is why the
+    speech call lives in a composition root — `src/lib/` may not import `src/features/` (§7).
+  The engine is the device's own and is outside Sightline's control: some browser voices are
+  network-synthesised, so no sentence anywhere in the app claims that reading aloud stays on the
+  device, and README states that limit rather than this file inferring it.
 - Haptic and wake-lock are optional enhancements, feature-detected, never required.
 - Colour tokens meeting 4.5:1; one high-contrast mode.
 - Manual screen-reader checklist in `tests/a11y/manual-checklist.md`, run on the devices you have, with untested platforms listed in the README.

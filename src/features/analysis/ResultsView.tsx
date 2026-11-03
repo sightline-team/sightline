@@ -18,7 +18,9 @@ import type { DocType, KeyFact, Transcript } from '@/types';
  * The Ask section arrives as a **slot** from `app/read/page.tsx`, which composes the two
  * features (P-06). This file does not import the qa feature — the order stays owned here, and
  * the question-answering plumbing stays owned there, with the route as the only place that
- * knows both (AGENTS.md §7: avoid features importing each other).
+ * knows both (AGENTS.md §7: avoid features importing each other). The read-aloud control (P-09)
+ * arrives the same way, for the same reason: what it speaks comes from the reading *and* from
+ * `features/safety`, so `app/_flow/ReadAloud.tsx` joins them and this file only places the result.
  *
  * Two rules this file is written against:
  *  - a fact whose `quoteFound` is false is shown **flagged**, never as sourced (rule 8);
@@ -36,7 +38,7 @@ const DOC_TYPE_WORDS: Record<DocType, string> = {
   other: 'a document Sightline could not classify',
 };
 
-export function ResultsView({ ask }: { ask: ReactNode }) {
+export function ResultsView({ ask, speak }: { ask: ReactNode; speak: ReactNode }) {
   const { session } = useSessionStore();
   const headingRef = useRef<HTMLHeadingElement | null>(null);
   const analysis = session.analysis;
@@ -112,6 +114,10 @@ export function ResultsView({ ask }: { ask: ReactNode }) {
         What Sightline read
       </h1>
       <p className="muted">Sightline thinks this is {DOC_TYPE_WORDS[analysis.docType]}.</p>
+      {/* P-09: an action on the screen, not a section of it — it sits above the first heading so the
+          fixed order below is untouched. The route composes it (app/read/page.tsx) because the words
+          it speaks come from two features. */}
+      {speak}
       <p>
         <a href="#full-text">Skip to full text</a>
       </p>

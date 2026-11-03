@@ -122,9 +122,26 @@ Built to the conventions in AGENTS.md §8: native HTML semantics, one polite liv
 status change, focus moved after navigation and on errors, fixed results order, no gesture-only
 actions, ≥ 44 px targets, 4.5:1 contrast, `prefers-reduced-motion` and `prefers-contrast` honoured.
 
+One **read-aloud button** sits at the top of the results screen (item P-09). It is opt-in and off by
+default: nothing is spoken until it is pressed, and it reads Sightline's own summary plus Sightline's
+own cautions — the two parts of the screen whose wording we control. It is not a screen reader and is
+not meant to replace one; the key facts, the actions and the full text stay on the page for the
+reader or magnifier a person already uses. Pressing it again, leaving the screen, or pressing Forget
+stops it. The speed is a setting (0.5–2), read when the button is pressed; the control to change it is
+item A-15, and until then the speed is normal.
+
+One limit belongs with this button rather than buried: the speech engine is the device's own and is
+outside Sightline's control. Some browsers offer voices that are synthesised over the network rather
+than on the handset, so a person using one of those is having their document read out by something
+other than Sightline. Which engines on which devices do that is **[Unverified] here** — no test device
+is confirmed (B-01) — and it is the reason no sentence in this app promises that reading aloud stays
+on the device.
+
 **Not yet tested with a screen reader by a blind or low-vision user.** No device is confirmed
-(B-01) and no participant is reached (U-01). See `docs/ACCESSIBILITY_REPORT.md` for the tested /
-not-tested table and `tests/a11y/manual-checklist.md` for the script that has not been run.
+(B-01) and no participant is reached (U-01). The read-aloud button has never been *listened to*
+either: the browser tests record the calls the app makes to the device's own speech engine, which is
+not the same evidence as a person hearing it clearly. See `docs/ACCESSIBILITY_REPORT.md` for the
+tested / not-tested table and `tests/a11y/manual-checklist.md` for the script that has not been run.
 
 ## User research
 
