@@ -44,10 +44,13 @@ path most likely to meet a real user and the one `docs/ARCHITECTURE.md` §13 pro
 item S-11) — and it is matched by content, so pasting your own document gets a refusal explaining that
 demo answers belong to demo documents, never an authored summary presented as a reading of your letter.
 
-**What it does not do:** read a photo (C-01…C-06), or run in relay/direct mode — the live modes refuse
-at the door because there is no attested service to reach (F-04, F-05, blocker B-05), so nothing on
-screen can imply a verified run before verification exists. Questions are answered in fixture mode
-only; the same ask path is what a live mode will use once it can run.
+**What it does not do:** read a photo (C-01…C-06), or run in relay/direct mode. The live modes still
+refuse at the door, and since 2026-11-03 the reason is precise rather than general: the model
+allowlist has no transport yet (F-04) and the relay forwards nothing (F-05), and even with both, the
+attestation gate would report `failed` because `/api/verify` is T-03's unimplemented route — so no
+run has ever been allowed to send a document. Nothing on screen can imply a verified run before
+verification exists. Questions are answered in fixture mode only; the same ask path is what a live
+mode will use once it can run.
 
 ## Live demo
 
@@ -67,11 +70,11 @@ filled by T-14 when `CheckResult` output is real):
 
 | Check | Ran? | Passed? | Why |
 |---|---|---|---|
-| Nonce binding | Not yet | — | T-01, needs an API key (B-05) |
-| GPU/NRAS verdict | Not yet | — | T-01 |
-| Intel TDX quote | Not yet | — | T-01, gated on B-05; port plan in `src/lib/near-ai/verifier/` |
-| Response signature | Not yet | — | T-02 (procedure decided in ADR-19) |
-| End-to-end encryption to the enclave | Not yet | — | T-10; documented by NEAR, not yet demonstrated from a browser (ADR-16) |
+| Nonce binding | Not in an app run | — | T-01's `bindReport` passed **4/4 against the first real report** on 2026-11-03 and the service echoed the nonce this session minted (`docs/SPIKE_RESULTS.md` §3) — measured by `npm run spike`, not by the app, because live modes still refuse to send (F-04, F-05) |
+| GPU/NRAS verdict | Not yet | — | T-03's heavy half. The GPU payload is measured in hand (49,111 bytes, §3); what is missing is the `dcap-qvl-node` decision (**B-12**), not access |
+| Intel TDX quote | Not yet | — | T-03, same blocker (**B-12**); the quote itself is 5,006 bytes and in hand (§3). Port plan in `src/lib/near-ai/verifier/` |
+| Response signature | Not in an app run | — | T-02 verified **one live non-streamed completion** (`provider_tee`, against the key the gate bound, §5). A *streamed* reply is signed by the gateway enclave instead, which is why the app does not stream (ADR-22) |
+| End-to-end encryption to the enclave | Not yet | — | T-10; documented by NEAR, never demonstrated from a browser (ADR-16). The report carries the key such a call would encrypt to (§3), so what is left is `@noble/ciphers` (**B-07**) and a device |
 | Quote consistency (the only check fixture mode runs) | Yes, in fixture mode | Per fact: a quote that is not in the transcript is shown **flagged**, never as sourced | P-02; it proves consistency with our transcript, not correctness against the page |
 
 None of the NEAR AI verification checks above has been run. Until it is, Sightline has no
@@ -120,7 +123,11 @@ required there and are stated now so they cannot be quietly dropped later:
 
 ## Cost per document
 
-Unknown: it needs a measured run (S-09, blocked on B-05). No estimate is published here.
+Measured per exchange on 2026-11-03 (`docs/SPIKE_RESULTS.md` §4): **$0.0000204** for one probe completion on
+  `z-ai/glm-5.3-flash`, **$0.0000422** on the fallback, and fetching an attestation report or a signature is free
+  and non-billable. **Per document is still unknown** — that number needs the golden set run at real page counts
+  (S-03 → S-09), and what dominates it is reasoning tokens rather than the answer. No per-page estimate is
+  published here until it has been measured.
 
 ## Accessibility
 

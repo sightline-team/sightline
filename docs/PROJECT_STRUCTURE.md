@@ -2,6 +2,8 @@
 
 > Companion to `ARCHITECTURE.md`. Trimmed after the hard-questions review: fewer files, fewer scripts, fewer rules. Everything removed is listed in §8. v0.3 reflects the Day-1 spike reading: `models.ts` needs a per-model call (ADR-18), `signatures.ts` has a concrete fetch-and-rebuild shape (ADR-19), `e2ee.ts` has a named cipher stack, `verifier/` ports from the reference verifier's TypeScript directory, and `scripts/crosscheck.ts` is new (ADR-20).
 >
+> **Measured 2026-11-03** against the live API, two of those readings changed: `models.ts` gets its flags from the bulk `GET /v1/model/list` in one call and must also check the provider host (ADR-18 amended), and `signatures.ts`'s rebuild is right but its key depends on `signature_kind` — a `gateway` signature verifies against `gateway_attestation.signing_address`, which is why the app does not stream (ADR-22). `scripts/spike.ts` is the measurement that produced both, and it is built now rather than planned.
+>
 > v0.4 is the **as-built** tree after item F-14 scaffolded every directory in §1 on 2026-11-02. Three files this document did not name were added by the scaffold and are now part of the structure: `src/lib/not_built.ts` (the throwing stub contract), `public/icons/icon.svg` (the manifest needs an icon), and the `README.md` files inside `fixtures/`, `fixtures/responses/`, `fixtures/attestation/` and `public/sample-docs/`, which hold the authored-vs-recorded labelling rules and the golden-set case list rather than payloads. §1 entries that describe intent were rewritten to describe behaviour that exists, and the two test directories that had placeholders state which assertions are still `it.todo`.
 >
 > **Tracking rule:** every contribution to this repo (code, tests, docs, config, fixtures, scripts) must update `ROADMAP.md` in the same commit: item status with evidence, an update-log entry, the dashboard, current focus and blockers. `ROADMAP.md` is the single source of truth for remaining work. See `AGENTS.md` §2.
@@ -45,11 +47,11 @@ sightline/
 ├─ fixtures/                      # NEAR AI responses + attestation reports replayed in Mode F
 │  ├─ responses/                  # transcribe / structure / qa samples
 │  └─ attestation/                # good, tampered, expired
-│                                 # Until a key exists (B-05) these are AUTHORED SYNTHETIC files and must be
-│                                 # labelled that way; "recorded" is only true after S-11
+│                                 # A key exists now (B-05 closed 2026-11-03) and these are STILL authored
+│                                 # synthetic: "recorded" becomes true only when S-11 writes them
 │
 ├─ scripts/
-│  ├─ spike.ts                    # Day 1: list models, fetch attestation, run reference verifier, time calls
+│  ├─ spike.ts                    # Built (S-02). Stages: `catalog` (bulk model list → `isAllowed` verdicts, S-02/S-07), `attestation` (first real report through `attestationReportSchema` + `bindReport`), `complete` (one probe completion → price → signature verify). `--model=`, `--stream`. Prints statuses, bytes, timings, token counts and check verdicts — **never** content (AGENTS §4 rule 7), and it runs through the production client and schemas, not around them
 │  ├─ record-fixtures.ts          # Saves real responses to fixtures/
 │  ├─ run-golden.ts               # Runs sample-docs through the pipeline; prints fact accuracy
 │  ├─ crosscheck.ts               # Official SDK as a *second opinion* against our own verifier output (ADR-20); never in the app bundle
@@ -93,7 +95,7 @@ sightline/
 │  │  │  ├─ envelope.ts             # Completion-envelope zod schema shared by the analysis call and the Q&A call; optional [U] `finish_reason`/`refusal` + the three readers
 │  │  │  ├─ verification.ts         # Gate + signature-verifier contracts, RunHalt, Mode F outcomes, halt mapping (the T-01/T-02 shapes)
 │  │  │  ├─ completion.ts           # readCompletion (P-08): gate → body → signature → record → read, one repair retry, ok/truncated/refused/unreadable
-│  │  │  ├─ models.ts             # Per-model metadata call (attestationSupported/providerType/inputModalities) + allowlist — NOT /v1/models (ADR-18)
+│  │  │  ├─ models.ts             # Catalog metadata parsing (`modelCatalogRowSchema`) + the fail-closed TEE decision (`isAllowed`, `isNearUpstreamHost`) — NOT /v1/models (ADR-18, amended by measurement 2026-11-03: the bulk list carries the flags, and `attestationSupported` alone is not a TEE test). The **transport** that reaches those endpoints is F-05's question, so `listCandidates`/`readModelMetadata` still refuse
 │  │  │  ├─ attestation.ts        # Nonce, fetch, call /api/verify, named checks; `createTrustSession` binds gate + verifier to one session nonce (T-01)
 │  │  │  ├─ signatures.ts         # fetch by chat id → rebuild hash pair → verify; retry "not found"; streaming trailing newlines (ADR-19)
 │  │  │  ├─ e2ee.ts               # X25519 ECDH + HKDF-SHA256 + XChaCha20-Poly1305 via @noble/*; T-10, gated on the browser path being proven
@@ -113,7 +115,7 @@ sightline/
 │  └─ types/index.ts
 │
 └─ tests/
-   ├─ unit/                       # config, server-env, session reducer, errors, nonce, grounding, schemas, near-client, pipeline, fixtures, qa, roadmap-check, forget (P-10), live-writes (P-12), safety-notices (P-07/P-11), speech (P-09), settings-writer (A-15); image prep still to write
+   ├─ unit/                       # config, server-env, session reducer, errors, nonce, grounding, schemas, near-client, pipeline, fixtures, qa, roadmap-check, forget (P-10), live-writes (P-12), safety-notices (P-07/P-11), speech (P-09), settings-writer (A-15), model-allowlist (F-04, payloads copied from live JSON); image prep still to write
    ├─ verification/               # attestation.test.ts: stubs refuse + strong claim unreachable; 9 `it.todo` rows name what T-01/T-02/T-05 must still prove
    ├─ relay/                      # relay.test.ts: both API routes answer 501, name their item, forward nothing, leak no key. A-09 adds rejected path/oversize/rate limit
    ├─ stubs/server-only.ts        # no-op stand-in so unit tests can import server modules (see vitest.config.mts)
@@ -149,13 +151,13 @@ Everything else is convention, not lint: features may import `lib/*` and `compon
 # Mode B (relay) only. Leave empty to disable.
 NEAR_AI_API_KEY=
 RELAY_ENABLED=false
-ALLOWED_MODELS=
+ALLOWED_MODELS=                    # exact ids, case-sensitive; what F-04's `isAllowed` will accept on top of its own checks. Measured live and answerable: `z-ai/glm-5.3-flash,Qwen/Qwen3.8-27B`
 RATE_LIMIT_PER_IP_PER_HOUR=20
 RATE_LIMIT_STORE_URL=            # shared store; in-memory limits do not work on serverless
 
 NEXT_PUBLIC_NEAR_AI_BASE_URL=https://cloud-api.near.ai/v1
 NEXT_PUBLIC_DEFAULT_MODE=fixtures   # fixtures | relay | direct
-NEXT_PUBLIC_ALLOW_DIRECT=false     # Mode A stays off until spike item S-06
+NEXT_PUBLIC_ALLOW_DIRECT=false     # Mode A stays off until S-06 is closed in a **browser** — the live CORS preflight passed 2026-11-03, so CORS is not what is left (SPIKE §6)
 ```
 
 Enforced in `lib/server/env.ts`, not just documented: in production the relay reports

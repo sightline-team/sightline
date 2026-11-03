@@ -34,6 +34,15 @@ import type { CheckResult } from '@/types';
  * What is *not* documented is the encoding of the `signature` field itself, so an unrecognised
  * encoding fails closed rather than being guessed at. Nothing in this file promotes a plausible
  * reading to a pass (AGENTS.md §6).
+ *
+ * Measured consequence (2026-11-03, `docs/SPIKE_RESULTS.md` §5): a **gateway**-kind signature is
+ * verified by `gateway_attestation.signing_address`, not by the model key — the two are different
+ * bytes, and the same record verifies against one and fails against the other. This module verifies
+ * against the key **the gate bound**, which is `model_attestations[0]`'s, so a `gateway` record can
+ * only ever come back `verified: false` here. That is deliberate while the app posts non-streamed
+ * (ADR-22): a non-streamed answer from an attested model is `provider_tee`, and if the fallback
+ * providers that only ever sign at the gateway are ever allowed through, the gate must bind their key
+ * too and say which machine it chose — not quietly accept the weaker signature under this name.
  */
 
 export type SignatureKind = 'provider_tee' | 'gateway';

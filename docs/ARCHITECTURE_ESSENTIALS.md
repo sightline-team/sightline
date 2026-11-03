@@ -1,7 +1,7 @@
 # Sightline — Architecture Essentials (v0.4)
 
 Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.md` §12. Spike findings with sources: `SPIKE_RESULTS.md`.
-**[V]** verified in official docs / the OpenAPI contract / vendor source · **[M]** measured against the live API (nothing is **[M]** yet — no key, blocker B-05) · **[U]** unverified, check in the spike.
+**[V]** verified in official docs / the OpenAPI contract / vendor source · **[M]** measured against the live API (first **[M]** rows: 2026-11-03, after blocker B-05 cleared — see `SPIKE_RESULTS.md` §3–§6) · **[U]** unverified, check in the spike.
 
 ## What it is
 - Web app. Blind/low-vision user photographs (or pastes text of) a sensitive document → private AI explains it and answers questions → app shows exactly what was verified.
@@ -13,6 +13,7 @@ Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.m
 - `@noble/ciphers` is the E2EE cipher (XChaCha20-Poly1305, T-10) and is **not installed** — it needs a human to approve the dependency first (AGENTS.md §5). Nothing imports it.
 - Scaffold contract (F-14): an unfinished function throws `NotBuilt` naming its ROADMAP item instead of returning a plausible fake; route handlers answer 501 and forward nothing; placeholder pages say which item builds them.
 - AI: NEAR AI Cloud, OpenAI-compatible, `https://cloud-api.near.ai/v1` **[V]**
+- Vision model: **`z-ai/glm-5.3-flash`**, fallback **`Qwen/Qwen3.8-27B`** **[M]** 2026-11-03 — both answered an image request and returned a `provider_tee` signature. The model the docs named (`Qwen/Qwen3-VL-30B-A3B-Instruct`) is flagged `attestationSupported: true` and `isReady: true` and never answers **[M]**. See `SPIKE_RESULTS.md` §4
 - No database, no accounts, no server-side document storage
 - **Not using:** React Aria, Zustand, local blur/brightness checks, voice pipeline, reorder UI, offline shell
 
@@ -31,7 +32,7 @@ Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.m
 
 ## Modes
 - **B. Relay (build first):** browser → our stateless relay → NEAR. Relay is in the trust path unless E2EE works from a browser; then it carries ciphertext only (ADR-16). Needs shared-store rate limit or a capped key (`spendLimit` **[V]**).
-- **A. Direct, BYO key:** browser → NEAR. Strongest privacy; for developers/judges only. CORS **[V]** open for non-admin paths in server source; live preflight **[U]**. The user's key must be in the browser — the attestation and signature endpoints require a key, so there is no keyless Mode A (ADR-17).
+- **A. Direct, BYO key:** browser → NEAR. Strongest privacy; for developers/judges only. CORS **[V]** open for non-admin paths in server source and **[M]** live 2026-11-03 (preflight from `localhost:3000` answered with the echoed origin, `allow-methods: *`); the **browser** half is still **[U]** — a header dump read from Node is not a navigation. The user's key must be in the browser — the attestation and signature endpoints require a key, so there is no keyless Mode A (ADR-17).
 - **F. Fixtures:** replayed responses; banner "Demo data, no real privacy guarantee". For reviewer agents and tests. Today's fixtures are **authored synthetic**, not recorded **[U]**.
 - One client, `baseUrl` + header provider → one code path.
 
@@ -51,10 +52,11 @@ Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.m
 ## Verification scope (decided — ARCH §10, ADR-19)
 - **Go:** nonce binding (`request_nonce`, GPU token `eat_nonce`), response signature, GPU-evidence verdict via NRAS.
 - **Go, sequenced last:** Intel TDX quote via the reference verifier's TypeScript `ts/` + `dcap-qvl-node` **[V]** — a port, not a rewrite. If it does not ship, the receipt says "hardware quote not independently verified in this build".
-- Signature checking is a **second request**: `completion id → GET /v1/signature/{chat_id} → rebuild `{model_id}:{request_hash}:{response_hash}` → verify`. Streaming responses end in two newlines that belong in the hash; lookups can transiently say "not found" → retry; raw bytes live 60 minutes.
+- Signature checking is a **second request**: `completion id → GET /v1/signature/{chat_id} → rebuild `{model_id}:{request_hash}:{response_hash}` → verify`. Lookups can transiently say "not found" → retry; raw bytes live 60 minutes. **[M]** 2026-11-03: this verified a live non-streamed exchange against `model_attestations[0].signing_public_key`.
+- **The app does not stream (ADR-22)** **[M]**. A streamed body *does* hash correctly — SHA-256 of the whole SSE text, its two trailing newlines included — but its signature is `gateway` kind and verifies only against `gateway_attestation.signing_address`, never the model enclave's key. A stream therefore buys a weaker receipt, and `NearClient` cannot read one at all (it parses every 200 body as JSON).
 - `@nearai/inference-sdk` stays out of the trust path; it is a cross-check tool in `scripts/` (ADR-20).
 - Heavy checks on `/api/verify` mean users trust our verdict for those → disclose.
-- The TEE allowlist needs a **per-model** metadata call; `/v1/models` does not carry `attestationSupported` / `providerType` / `verifiable` (ADR-18).
+- The TEE allowlist reads catalog metadata; `/v1/models` does not carry `attestationSupported` / `providerType` / `verifiable` (ADR-18). **[M]** 2026-11-03: the **bulk** `GET /v1/model/list` carries them, so it is one call — and the flag alone is not enough, because a model flagged `attestationSupported: true` can forward to `openrouter.ai`. `isAllowed` refuses that as `proxied_upstream`, separately from the flag (AGENTS §4 rule 3).
 
 ## Data (summary)
 - `Session { mode, input, pages, transcript, analysis, qa, trust, status }`
@@ -100,7 +102,7 @@ Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.m
 2. Grounding ≠ correctness → P1 verification pass, honest README
 3. Nobody can run it (no key) → fixtures + deployed relay
 4. Verifier port → **lowered risk**: reference verifier ships TypeScript + `dcap-qvl-node` **[V]**; still needs a real report to test against
-5. Serverless body/time limits → downscale, one page per request, stream, Day 3 load test
+5. Serverless body/time limits → downscale, one page per request, Day 3 load test (**not** streaming — ADR-22)
 6. Capture quality is the real bottleneck → model `captureIssues`, eyes-closed test photos
 7. In-memory rate limit useless on serverless → shared store or prepaid key
 8. Fail-closed locks users out → flagged product decision
@@ -109,9 +111,9 @@ Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.m
 Cut-off / rotated / glared pages · tables and forms · handwriting · not a document · model refusal · truncated output · invalid JSON · injection text · English only · attestation changes mid-session · long waits · large images · relay abuse
 
 ## Day 1 spike (ordered by impact)
-Read-only answers are in `SPIKE_RESULTS.md`; items 3, 5(live), 7, 8, 9 and 11 need a key (B-05).
-1. E2EE available? — **[V]** protocol v2 documented; browser path **[U]** 2. TEE + image models — **[V]** flags are per-model; live/latency/price **[U]** 3. Accuracy on 10 docs **incl. bad photos** **[U-key]** 4. Reference verifier: which checks, TS port **[V]** 5. Signature check: shape **[V]**, live **[U-key]** 6. CORS: source **[V]** open, preflight **[U-key]** 7. Direct slug **[U-key]** 8. Host limits with 5-page upload **[U-key]** 9. Cost/doc **[U-key]** 10. Key capping: `spendLimit` **[V]** 11. Record fixtures **[U-key]**
-- No usable vision → paste-text core · No browser E2EE → weaker claim · CORS fails → no Mode A
+Read-only answers are in `SPIKE_RESULTS.md`. **The key arrived 2026-11-03 (B-05 cleared)**, so items 2, 5, 6, 7 and 9 are now **[M]**; 3, 8, 11 still need work with the key, and item 1 still needs a browser.
+1. E2EE available? — **[V]** protocol v2 documented; browser path **[U]** 2. TEE + image models — **[M]**: flags on the bulk list, `attestationSupported` alone is not sufficient, chosen model `z-ai/glm-5.3-flash` (SPIKE §4) 3. Accuracy on 10 docs **incl. bad photos** **[U-key]** 4. Reference verifier: which checks, TS port **[V]** 5. Signature check — **[M]**: `provider_tee` verified on a live exchange; a stream is gateway-signed (SPIKE §5, ADR-22) 6. CORS — **[M]** server half (live preflight), browser half **[U]** 7. Direct slug — **[M]**: both usable models are served from `cloud-api.near.ai` alone, no per-model host 8. Host limits with 5-page upload **[U-key]** 9. Cost/doc — **[M]** per exchange, **[U]** per page 10. Key capping: `spendLimit` **[V]** 11. Record fixtures **[U-key]**
+- No usable vision → paste-text core · No browser E2EE → weaker claim · CORS fails → no Mode A **(did not fail)**
 
 ## Decisions already made
-Computed claims · TEE-only · two-step pipeline · native camera · relay first · fixtures · paste-text P0 · model capture issues · no voice pipeline · no payments in v1 (ADR-9) · relay designed to carry ciphertext only once browser E2EE is proven (ADR-16) · Mode A key lives in the browser (ADR-17) · per-model metadata for the allowlist (ADR-18) · signature check = fetch + rebuild hashes + verify (ADR-19) · SDK out of the trust path (ADR-20)
+Computed claims · TEE-only (flag **and** provider host, ADR-18 as amended) · two-step pipeline · native camera · relay first · fixtures · paste-text P0 · model capture issues · no voice pipeline · no payments in v1 (ADR-9) · relay designed to carry ciphertext only once browser E2EE is proven (ADR-16) · Mode A key lives in the browser (ADR-17) · catalog metadata for the allowlist (ADR-18) · signature check = fetch + rebuild hashes + verify (ADR-19) · SDK out of the trust path (ADR-20) · settings holds rate + theme only (ADR-21) · **no streaming, because a stream is gateway-signed (ADR-22)**

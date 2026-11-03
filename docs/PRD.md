@@ -5,7 +5,7 @@
 > **Hackathon:** NEAR Hackathon · **Track:** Privacy & Private AI (also eligible for Open Innovation)
 > **Hard deadline:** 14 Nov 2026, 23:59 UTC (public repo + X demo post + form)
 
-Markers: **[Verified]** = read in official docs, the OpenAPI contract, vendor source code, or the event page. **[Measured]** = run against the live API (nothing is **[Measured]** yet — no key, ROADMAP blocker B-05). **[Unverified]** = assumption to check in the spike (`ARCHITECTURE.md` §14). **[Certain] / [Likely] / [Guessing]** = my confidence in an analytical claim.
+Markers: **[Verified]** = read in official docs, the OpenAPI contract, vendor source code, or the event page. **[Measured]** = run against the live API (first **[Measured]** rows 2026-11-03, after ROADMAP blocker B-05 cleared — `SPIKE_RESULTS.md` §3–§6). **[Unverified]** = assumption to check in the spike (`ARCHITECTURE.md` §14). **[Certain] / [Likely] / [Guessing]** = my confidence in an analytical claim.
 
 **What changed from v0.1:** the privacy claim is downgraded unless end-to-end encryption to the enclave is available; voice input, page reordering, local blur/brightness checks, spell-out speech, offline PWA and the PII classifier are cut; a paste-text path and a zero-config fixture mode are added. Reasons are in §12.
 

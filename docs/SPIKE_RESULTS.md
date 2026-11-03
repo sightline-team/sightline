@@ -9,10 +9,23 @@ unknown; do not build on it.
 
 ## Status of this file
 
-Written 2026-11-02 from **documentation and source-code reading only**. We have **no NEAR AI Cloud API
-key yet** (blocker B-05), so no item in this file is **[Measured]**. Items marked "needs a key" below
-cannot be closed by reading further. Product code is being built in fixtures mode in the meantime, and
-every finding here is recorded with its source so a later live run can confirm or overturn it.
+Written 2026-11-02 from **documentation and source-code reading only**. Measured against the live API
+on **2026-11-03**, the day the key arrived (item S-00, blocker B-05) — `npm run spike` now reproduces
+every **[Measured]** row in here, stage by stage, through the same client, schemas and allowlist code
+the app uses.
+
+What the key settled: the model catalog and its TEE flags (§4), the shape of a real attestation report
+(§3), a response signature verified against an attested key (§5), a live CORS preflight (§6), first
+latency and cost numbers (§4, §1 of the measurement notes). What it did **not** settle, and the
+reading should not be mistaken for it: E2EE from a browser (a dependency decision, T-10/B-06), the
+heavy verifier checks inside `/api/verify` (T-03, and `dcap-qvl-node` is not installed), and accuracy
+on bad photographs (S-03 needs the golden set run against a live model).
+
+Four findings **contradicted the reading**, and each is marked where it lands: `attestationSupported:
+true` does not imply a NEAR-side upstream; a model can be `isReady: true` and never answer; a streamed
+response is signed by the *gateway* rather than by the model enclave — its hash **is** rebuildable from
+the exact SSE bytes, so the loss is the strength of the claim, not the check (§5); and `NearClient`
+refuses an SSE body outright.
 
 Primary sources read:
 - `https://docs.near.ai/api-reference/openapi.json` (the machine-readable API contract, ~542 KB)
@@ -28,11 +41,23 @@ Primary sources read:
 
 ---
 
-## 1. Base URL and authentication — [Verified]
+## 1. Base URL and authentication — [Verified] and [Measured]
 
 Base `https://cloud-api.near.ai/v1`. `POST /v1/chat/completions` response properties: `choices`,
 `created`, `id`, `model`, `object`, `usage`. **There is no signature in the completion body and no
 signature header** — signatures are fetched separately (§5). Source: openapi.json.
+
+**[Measured] 2026-11-03**, same endpoint, same key:
+
+| Fact | What the live service did |
+|---|---|
+| Authentication | `Authorization: Bearer <key>` on `GET /v1/models` → **200**, 64 entries, 2.3–3.4 s. The key is accepted from this machine with no restriction observed. |
+| Envelope | `id`, `model` (echoes the requested id verbatim, case and namespace included), `created` (unix seconds), `choices[0].{message,finish_reason}`, `usage`. `completionEnvelopeSchema` (`src/lib/near-ai/envelope.ts`) accepted it unchanged — the two optional fields it was written around are real: `finish_reason` came back `"stop"`, and `refusal` was absent rather than null. |
+| `id` shape | NEAR-hosted models: 32 lowercase hex, no prefix (`678f8acfeab24d9c8795879729b4d3d4`). A proxied model: `chatcmpl-EgFWMLXriLHBMXEILTJe3rBPXaFGC`. The signature lookup keys on this value, so a Mode A session that mixed providers would be fetching two different id shapes. |
+| **Reasoning eats the token budget** | With `max_tokens: 8` three models returned **HTTP 200, `finish_reason: "length"`, `content: ""`** and `usage.completion_tokens_details.reasoning_tokens: 8`. The answer was not truncated by accident — the entire budget went to reasoning, so a low `max_tokens` produces an *empty reply that parses fine*. `PROBE_MAX_TOKENS = 640` in `scripts/spike.ts` yields `finish_reason: "stop"` with real content (38 completion tokens, 36 of them reasoning, for "Reply with exactly: OK"). **This is P-08's business**: `truncated()` is true and `contentOf()` is `""` at the same time, and a per-page token cap has to leave room for thinking. |
+| `usage` details | `prompt_tokens_details.image_tokens` appears on an image request (64 tokens for a 1×1 PNG on `Qwen/Qwen3.8-27B`, 16 on `z-ai/glm-5.3-flash`), `cached_tokens: 0`. **An input image is billed as prompt tokens**; `costPerImage` is 0 for every text-output model and nonzero only for image-*generating* ones. The envelope schema does not carry `usage` at all — the cost line in the spike reads it off the raw JSON (follow-up for S-09 and the README's cost figure). |
+| Errors | `502` `{"error":{"message":"The model is currently unavailable. Please try again later.","type":"bad_gateway"}}` (a `chutes` model that the catalog says is ready); `400 … "type":"invalid_request_error","param":"model"` with `Upstream request failed with status 404` (an attested model that is not deployed). `src/lib/near-ai/client.ts` maps 404/5xx on a completion to `model_unavailable` and a 400 to `unknown` — the 400 case is *about* the model, so that mapping is the one place the conservative default costs a clearer message. Recorded, not changed. |
+| 404 on a signature | `GET /v1/signature/<unknown>?signing_algo=ed25519` → **404** `Signature not found: <id>:ed25519` (`type: not_found_error`). **The message is not the "Chat id not found or expired" §5 quoted from the docs** — so anything that ever matched on that text would be wrong. The client's retry-on-GET-404 is keyed on the status, which is the right choice and is what the measured response supports. |
 
 ## 2. E2EE to the enclave — exists in the docs, and it changes our claim
 
@@ -118,6 +143,53 @@ endpoints require an API key. In Mode B the key stays on our server, which is fi
 user's own key must be in the browser** — that is the design consequence recorded in ADR-17, and it is
 also why Mode A can never be the default for our users.
 
+### [Measured] 2026-11-03 — the first real report, and the field names are now facts
+
+`GET /v1/attestation/report?model=z-ai/glm-5.3-flash&nonce=<64 fresh hex>&signing_algo=ed25519` →
+**200, 265,925 bytes in 5.1 s** (a second call for a different model answered in 0.46 s, so the first
+number is the cold path and matters for the progress-announcement budget, not the steady state).
+Omitting `model` → **200, 76,208 bytes, `gateway_attestation` only and no `model_attestations`** —
+confirming §3's warning that a gateway report says nothing about the enclave serving the model.
+
+Two things the reading had as **[Unverified by openapi]** are now settled:
+
+- `attestationReportSchema` and `modelAttestationSchema` **accepted the live report unchanged**. The
+  decision to make every field optional and strip unknowns rather than guess the inner contract is
+  what let this happen on the first try; nothing in the schema needed editing.
+- The inner field names are exactly the ones `model-attestations.md` listed. `model_attestations[0]`,
+  measured, in order: `model_name`(str 30) · `signing_address`(64 hex) · `signing_algo`("ed25519") ·
+  `signing_public_key`(64 hex) · `request_nonce`(64 hex) · `intel_quote`(**10,012 hex = 5,006 bytes**)
+  · `nvidia_payload`(**98,222 hex = 49,111 bytes**) · `event_log`(**array of 30–32 objects**, 5 keys
+  each) · `info`(11 keys) · `ohttp_attestation`(4 keys) · `compose_manager_attestation`(8 keys) ·
+  `ohttp_key_config`(90 hex).
+- `report_data` is **absent from the model attestation and present on `gateway_attestation`** (128 hex
+  = 64 bytes), exactly as the docs put it ("not currently returned in model reports"). So binding a
+  *model* report is `request_nonce`, and `bindReport` checks the right field.
+- One asymmetry worth knowing before anyone writes a check that assumes it: `event_log` is an **array
+  of objects** on `model_attestations[0]` and a **4,927-character string** on `gateway_attestation`.
+  Both are typed `z.unknown()` today, which is the only reason the parse holds.
+- The gateway's attested key is carried in **`gateway_attestation.signing_address`** (64 hex, measured),
+  and `gateway_attestation` has **no `signing_public_key`** — so for `signing_algo: ed25519` the field
+  named "address" holds a 32-byte Ed25519 public key, not an Ethereum address. Anything that verifies a
+  gateway signature must read the field named in §3's key-encoding rule ("Ed25519 ⇒ public-key bytes
+  encoded as hexadecimal") rather than assume the model attestation's two-field shape. Measured against
+  a live `gateway`-kind signature, which verified with exactly this key: §5.
+
+**`bindReport` passed 4/4 against this report** — `attestation_report`, `nonce_fresh`,
+`signing_address_shape`, `signing_public_key_shape`. The service echoed the exact 64-hex nonce we
+minted for the session. This is the first time `status: 'verified'` has been *reachable* from the
+client side rather than asserted about a hypothetical.
+
+The ceiling, stated precisely because it is the remaining half of B-05: `createTrustSession` ANDs the
+local binding with `verifyWithServer`, and `/api/verify` is T-03's 501 stub, which the gate reads as
+`server_verification: ran, passed: false` → the whole gate reports **`failed`**. So a live mode that
+runs today would refuse to send, correctly and for a reason we chose (AGENTS.md §4 rule 6). Unblocking
+it means **building T-03's heavy checks** — and `dcap-qvl-node`, the library the reference verifier uses
+for the TDX quote, is not a dependency of this repo (`package.json` has `@noble/curves` and
+`@noble/hashes` only), which is a human decision (AGENTS.md §5) rather than a task. Relaxing the gate
+to call a 501 "not run" instead of "failed" would make live mode work *and* weaken the claim; that
+trade is not ours to make silently.
+
 ## 4. Model catalog — the flags we need are NOT on `/v1/models`
 
 `GET /v1/models` returns `ModelInfo`: `id`, `created`, `owned_by`, `name`, `description`,
@@ -133,8 +205,11 @@ outputModalities}, inferenceUrl, openrouterSlug, providerConfig{backend, base_ur
 contextLength, datacenters, …}`, plus `inputCostPerToken`, `outputCostPerToken`, `costPerImage`,
 `cacheReadCostPerToken`. `GET /v1/model/list` exists too.
 
-This **invalidates the F-04 design as written** ("catalog fetch, TEE + modality filter"): the filter
-needs a per-model metadata call, not just the list. Recorded in ADR-18; F-04's wording updated.
+This was recorded as **invalidating the F-04 design as written** ("catalog fetch, TEE + modality
+filter") because the list endpoint did not carry the flags. **Partly overturned by measurement,
+2026-11-03:** `GET /v1/model/list` *does* carry them — for all 64 entries, in one call, wrapped in
+`{models, limit: 100, offset: 0, total: 64}`. So the filter is not list-only but it is also not
+64 per-model calls; see the amendment in ADR-18 and the note in F-04's ledger line.
 
 Observed on `https://near.ai/models` (64 entries, 2026-11-02): 47 are `providerType: external` with
 `attestationSupported: false`; 12 are `vllm` with `true`; 4 are `chutes` with `true`; 1 is `tinfoil`
@@ -153,6 +228,71 @@ which is why `output_modalities` must not be confused with input capability):
 ```
 
 Costs are `{amount, scale, currency}` with `scale: 9` = nano-USD.
+
+### [Measured] 2026-11-03 — S-02: the live catalog, and which model Sightline will use
+
+`npm run spike -- --stage=catalog` → **HTTP 200 in 2.3–3.4 s, 64 entries, 79 KB**. Every row parsed
+through `modelCatalogRowSchema` (`src/lib/near-ai/models.ts`) — 64 accepted, 0 rejected — and the
+counts the catalog page showed on 2026-11-02 were right: **47 `external`/`attestationSupported:
+false`, 12 `vllm`/`true`, 4 `chutes`/`true`, 1 `tinfoil`/`true`. 17 attested of 64.**
+
+41 of the 64 accept `image` on input. Only **6 of those 41 are attested** — and after the allowlist
+below, **4**. This is AGENTS.md §4 rule 3 as a number: two thirds of the image-capable catalog is a
+forward to somebody else's API.
+
+| Model | providerType | `attestationSupported` | `isReady` | ctx / max_out | in / out nano-USD | `isAllowed` | What the live endpoint actually did |
+|---|---|---|---|---|---|---|---|
+| `z-ai/glm-5.3-flash` | vllm | true | true | 1,048,576 / 1,048,576 | 80 / 500 | **ALLOW** | **200 in 0.63 s** (text), **1.83 s** (1×1 image). `finish_reason: stop`, real content. Signature `provider_tee`, **verified**. |
+| `Qwen/Qwen3.8-27B` | vllm | true | true | 262,144 / 65,536 | 40 / 1,350 | **ALLOW** | **200 in 3.2–6.3 s** (text), **10.0 s** (image). Signature `provider_tee`, **verified**. |
+| `Qwen/Qwen3-VL-30B-A3B-Instruct` | vllm | true | true | **16,384** / 8,192 | 150 / 550 | **ALLOW** | **No answer.** Connection held open, aborted at 45 s and again at 150 s, on text *and* on image. `isReady: true` throughout. |
+| `moonshotai/kimi-k3` | chutes | true | true | 1,048,576 / 65,535 | 3,300 / 16,500 | **ALLOW** | **HTTP 502** `The model is currently unavailable. Please try again later.` in 4.1–5.3 s. |
+| `moonshotai/kimi-k2.6` | chutes | **true** | true | 262,144 / 8,192 | 810 / 3,850 | **refuse — `proxied_upstream`** | Not called: refused on purpose. See the trap below. |
+| `deepseek-ai/DeepSeek-V4.1-Flash-1017` (+`-abliterated`) | vllm | true | **absent** | 1,048,576 / — | 300 / 1,200 | refuse — `not_ready` | Not called. |
+| `Qwen/Qwen3.8-27B-abliterated` | vllm | true | **absent** | 262,144 / 65,536 | 40 / 1,350 | refuse — `not_ready` | Not called. Datacenters `US` **and `IN`**. |
+
+**The finding that changed the filter.** `moonshotai/kimi-k2.6` carries `attestationSupported: true`
+*and* `providerConfig{backend: "openai_compatible", base_url: "https://openrouter.ai/api/v1"}`. It is
+the only one of the 17 attested entries that is forwarded to a third-party API — but a filter that
+read the flag, as F-04 was written to do, would have **offered an OpenRouter-proxied model to a blind
+user under a private-AI claim**. So `isAllowed` checks the host the request actually leaves for
+(`isNearUpstreamHost`), independently of the flag. `providerType: "chutes"` is not itself the
+discriminator: `kimi-k3` is also `chutes` and carries no `base_url`.
+
+**Chosen vision model (S-02's "done when"): `z-ai/glm-5.3-flash`. Fallback: `Qwen/Qwen3.8-27B`.**
+Both are TEE-hosted with no forward, both answer an image request in seconds, and both returned a
+`provider_tee` signature that verified against the attested key from the same session. Chosen on
+*eligibility, liveness, latency and cost* — **not on accuracy**: the golden set has not been run
+against a live model (S-03, C-10), and `Qwen/Qwen3-VL-30B-A3B-Instruct`, the model
+`docs/ARCHITECTURE.md` §3 named, does not answer at all and has a 16 K context besides, which is too
+small for the 5-page case whatever its accuracy. That correction is recorded in ARCH §3 and ADR-18.
+
+**S-07 — direct completions hosts.** Exactly **one** exists in the whole catalog, and it belongs to
+the chosen model: `providerConfig.long_context.inference_url =
+https://glm-5-3-flash-long.completions.near.ai` with `max_context_tokens: 1,048,576` against
+`base_max_context_tokens: 100,000`. For `Qwen/Qwen3.8-27B` and for the VL model: **none** (their
+`providerConfig` is absent or empty). Two consequences kept in view: that host is a *new origin* for
+CSP `connect-src` (AGENTS.md §7) if Mode A ever uses it, and it is the one place where "direct" and
+"through `cloud-api`" could give different bytes — so the signature hashes must be taken from whichever
+path actually carried the request. Nothing in the app calls it yet; nothing was assumed about it.
+
+Across the 64 entries, the forwarded hosts are: `api.openai.com`×20, `api.anthropic.com`×13,
+`openrouter.ai`×8, `generativelanguage.googleapis.com`×6, `private.sage.levanto.ai`×1.
+
+**Not on the list, and worth knowing before someone reuses it:** `openai/whisper-large-v3` is
+`vllm` + attested with `inputModalities: ["audio"]` (a TEE path for C-04's audio, if that ever comes
+back), `black-forest-labs/FLUX.2-klein-4B` is attested `text→image`, and `openai/privacy-filter` is
+attested `text→text` at 10 nano-USD/token — a NEAR-hosted PII filter that answers `400 … Upstream
+request failed with status 404` today, i.e. flagged and not deployed.
+
+### [Measured] 2026-11-03 — S-09, one exchange
+
+`z-ai/glm-5.3-flash`, the probe prompt, 640-token budget: **prompt 17, completion 38 (36 of them
+reasoning), total 55 tokens → 20,360 nano-USD = $0.0000204**. `Qwen/Qwen3.8-27B` on the same prompt:
+prompt 57, completion 30 → 42,170 nano-USD = $0.0000422. One image was +16 to +64 prompt tokens on a
+1×1 PNG; a real page will be orders of magnitude more, so **the per-page figure this section needs is
+still open** (S-09 stays `[~]` until the golden set runs, S-03). What is now measured rather than
+guessed is the order of magnitude and the fact that reasoning tokens, not the answer, dominate the
+budget.
 
 ## 5. Response signatures — [Verified], and they are not what our docs assumed
 
@@ -179,6 +319,50 @@ keyed by completion `id`, and the thing signed is a hash pair, not the document.
 that the enclave saw those exact bytes, but the check has to be implemented as fetch → rebuild both
 hashes → verify. Recorded in ADR-19.
 
+### [Measured] 2026-11-03 — a real response verified, and what a stream costs us
+
+`POST /v1/chat/completions` (`z-ai/glm-5.3-flash`, `stream: false`) → **200, 808 bytes in 4.2 s**, then
+`GET /v1/signature/{id}?model=…&signing_algo=ed25519` → **200 in 357 ms**. One exchange, no streaming:
+
+| Measured | Value |
+|---|---|
+| `signature_kind` | `provider_tee` |
+| `signing_algo` | `ed25519` |
+| `signing_address` length | 64 hex (a 32-byte key, not an address) |
+| `text` | 3 colon-separated fields, 148 chars — `{model_id}:{request_hash}:{response_hash}` |
+| Model id inside the signed text | **the one the response echoes in `model`**, which here equals the one we sent |
+| `checkSignature` over the exact 126 sent bytes + exact 808 response bytes | **`verified: true`, `origin: provider_tee`** |
+
+That is the first time rule 4 of AGENTS.md §4 ("verify each response's signature") has been satisfied by
+a live exchange rather than by a fixture, and it was satisfied by the production path — `fetchSignature`
+and `checkSignature`, no ad-hoc crypto. The 404 body for a lookup that has not landed yet is
+`{"error":{"message":"Signature not found: <chat_id>:ed25519",…,"type":"not_found_error"}}`, which shows
+the cache key is `chat_id:algo` and confirms the retry the docs ask for.
+
+**Streaming — the finding that reverses this file's earlier reading.** A `stream: true` request returns
+`text/event-stream` (measured: 5,364 bytes, 26 `data:` frames, `[DONE]` present, ending with **exactly
+two newlines**). Its signature is **`signature_kind: "gateway"`** with a 2-field text. Rebuilding the
+hashes from the bytes we hold:
+
+- `request_hash` = SHA-256 of the exact JSON body we sent — **matches**.
+- `response_hash` = SHA-256 of the **entire raw SSE text, trailing two newlines included** — **matches**.
+  Eight other rebuilds were tried and all mismatched: the body with trailing whitespace stripped, the
+  body minus the final `[DONE]` frame, the `data:` payloads concatenated (no separator, `\n`, and
+  `\n\n`-terminated), the last chunk alone, the last chunk plus `\n\n`, and the chunks joined by the
+  frame separator. So the "include the two newlines or the hash changes" warning is literally true and
+  sufficient — *if* you hash the whole stream as one string.
+- Verifying that signature against `model_attestations[0].signing_public_key` → **false**. Against
+  `gateway_attestation.signing_address` → **true**.
+
+So a stream is **not** unverifiable; it is verifiable **by a weaker party**. The model enclave signs the
+non-streamed response and the gateway signs the streamed one. That is a claims decision, not a
+plumbing one: Sightline's receipt distinguishes "signed by the enclave serving the model" from "signed
+by the API gateway enclave, not by the enclave serving the model" — the two sentences
+`checkSignature` already returns — and rule 5 says the app may not upgrade the second into the first.
+Hence **the app posts non-streamed** (ADR-22), which also sidesteps the separate mechanical fact that
+`NearClient` parses every 200 body as JSON and so throws `invalid_model_output` on an SSE body at HTTP
+200: streaming would need a second transport *and* would buy a weaker receipt for it.
+
 ## 6. CORS — permissive in the server source, decisive in the SDK doc
 
 `nearai/cloud-api`, `crates/api/src/lib.rs:1075-1097` **[Verified in source]**, verbatim comment:
@@ -190,13 +374,39 @@ matches and wildcard suffixes for admin only. **Docs.near.ai does not describe a
 [Verified by absence] — the behaviour lives in the server source.
 
 So Mode A (direct, bring-your-own key) is **not** blocked by CORS as far as source reading goes, and
-T-13 is **not** cut — but S-06's live browser test still has to happen (needs a key).
+T-13 is **not** cut. The live preflight is measured below, and it agrees with the source.
 
 Independently, `nearai/inference-sdk` `js/README.md` states the browser limitation we already assumed
 in ARCH §10: "Browser Fetch does not expose the TLS peer certificate, so the browser client cannot
 perform the attested TLS identity check provided by the Node entry point. Standard HTTPS certificate
 validation still applies." **[Verified]** — this confirms rule 2 of AGENTS.md §4 against the vendor's
 own documentation.
+
+### [Measured] 2026-11-03 — the preflight the real service answers
+
+`OPTIONS https://cloud-api.near.ai/v1/chat/completions` with
+`Origin: http://localhost:3000`, `Access-Control-Request-Method: POST`,
+`Access-Control-Request-Headers: authorization,content-type` → **200** with:
+
+| Header | Value |
+|---|---|
+| `access-control-allow-origin` | `http://localhost:3000` (the request origin, echoed) |
+| `access-control-allow-methods` | `*` |
+| `access-control-allow-headers` | `authorization,content-type` |
+
+and `GET /v1/models` with the same `Origin` → **200** with `access-control-allow-origin:
+http://localhost:3000` and `access-control-expose-headers: *`. This is what the source reading predicted
+for any path not starting with `/v1/admin`, and the admin restriction is not in our way.
+
+What this does **and does not** close. It closes the server half of S-06: a browser at `localhost:3000`
+sending an authenticated cross-origin `POST` will pass the preflight, so **Mode A is not blocked by CORS
+and T-13 stays un-cut**. It does not close the browser half — these are responses read from a Node
+`fetch` that was *told* to set an `Origin`, not a navigation a browser performed. A real `fetch()` from a
+page can still be refused by something that never appears in a header dump (a credential rule, a
+`connect-src` of our own making, an extension). The assertion that remains owed is "a page in Chromium
+completed the round trip and the signature verified", which is the S-01/T-13 browser test and cannot be
+derived from this table. Recorded as a follow-up rather than as a closed item, and §1 of this file says
+the same thing in one clause.
 
 ## 7. Reference verifier — TypeScript exists, so the heavy checks can ship
 
@@ -254,16 +464,32 @@ heavy checks (§10 of ARCH).
 
 ## What is still unknown (and cannot be closed by reading)
 
-1. Whether E2EE from a **browser** actually works end to end with a live enclave. The protocol is
-   documented; no browser path is. **Sets the privacy claim.** (S-01)
-2. Which TEE models are live and callable today, their latency and price per page, and how badly the
-   vision model misreads **numbers on bad photos**. (S-02, S-03, S-09)
-3. A live browser CORS preflight against `cloud-api.near.ai`, despite the permissive source. (S-06)
-4. Whether the vision model we choose has a direct-completions slug. (S-07)
-5. Host request-size and execution-time limits for a 5-page upload on the plan we deploy to. (S-08)
-6. The `$10` credit claim, and whether `spendLimit` is reachable on the account type we will have.
-7. Intel TDX collateral fetch mechanics, delegated to `dcap-qvl-node` by the verifier.
+Closed by the key on 2026-11-03, so removed from this list: the live TEE-and-image catalog, which model
+is callable and which is not (§4), the first attestation report and its field names (§3), one verified
+response signature (§5), the direct-completions host question (S-07: the attested models we can use are
+served from **one** host, `cloud-api.near.ai`, so the CSP needs no per-model wildcard) and the server
+half of the CORS question (§6).
 
-Every one of 1–6 needs an API key. **Blocker B-05 is now the only hard external blocker on the trust
-half of this project**; the paste-text demo, the claims ladder, grounding, the UI and the accessibility
-work do not need it and are being built now.
+Still open, with what each one now waits on:
+
+1. Whether E2EE from a **browser** actually works end to end with a live enclave. The protocol is
+   documented, the report carries `ohttp_attestation` and `ohttp_key_config`, and no browser path is
+   described anywhere. **This still sets the strongest privacy claim we are allowed to make.** Needs a
+   dependency decision (T-10) and a real browser, not a key alone. (S-01)
+2. How badly the chosen vision model misreads **numbers on bad photographs**. A key and a model are not
+   the missing thing here; the golden set run against the live service is. (S-03)
+3. **Price per page**, as opposed to price per probe exchange. Measured: `$0.0000399` for a 126-byte
+   prompt. A real five-page document is a different token count, and the number a budget needs has not
+   been produced. (S-09, `[~]` not `[x]`)
+4. The **browser** half of CORS: a Chromium round trip with the signature verified. The preflight
+   headers say yes; a header dump is not a navigation. (S-06, T-13)
+5. Host request-size and execution-time limits for a 5-page upload on the plan we deploy to. A 45-second
+   hang from a live model (§4) is a hint that an execution cap exists and is not the one our timeout
+   assumes. (S-08)
+6. Whether `spendLimit` is reachable on the account type we ended up with, and how much of the `$10`
+   grant is left. The credits arrived and were spent on measurements; the cap itself has not been set,
+   because setting it is an action on a shared account rather than a read. (S-10)
+7. Intel TDX collateral fetch mechanics, delegated to `dcap-qvl-node` by the verifier — and the whole
+   heavy-check half of `/api/verify`. The quote is in hand (5,006 bytes, measured), so this is now
+   blocked on a **dependency approval** (AGENTS.md §5) rather than on data. Until it ships, live mode's
+   gate reports `failed` and refuses to send. (T-03)
