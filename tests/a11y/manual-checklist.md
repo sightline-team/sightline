@@ -48,6 +48,7 @@ Run in this order. Each cell: heard correctly? (Y/N), what was actually spoken, 
 | 18 | Turn on high contrast (A-15) | "High contrast is on." reaches the live region; colours change on every route and after a reload; text stays ≥ 4.5:1 to the eye, not only to axe | |
 | 19 | The transcript-only screen (P-11): run demo document 4 | The failure sentence is announced before the new screen is read; the reader lands on "What Sightline read" and the next heading says "No summary"; the sections that need a reading are *absent*, so nothing reads as "this letter has no facts"; the English-only caution is heard; the letter's own words can be read at leisure | |
 | 20 | The same screen, with the reader's own read-what's-on-screen | It is usable without Sightline's speech engine — there is deliberately no read-aloud button there (P-09's full-text rule), so a person's own reader is how that page is heard. If that turns out to be wrong in practice, the decision belongs to this line, not to a code comment | |
+| 21 | Forget while an answer is still coming (P-12) | The counted sentence is heard once, right after the press ("Stopped the request that was still going."), and nothing of the document is reachable later on the page. Needs a **live** mode to be a check of a person's own two hands: in fixture mode a real press cannot land inside a completion, which is why the browser proof dispatches both presses in one task | |
 
 ## Keyboard-only pass (A-05) — can be run today
 

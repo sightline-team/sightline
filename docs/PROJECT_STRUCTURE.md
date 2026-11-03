@@ -62,6 +62,7 @@ sightline/
 │  │  ├─ _flow/useDocumentRun.ts  # Composition root for one run: store, announcer, router, transport, pipeline. `_` = not a route
 │  │  ├─ _flow/useAskAboutDocument.ts # Same shape for one question (P-06); reads the mode off the session, not the build
 │  │  ├─ _flow/useForget.ts       # Same shape for Forget (P-10): store + announcer + the read-aloud stop, and the sentence built from what was counted
+│  │  ├─ _flow/live_writes.ts     # `liveWrites(signal, dispatch)` (P-12): once a run is aborted its own callbacks write nothing into the session Forget emptied
 │  │  ├─ _flow/SettingsControls.tsx # A-15's two controls: four named speeds (native radio group) and the contrast checkbox, both driven by the store
 │  │  ├─ _flow/HighContrastTheme.tsx # Layout-mounted, renders nothing: puts the stored theme on `<html>` where `globals.css` defines it (A-15)
 │  │  ├─ _flow/useStoredSettings.ts # `useSyncExternalStore` over the settings blob; raw string as the snapshot (A-15)
@@ -112,12 +113,12 @@ sightline/
 │  └─ types/index.ts
 │
 └─ tests/
-   ├─ unit/                       # config, server-env, session reducer, errors, nonce, grounding, schemas, near-client, pipeline, fixtures, qa, roadmap-check, forget (P-10), speech (P-09), settings-writer (A-15); image prep still to write
+   ├─ unit/                       # config, server-env, session reducer, errors, nonce, grounding, schemas, near-client, pipeline, fixtures, qa, roadmap-check, forget (P-10), live-writes (P-12), safety-notices (P-07/P-11), speech (P-09), settings-writer (A-15); image prep still to write
    ├─ verification/               # attestation.test.ts: stubs refuse + strong claim unreachable; 9 `it.todo` rows name what T-01/T-02/T-05 must still prove
    ├─ relay/                      # relay.test.ts: both API routes answer 501, name their item, forward nothing, leak no key. A-09 adds rejected path/oversize/rate limit
    ├─ stubs/server-only.ts        # no-op stand-in so unit tests can import server modules (see vitest.config.mts)
    ├─ e2e/shell.spec.ts           # Playwright + axe on the four shell routes, skip link/tab order, one live region, zoomable viewport, off-origin request assertion
-   ├─ e2e/flow.spec.ts            # The whole Mode F flow with no key: demo document → fixed section order → flagged fact → questions and answers → receipt; the transcript-only screen reached by the reply that is not JSON (P-11); refusals; focus; Forget; read-aloud and the settings that change it, with the speech engine replaced by a recorder; axe with content, on the degraded screen, and in both themes
+   ├─ e2e/flow.spec.ts            # The whole Mode F flow with no key: demo document → fixed section order → flagged fact → questions and answers → receipt; the transcript-only screen reached by the reply that is not JSON (P-11); Forget pressed while a completion is owed, both clicks in one task (P-12); refusals; focus; read-aloud and the settings that change it, with the speech engine replaced by a recorder; axe with content, on the degraded screen, and in both themes
    └─ a11y/manual-checklist.md    # Screen-reader scripts and results
 ```
 

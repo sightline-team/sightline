@@ -5,6 +5,7 @@ import { createFixtureClient, transportFor, FIXTURE_MODEL } from '@/lib/fixtures
 import { RunHalt } from '@/lib/near-ai/verification';
 import { askAboutDocument } from '@/features/qa/ask';
 import { LIVE_MODE_QA_UNAVAILABLE, refusedGate, refusedSignatureVerifier } from '@/app/_flow/refused_steps';
+import { liveWrites } from '@/app/_flow/live_writes';
 import { useSessionStore } from '@/lib/session/store';
 import { useAnnouncer } from '@/lib/a11y/announcer';
 import type { RunOutcome } from '@/app/_flow/useDocumentRun';
@@ -34,6 +35,9 @@ export function useAskAboutDocument(): (question: string) => Promise<RunOutcome>
       }
 
       const controller = beginRun();
+      // P-12: the record the answer carries is dispatched while the run is still going, so it goes
+      // through the signal too. The answer itself is guarded after the await below.
+      const dispatchLive = liveWrites(controller.signal, dispatch);
       announce('Asking your question.');
 
       try {
@@ -45,7 +49,7 @@ export function useAskAboutDocument(): (question: string) => Promise<RunOutcome>
           verifySignature: refusedSignatureVerifier,
           question,
           signal: controller.signal,
-          onTrustRecord: (record) => dispatch({ type: 'trust_recorded', record }),
+          onTrustRecord: (record) => dispatchLive({ type: 'trust_recorded', record }),
         });
 
         // A reply that arrives after Forget belongs to a session that no longer exists.

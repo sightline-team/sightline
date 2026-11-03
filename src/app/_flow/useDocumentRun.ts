@@ -6,6 +6,7 @@ import { createFixtureClient, transportFor, FIXTURE_MODEL } from '@/lib/fixtures
 import { runPipeline } from '@/features/analysis/pipeline';
 import { RunHalt } from '@/lib/near-ai/verification';
 import { LIVE_MODE_UNAVAILABLE, refusedGate, refusedSignatureVerifier } from '@/app/_flow/refused_steps';
+import { liveWrites } from '@/app/_flow/live_writes';
 import { useSessionStore } from '@/lib/session/store';
 import { useAnnouncer } from '@/lib/a11y/announcer';
 import type { PublicConfig } from '@/lib/config';
@@ -48,6 +49,8 @@ export function useDocumentRun(config: PublicConfig) {
 
       const transcript: Transcript = { text, pageOffsets: [0], uncertain: [], captureIssues: [] };
       const controller = beginRun();
+      // P-12: every write this run makes, not only its last one, goes through the signal.
+      const dispatchLive = liveWrites(controller.signal, dispatch);
 
       dispatch({ type: 'input_selected', input: 'text' });
       dispatch({ type: 'analysis_started' });
@@ -68,12 +71,12 @@ export function useDocumentRun(config: PublicConfig) {
           gate: refusedGate,
           verifySignature: refusedSignatureVerifier,
           signal: controller.signal,
-          onTranscript: (t) => dispatch({ type: 'transcript_received', transcript: t }),
-          onTrustRecord: (record) => dispatch({ type: 'trust_recorded', record }),
-          onAnalysis: (analysis) => dispatch({ type: 'analysis_received', analysis }),
+          onTranscript: (t) => dispatchLive({ type: 'transcript_received', transcript: t }),
+          onTrustRecord: (record) => dispatchLive({ type: 'trust_recorded', record }),
+          onAnalysis: (analysis) => dispatchLive({ type: 'analysis_received', analysis }),
           onDegraded: (error) => {
             degraded = error;
-            dispatch({ type: 'run_degraded', code: error.code, context: error.context });
+            dispatchLive({ type: 'run_degraded', code: error.code, context: error.context });
           },
         });
 
@@ -82,6 +85,8 @@ export function useDocumentRun(config: PublicConfig) {
         // sentence over the Forget announcement, not a navigation the user did not ask for.
         // The check is the signal rather than an error type because the fixture transport
         // answers regardless of cancellation, so a completed run can arrive after Forget too.
+        // The dispatches are gated by `liveWrites` (P-12); what this line still owns is the speech
+        // and the journey, which are not dispatches and would speak over the Forget announcement.
         if (controller.signal.aborted) return { ok: false };
 
         // Both outcomes navigate: the transcript is on `/read` either way, and leaving the user

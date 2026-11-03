@@ -930,6 +930,106 @@ test.describe('Forgetting the document (P-10)', () => {
   });
 });
 
+test.describe('the request that was still going (P-12)', () => {
+  const FORGET = { name: 'Forget this document' };
+
+  /**
+   * P-10 proved `abort → revoke → clear` at the seam; this item asks for the browser, and the
+   * obstacle is scheduling rather than code. `src/lib/fixtures/replay.ts:158`'s `post` is `async`
+   * with a resolved value behind it and nothing else, so a Mode F run is a chain of **microtasks** —
+   * and the microtask queue drains before the next task, so a second real click can never land
+   * while a completion is owed. Live modes refuse at the door (F-04/F-05, **B-05**), so they have no
+   * in-flight request either.
+   *
+   * The construction below reaches the state honestly: both presses are dispatched from inside
+   * **one** `page.evaluate`, so when Forget's handler runs, the run's continuation is still queued
+   * and its controller is still registered. That is exactly the state a person's two hands produce
+   * in a mode that talks to a service. No latency was invented to get it — nothing in `src/` is
+   * timed, paced or aware it is being raced, and `useForget`'s counted sentence is what proves the
+   * controller really was still registered when the press landed.
+   */
+  async function pressBothInOneTask(page: Page, firstButton: string): Promise<void> {
+    await page.evaluate((label) => {
+      const buttons = [...document.querySelectorAll('button')];
+      const find = (text: string) => buttons.find((b) => b.textContent?.trim() === text);
+      const first = find(label);
+      const forget = find('Forget this document');
+      if (!first || !forget) throw new Error(`both ${label} and Forget must be buttons on this screen`);
+      first.click();
+      forget.click();
+    }, firstButton);
+  }
+
+  test('Forget counts the run it stopped, because the completion was genuinely owed', async ({ page }) => {
+    // The branch at `useForget.ts:33` has never executed in a browser before this test: every
+    // earlier Forget found nothing in flight, so the sentence about stopped requests was unreachable.
+    await chooseDemoDocument(page, DEMO.bill);
+    await pressBothInOneTask(page, 'Read this text');
+
+    await expect(page.getByTestId('announcer')).toHaveText(
+      'Forgotten. Sightline has cleared the document and everything it read. Stopped the request that was still going.',
+    );
+  });
+
+  test('a run that was forgotten writes nothing back, at any point in its chain', async ({ page }) => {
+    // The guard P-10 left at the *end* of the hook is not enough on its own: the pipeline reports
+    // through callbacks while it works, so a late trust record or a late reading would land in the
+    // fresh session the person just emptied.
+    const text = await chooseDemoDocument(page, DEMO.bill);
+    // The letter is really in the box before the press, so the empty box below is a change rather
+    // than the shape the screen had all along.
+    expect(text).toContain('840');
+    await pressBothInOneTask(page, 'Read this text');
+
+    // The abandoned run does not move the person and does not refill the box it was started from.
+    await expect(page.getByRole('heading', { name: 'Add a document' })).toBeVisible();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByLabel('Paste the text of your document')).toHaveValue('');
+    // Phrases from the letter itself, not 'care trust' — the demo picker's own button labels say
+    // that, and a check that trips on the screen's furniture proves nothing.
+    for (const phrase of ['840', 'nc-2026-0441', 'amount due']) {
+      expect((await page.locator('body').innerText()).toLowerCase(), `“${phrase}” survived a Forget pressed mid-run`)
+        .not.toContain(phrase);
+    }
+
+    // …and what arrives after the press has nowhere to show itself either: the reading it would
+    // have written, and the record naming a document that no longer exists.
+    await page.getByRole('link', { name: 'What Sightline read' }).click();
+    await expect(page.getByTestId('nothing-read')).toBeVisible();
+    await expect(page.locator('body')).not.toContainText('A care trust invoice for 840 pounds');
+    await page.getByRole('link', { name: 'Verification' }).click();
+    await expect(page.getByTestId('trust-empty')).toBeVisible();
+    await expect(page.getByTestId('trust-record')).toHaveCount(0);
+  });
+
+  test('the same press during a question leaves no answer on the page', async ({ page }) => {
+    const text = await chooseDemoDocument(page, DEMO.bill);
+    await runText(page, text);
+    await expect(page.getByTestId('results-heading')).toBeVisible();
+
+    await page.getByLabel('Your question').fill('How much do I have to pay?');
+    await pressBothInOneTask(page, 'Ask');
+
+    await expect(page.getByTestId('announcer')).toContainText('Stopped the request that was still going.');
+    await expect(page.getByTestId('qa-entry')).toHaveCount(0);
+    await expect(page.locator('body')).not.toContainText('840 pounds');
+  });
+
+  test('a Mode F run issues no request at all, so “cancelled” here means the app’s own controller', async ({ page }) => {
+    // Kept honest about scope: what Forget cancels in this mode is the run's registration, not a
+    // socket. Nothing was on the wire to cancel — asserted rather than stated, because the sentence
+    // a person hears says a request was stopped.
+    const outgoing: string[] = [];
+    page.on('request', (request) => outgoing.push(request.url()));
+
+    const text = await chooseDemoDocument(page, DEMO.bill);
+    await runText(page, text);
+    await expect(page.getByTestId('results-heading')).toBeVisible();
+
+    expect(outgoing.filter((url) => /\/api\/|cloud-api\.near\.ai|cloud\.near\.ai/.test(url))).toEqual([]);
+  });
+});
+
 test.describe('Reading the answer aloud (P-09)', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(installSpeechRecorder);

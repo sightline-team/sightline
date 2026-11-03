@@ -68,7 +68,8 @@ Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.m
   privacy sentence — so Settings shows it and does not offer it (ADR-21).
 - **Forget** (P-10) clears the tab's own memory: session state, the typed-but-unsent text, running
   requests, object URLs, and `sessionStorage` under the `sightline.` prefix — which is the rule that
-  makes a future key or setting forgettable, so store under it or say so in the README. What it
+  makes a future key or setting forgettable, so store under it or say so in the README. A cancelled
+  run's later writes are dropped at the composition root, not by the reducer (**P-12**). What it
   cannot reach (the device's copies, anything already sent) is stated in `README.md`, not on the button.
 
 ## Routes

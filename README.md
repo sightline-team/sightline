@@ -39,7 +39,7 @@ text or refused by name, and the receipt lists the checks that ran and the ones 
 fourth letter exists to show the other ending: its reply is not the answer the app asked for, so the
 run makes its one repair retry and then shows the text you gave with no summary on it, which is the
 path most likely to meet a real user and the one `docs/ARCHITECTURE.md` §13 promises. Proved by
-`tests/e2e/flow.spec.ts` (80 Playwright tests) against exactly these two commands. The corpus is
+`tests/e2e/flow.spec.ts` (84 Playwright tests) against exactly these two commands. The corpus is
 **authored synthetic**, never recorded — no fixture has ever been on the wire (`fixtures/README.md`,
 item S-11) — and it is matched by content, so pasting your own document gets a refusal explaining that
 demo answers belong to demo documents, never an authored summary presented as a reading of your letter.
@@ -83,9 +83,11 @@ from `claims.ts` instead of a list of checks that passed.
 **Forget this document** sits in the navigation, so it is reachable from every screen — including
 the one a run is happening on. One press: empties the session (the words you gave, the reading,
 every answer, the receipt), clears the text you had typed but not yet sent, stops any request still
-going, revokes any image preview this tab created, removes this app's own `sessionStorage` keys, and
-stops Sightline's own read-aloud. It stays where you are; the announcement says what was cleared and
-the screen you were on changes underneath you.
+going — and what that request answers afterwards is thrown away, so a reading cannot reappear on a
+screen you just cleared (**P-12**, proved in a browser by pressing Forget while a completion was
+outstanding) — revokes any image preview this tab created, removes this app's own `sessionStorage`
+keys, and stops Sightline's own read-aloud. It stays where you are; the announcement says what was
+cleared and the screen you were on changes underneath you.
 
 What the button **cannot** do, stated here rather than implied by a tidy word on a control:
 

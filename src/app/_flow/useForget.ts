@@ -31,7 +31,7 @@ export function useForget(): () => void {
     // record behind to compute one from, which is the second reason this sentence stays local.
     const parts = ['Forgotten. Sightline has cleared the document and everything it read.'];
     if (report.aborted > 0) {
-      parts.push(`Stopped the ${report.aborted === 1 ? 'request' : `${report.aborted} requests`} that were still going.`);
+      parts.push(`Stopped the ${report.aborted === 1 ? 'request that was' : `${report.aborted} requests that were`} still going.`);
     }
     if (report.failed > 0) {
       parts.push(
