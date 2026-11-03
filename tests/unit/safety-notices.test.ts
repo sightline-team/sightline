@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SAFETY_NOTICE_IDS, safetyNotices, type SafetyNoticeId } from '@/features/safety/notices';
+import { appLimitationNotices, SAFETY_NOTICE_IDS, safetyNotices, type SafetyNoticeId } from '@/features/safety/notices';
 import { analysisSchema } from '@/features/analysis/schemas';
 import { groundFacts } from '@/features/analysis/grounding';
 import { FIXTURE_CASES } from '@/lib/fixtures/cases';
@@ -182,7 +182,7 @@ describe('the wording is plain and stays inside what the project may claim', () 
 describe('the demo corpus fires the notices a reviewer will hear', () => {
   // Run the same conversion `runPipeline` does — schema, then grounding — so this is the analysis
   // the results view receives, not a description of it.
-  for (const fixtureCase of FIXTURE_CASES) {
+  for (const fixtureCase of FIXTURE_CASES.filter((c) => c.unreadableReply === undefined)) {
     it(`${fixtureCase.name} shows exactly the notices its own reading justifies`, () => {
       const output = analysisSchema.parse(fixtureCase.analysis);
       const analysis = safetyReading(fixtureCase.name, fixtureCase.text, output);
@@ -208,4 +208,47 @@ describe('the demo corpus fires the notices a reviewer will hear', () => {
       model: `fixtures/${name}`,
     };
   }
+});
+
+/**
+ * The notices the transcript-only screen can say without a reading (item **P-11**, owed by **P-07**).
+ *
+ * P-07 left the English-only line off the degraded screen because `safetyNotices` needs an `Analysis`
+ * and a degraded run has none — so the one sentence that is *about Sightline* rather than about the
+ * document went missing exactly when the app has the least to say about the document. These tests are
+ * what keep the fix from becoming a second, drifting copy of the same sentence: `safetyNotices` ends
+ * with this list rather than repeating it.
+ */
+describe('the limits about Sightline survive a run with no reading (P-11)', () => {
+  it('names the language limit with no analysis anywhere', () => {
+    expect(appLimitationNotices().map((notice) => notice.id)).toEqual(['language']);
+  });
+
+  it('is the tail of every full notice list, so the two screens cannot disagree', () => {
+    for (const analysis of [reading(), reading({ docType: 'bill' }), reading({ docType: 'prescription', facts: [fact('amount')] })]) {
+      const limitations = appLimitationNotices();
+      expect(safetyNotices(analysis).slice(-limitations.length)).toEqual(limitations);
+    }
+  });
+
+  it('holds the same copy rules as the content notices, because a person hears it too', () => {
+    const JARGON = [/\bTEE\b/, /attestation/i, /enclave/i, /encrypt/i, /nonce/i, /\bAPI\b/, /schema/i, /zod/i, /\bmodel\b/i];
+    for (const notice of appLimitationNotices()) {
+      const sentences = notice.text.split(/(?<=[.!?])\s+/);
+      expect(sentences.length).toBeLessThanOrEqual(3);
+      for (const sentence of sentences) expect(sentence.split(/\s+/).length).toBeLessThanOrEqual(20);
+      for (const pattern of JARGON) expect(notice.text).not.toMatch(pattern);
+      // AGENTS.md §4 rule 1: this is a capability sentence, not a data-flow one.
+      expect(notice.text).not.toMatch(/sent|server|stored|leaves the device|uploaded|nothing was/i);
+    }
+  });
+
+  it('fires no content caution without a reading, which is the point of the split', () => {
+    // A failed reading says nothing about whether the letter mentions medicine or money. Guessing a
+    // caution from the transcript instead would be a second, unvalidated reader (§4 rule 10).
+    const ids = appLimitationNotices().map((notice) => notice.id);
+    expect(ids).not.toContain('medicine');
+    expect(ids).not.toContain('money');
+    expect(ids).not.toContain('deadline');
+  });
 });

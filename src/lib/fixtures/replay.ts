@@ -42,18 +42,32 @@ export interface PreparedReply {
   sourceQuote?: string;
 }
 
-export interface FixtureCase {
+export interface FixtureCaseFields {
   /** Stable id, used in the fake completion id so a receipt cannot look like a live call. */
   name: string;
   /** What the UI offers to load (P-05). Plain language, no document content from a real person. */
   title: string;
   /** The demo document, verbatim. The structure step is answered for this text and no other. */
   text: string;
-  /** What the model would have returned. Validated against `analysisSchema` by the tests. */
-  analysis: unknown;
   /** Prepared answers (P-06). A question that is not on this list is refused, not answered. */
   qa: PreparedReply[];
 }
+
+/**
+ * What the model would have returned for the structure step — exactly one of two things, which is
+ * why this is a union and not two optional fields: a case that carried both would be replayed as the
+ * analysis and its bad reply would never be seen, and a case carrying neither would be replayed as
+ * `undefined`.
+ *
+ *  - `analysis` — the authored reading, validated against `analysisSchema` by the tests;
+ *  - `unreadableReply` — prose that is not the JSON the request asked for, which is how item
+ *    **P-11** reaches the transcript-only screen in a browser: Mode F cannot truncate a reply (every
+ *    other fixture is authored JSON), but it can answer twice in the shape a real model sometimes
+ *    answers in, and let the one repair retry and §13's fallback run for real.
+ */
+export type FixtureReply = { analysis: unknown; unreadableReply?: never } | { unreadableReply: string; analysis?: never };
+
+export type FixtureCase = FixtureCaseFields & FixtureReply;
 
 /** What a replayed completion is named as in the receipt. Not a TEE model and never claims to be. */
 export const FIXTURE_MODEL = 'fixtures/demo-model';
@@ -85,7 +99,10 @@ function envelopeFor(fixture: FixtureCase): Record<string, unknown> {
   return {
     id: `fixture-${fixture.name}`,
     model: FIXTURE_MODEL,
-    choices: [{ message: { content: JSON.stringify(fixture.analysis) } }],
+    // A case replies with the authored reading, or with the prose that failed to be one (P-11).
+    // Either way the same content goes back every time, which is what makes the repair retry
+    // deterministic: the second attempt gets the same unreadable answer, and §13's fallback runs.
+    choices: [{ message: { content: 'unreadableReply' in fixture ? fixture.unreadableReply : JSON.stringify(fixture.analysis) } }],
   };
 }
 

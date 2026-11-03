@@ -3,7 +3,7 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import Link from 'next/link';
 import { TrustReceipt } from '@/features/trust/TrustReceipt';
-import { safetyNotices } from '@/features/safety/notices';
+import { appLimitationNotices, safetyNotices } from '@/features/safety/notices';
 import { useSessionStore } from '@/lib/session/store';
 import type { DocType, KeyFact, Transcript } from '@/types';
 
@@ -65,7 +65,17 @@ export function ResultsView({ ask, speak }: { ask: ReactNode; speak: ReactNode }
     // that would contain it are *absent* rather than empty: an empty "Key facts" heading over
     // nothing would read as "this document has no facts", which is a claim about the document
     // and not about the failed reading. What stays is everything that does not need a reading:
-    // the words themselves, the question box, and the receipt showing which checks ran.
+    // the words themselves, Sightline's own limits, the question box, and the receipt showing
+    // which checks ran.
+    //
+    // There is deliberately **no** read-aloud control here (the decision item **P-11** was asked to
+    // make with the screen in front of it, and `ReadAloud.tsx` already returns `null` without an
+    // analysis). P-09 speaks the summary and our cautions, and this screen has only the second of
+    // those; the remaining content is the full text, which P-09 ruled out for every screen because it
+    // belongs to the reader or magnifier the person is already running — "the audio cannot read over
+    // the screen reader" is the same reason on both. A button that spoke one sentence about English
+    // only, over a letter the person can read for themselves, would be a control whose output the
+    // page already shows two lines above it.
     const degraded = session.degraded;
     return (
       <>
@@ -76,6 +86,15 @@ export function ResultsView({ ask, speak }: { ask: ReactNode; speak: ReactNode }
           <h2>No summary</h2>
           <p>{degraded.userMessage}</p>
           <p>Sightline has the words but could not turn them into an answer, so there is nothing to summarise yet. Below is the text exactly as it was given.</p>
+          {/* P-11: the cautions about Sightline itself, on the screen with no reading. They are true
+              of a run that produced nothing, and this is the moment a person is least equipped to
+              discover the limits by trying. The content notices stay absent — they fire on fields of a
+              reading, and inventing one from a failed reading is what §4 rule 10 forbids. */}
+          <ul data-testid="safety-notices">
+            {appLimitationNotices().map((notice) => (
+              <li key={notice.id}>{notice.text}</li>
+            ))}
+          </ul>
           {degraded.retryable ? <p className="muted">You can try again.</p> : null}
         </div>
 

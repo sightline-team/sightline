@@ -81,6 +81,9 @@ Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.m
 - Result order: Summary → Key facts → Actions → Warnings → Full text → Ask → Trust receipt
 - Read-aloud = one opt-in play/stop button (P-09), no auto-play, stops on Forget; reads only the
   summary and Sightline's own cautions, never the model's warnings; screen-reader users mostly won't use it
+- Transcript-only screen (invalid JSON after the one repair retry, **P-11**): the sections a reading
+  would fill are **absent**, not empty; the English-only line is said there (`appLimitationNotices()`);
+  no read-aloud control, because there is no summary and the full text belongs to the person's own reader
 - Settings (A-15) = four named speeds in a native radio group (a value that is heard should be a word,
   not "1.35") and one contrast checkbox, whole rows ≥ 44 px, state driven by the store so a refused
   write snaps back. Speed change: no extra announcement (the reader says the newly selected radio);

@@ -9,13 +9,20 @@ import type { FixtureCase } from '@/lib/fixtures/replay';
  * synthetic, and `tests/unit/fixtures.test.ts` enforces that — a fixture that could be
  * mistaken for a real person's bill cannot enter the set.
  *
- * Two of the three are deliberately imperfect, because a demo that only shows the easy case
- * teaches the reviewer nothing about the product:
+ * Two of the three readable letters are deliberately imperfect, because a demo that only shows the
+ * easy case teaches the reviewer nothing about the product:
  *  - Riverside carries one fact whose `sourceQuote` is a *rephrasing*. Grounding must flag it
  *    `quoteFound: false` and the UI must show it flagged (AGENTS.md §4 rule 8). That is the
  *    realistic model failure mode, authored in on purpose.
  *  - Meadow Walk is a medication letter, so the safety notices (P-07) have something to fire
  *    on in a demo with no real prescription in it.
+ *
+ * The fourth case is imperfect in the other direction: it has **no analysis at all**, because the
+ * reply it replays is prose where the JSON was asked for (item **P-11**). Ferney is the only way to
+ * reach the transcript-only screen — §13's "invalid JSON, one repair retry, then transcript only" —
+ * without a live service (**B-05**): the other three are authored JSON, so Mode F cannot mangle or
+ * truncate one of those. Its prose is deliberately about the letter in words the letter itself never
+ * uses, so a test can prove none of it reaches the screen.
  *
  * Each case also carries prepared answers (P-06): the wording a demo visitor can ask, one
  * honest "not in the document" reply per letter, and one authored near-miss quote in the bill so
@@ -56,6 +63,16 @@ If you feel worse or have thoughts of harming yourself, call 111 now.
 
 This letter is synthetic demo data written for Sightline. It is not medical advice and
 describes no real patient or practice.`;
+
+const FERNEY_TEXT = `FERNEY COUNCIL — TRAVEL SERVICES
+Bus pass renewal letter
+Reference: BP-2026-0188
+Renew by: 30 April 2026 to keep travelling free
+Take this letter and your old pass to a One Stop Centre.
+Telephone 01234 560 000 if you cannot get to one.
+
+This letter is synthetic demo data written for Sightline. It describes no real person,
+address, bus pass or council.`;
 
 export const FIXTURE_CASES: FixtureCase[] = [
   {
@@ -215,5 +232,21 @@ export const FIXTURE_CASES: FixtureCase[] = [
         notInDocument: true,
       },
     ],
+  },
+  {
+    name: 'ferney-bus-pass',
+    title: 'Demo document 4: an answer that does not arrive',
+    text: FERNEY_TEXT,
+    // The failure P-08 described and could only prove in a reducer (item **P-11**). The words below
+    // are the realistic shape: a model that read the letter, replied in prose, and ignored the JSON
+    // the request asked for. Nothing here is a *worse* answer than a real one — it names the letter's
+    // subject in words the letter does not use, which is what makes "the model's prose never reaches
+    // the screen" a checkable claim rather than a hope.
+    unreadableReply:
+      'Sorry, I cannot put that into the format you asked for. It seems to be about travel, and my advice would be to take it along in person if the date is close.',
+    // No prepared questions: this case exists to show the screen with no reading on it, and inventing
+    // an answer for the letter whose own answer failed would be the opposite of that. A question asked
+    // here is refused by name (`no_fixture_for_question`), which the e2e asserts.
+    qa: [],
   },
 ];

@@ -46,6 +46,8 @@ Run in this order. Each cell: heard correctly? (Y/N), what was actually spoken, 
 | 16 | Read the answer aloud (P-09) | Nothing is spoken before the press; the button's own label change is heard; the summary and Sightline's cautions are the words read, not the model's warnings; a second press, leaving the screen, or Forget stops it; the device's route announcer does not talk over it | |
 | 17 | Choose a reading speed (A-15) | Each radio is announced with its word ("Fast"), not a number; the next reading uses it; no second announcement follows the selection; the off-list case (a hand-edited 1.8) says what it means | |
 | 18 | Turn on high contrast (A-15) | "High contrast is on." reaches the live region; colours change on every route and after a reload; text stays ≥ 4.5:1 to the eye, not only to axe | |
+| 19 | The transcript-only screen (P-11): run demo document 4 | The failure sentence is announced before the new screen is read; the reader lands on "What Sightline read" and the next heading says "No summary"; the sections that need a reading are *absent*, so nothing reads as "this letter has no facts"; the English-only caution is heard; the letter's own words can be read at leisure | |
+| 20 | The same screen, with the reader's own read-what's-on-screen | It is usable without Sightline's speech engine — there is deliberately no read-aloud button there (P-09's full-text rule), so a person's own reader is how that page is heard. If that turns out to be wrong in practice, the decision belongs to this line, not to a code comment | |
 
 ## Keyboard-only pass (A-05) — can be run today
 

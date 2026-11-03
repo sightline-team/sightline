@@ -32,18 +32,22 @@ model, and it always shows the demo-data banner — that sentence is defined in
 `src/features/trust/claims.ts` and is deliberately not repeated here, so a README edit cannot make
 it disagree with the app (requirement R9, `docs/PRD.md` §7).
 
-**What that runs today:** paste text — or choose one of three synthetic demo letters — and the whole
+**What that runs today:** paste text — or choose one of four synthetic demo letters — and the whole
 flow completes in the browser: the pipeline answers, the results view shows Summary → Key facts →
-Actions → Warnings → Full text → Ask → Verification, and the receipt lists the checks that ran and
-the ones that did not. Proved by `tests/e2e/flow.spec.ts` (26 Playwright tests) against exactly these
-two commands. The corpus is **authored synthetic**, never recorded — no fixture has ever been on the
-wire (`fixtures/README.md`, item S-11) — and it is matched by content, so pasting your own document
-gets a refusal explaining that demo answers belong to demo documents, never an authored summary
-presented as a reading of your letter.
+Actions → Warnings → Full text → Ask → Verification, questions about the letter are answered from its
+text or refused by name, and the receipt lists the checks that ran and the ones that did not. The
+fourth letter exists to show the other ending: its reply is not the answer the app asked for, so the
+run makes its one repair retry and then shows the text you gave with no summary on it, which is the
+path most likely to meet a real user and the one `docs/ARCHITECTURE.md` §13 promises. Proved by
+`tests/e2e/flow.spec.ts` (80 Playwright tests) against exactly these two commands. The corpus is
+**authored synthetic**, never recorded — no fixture has ever been on the wire (`fixtures/README.md`,
+item S-11) — and it is matched by content, so pasting your own document gets a refusal explaining that
+demo answers belong to demo documents, never an authored summary presented as a reading of your letter.
 
-**What it does not do:** read a photo (C-01…C-06), answer a question about the document (P-06), or
-run in relay/direct mode — T-01/T-02 are unbuilt, so those modes refuse rather than show an answer
-with no verification behind it.
+**What it does not do:** read a photo (C-01…C-06), or run in relay/direct mode — the live modes refuse
+at the door because there is no attested service to reach (F-04, F-05, blocker B-05), so nothing on
+screen can imply a verified run before verification exists. Questions are answered in fixture mode
+only; the same ask path is what a live mode will use once it can run.
 
 ## Live demo
 

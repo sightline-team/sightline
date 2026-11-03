@@ -28,8 +28,8 @@ const SECTION_ORDER = ['Summary', 'Key facts', 'What you may need to do', 'Warni
 
 const BOX = 'document-text';
 
-/** The demo buttons are rendered in corpus order: 1 = bill, 2 = bank statement, 3 = GP letter. */
-const DEMO = { bill: 0, statement: 1, gpLetter: 2 } as const;
+/** The demo buttons are rendered in corpus order: 1 = bill, 2 = bank statement, 3 = GP letter, 4 = the one whose answer cannot be read. */
+const DEMO = { bill: 0, statement: 1, gpLetter: 2, unreadable: 3 } as const;
 
 /** Choose a demo document, returning the exact text it put in the box. */
 async function chooseDemoDocument(page: Page, index: number): Promise<string> {
@@ -598,6 +598,168 @@ test.describe("Sightline's own safety notices (P-07)", () => {
     expect(words).not.toMatch(/scam|fraud|detect/);
     expect(words).not.toContain('sertraline');
     expect(words).toContain('does not give medical advice');
+  });
+});
+
+/**
+ * The transcript-only screen, in a browser, with no key (item **P-11**).
+ *
+ * P-08 built this state and could only prove it in a reducer, because every fixture reply was
+ * authored JSON: Mode F had nothing to make unreadable. The fourth demo document now replies in prose
+ * on both attempts, so the one repair retry, `run_degraded` and `ResultsView`'s no-reading branch all
+ * run for real here — which is the whole point: the screen a person meets when the service fails them
+ * is the screen that must not be untested.
+ *
+ * The literals below (`UNREADABLE_REPLY_PHRASES`, the letter's own reference) are written out rather
+ * than imported because Playwright does not resolve the `@/` alias — see the top of this file. The
+ * corpus itself, and the fact that this reply is genuinely not the JSON that was asked for, is pinned
+ * by `tests/unit/fixtures.test.ts`.
+ */
+test.describe('the transcript-only screen (P-11)', () => {
+  const UNREADABLE_REPLY_PHRASES = ['I cannot put that into the format', 'my advice would be'];
+
+  /** Demo document 4, run to the end of the flow: the retry, then §13's fallback. */
+  async function readTheLetterThatFails(page: Page) {
+    const text = await chooseDemoDocument(page, DEMO.unreadable);
+    await runText(page, text);
+    await expect(page.getByTestId('degraded-notice')).toBeVisible();
+    return text;
+  }
+
+  test.beforeEach(async ({ page }) => {
+    // The recorder is installed for the no-control test below, which has to prove the engine heard
+    // nothing on the screen where there is no answer to speak.
+    await page.addInitScript(installSpeechRecorder);
+  });
+
+  test('a demo letter whose answer cannot be read reaches the transcript-only screen', async ({ page }) => {
+    await readTheLetterThatFails(page);
+
+    await expect(page.getByTestId('results-heading')).toHaveText('What Sightline read');
+    await expect(page.getByRole('heading', { level: 2, name: 'No summary' })).toBeVisible();
+    // The catalogue's own sentence, not a screen-written paraphrase — the announcer says the same
+    // words, and two phrasings for one failure would be two things to keep in step.
+    await expect(page.getByTestId('degraded-notice')).toContainText('The service returned something Sightline could not read. Try again.');
+    await expect(page.getByTestId('degraded-notice')).toContainText('there is nothing to summarise yet');
+    await expect(page.getByTestId('degraded-notice')).toContainText('You can try again.');
+    await expect(page).toHaveURL(/\/read$/);
+  });
+
+  test('the sections that need a reading are absent, not empty', async ({ page }) => {
+    await readTheLetterThatFails(page);
+
+    // An empty "Key facts" heading would read as "this letter contains no facts" — a claim about the
+    // document, drawn from a reading that did not happen (AGENTS.md §4 rule 10).
+    expect(await page.locator('main h2').allTextContents()).toEqual(['No summary', 'Full text', 'Ask a question', 'Verification']);
+    for (const id of ['summary-heading', 'facts-heading', 'actions-heading', 'warnings-heading']) {
+      await expect(page.locator(`#${id}`)).toHaveCount(0);
+    }
+    await expect(page.getByRole('link', { name: 'Skip to full text' })).toHaveCount(0);
+    await expect(page.getByTestId('ungrounded-count')).toHaveCount(0);
+  });
+
+  test('the words the person gave are still there, which is what makes the screen worth landing on', async ({ page }) => {
+    const text = await readTheLetterThatFails(page);
+
+    const fullText = page.locator('.transcript');
+    await expect(fullText).toHaveText(text);
+    await expect(fullText).toContainText('BP-2026-0188');
+  });
+
+  test('the reply that could not be read is nowhere on the screen', async ({ page }) => {
+    await readTheLetterThatFails(page);
+
+    // The service did answer — in prose, naming the letter's subject in words the letter never uses.
+    // None of it may reach the page (P-08's rule for a refusal extends here): what is shown is the
+    // transcript and Sightline's own sentences, and a paragraph of the model's unparsed prose would
+    // be an ungrounded reading wearing the clothes of a failure notice.
+    const body = await page.locator('main').innerText();
+    for (const phrase of UNREADABLE_REPLY_PHRASES) {
+      expect(body.toLowerCase(), `the screen leaked part of the unreadable reply: "${phrase}"`).not.toContain(phrase.toLowerCase());
+    }
+    expect(body).not.toContain('Sorry');
+  });
+
+  test('Sightline’s own limit is said on the screen with no reading (P-07’s debt)', async ({ page }) => {
+    await readTheLetterThatFails(page);
+
+    // Exactly one, and the one about Sightline. The content cautions stay off: they fire on fields of
+    // a reading, and this run has none to fire on.
+    await expect(page.getByTestId('safety-notices').locator('li')).toHaveText([
+      'Sightline reads English documents only. It will not guess at words in another language.',
+    ]);
+  });
+
+  test('there is no read-aloud control here, and the engine hears nothing', async ({ page }) => {
+    await readTheLetterThatFails(page);
+
+    // The decision P-11 was asked to make with this screen rendered: P-09 speaks the summary and our
+    // cautions, and the only one of those here is the English-only line the page already shows two
+    // lines above the button would sit. The rest of the screen is the full text, which P-09 rules out
+    // on every screen because reading it is the person's own reader's job.
+    await expect(page.getByRole('button', READ)).toHaveCount(0);
+    expect((await spoken(page)).spoken).toEqual([]);
+  });
+
+  test('the receipt shows both attempts and still calls them demo data', async ({ page }) => {
+    await readTheLetterThatFails(page);
+
+    // Two, not one: the retry is a real second call, and a receipt that described only the last one
+    // would understate what was sent. Both name the fixture (T-09).
+    await expect(page.getByTestId('trust-record')).toHaveCount(2);
+    await expect(page.getByTestId('trust-claim').first()).not.toContainText('verified');
+  });
+
+  test('the failure is announced and focus lands on the heading, not on a silent screen', async ({ page }) => {
+    await readTheLetterThatFails(page);
+
+    // §8 forbids the silent version of this transition, and the sentence must not claim a reading.
+    await expect(page.getByTestId('announcer')).toHaveText(
+      'The service returned something Sightline could not read. Try again. Showing the text you gave instead.',
+    );
+    await expect(page.getByTestId('results-heading')).toBeFocused();
+  });
+
+  test('a question asked here is refused by name, and no answer is written', async ({ page }) => {
+    await readTheLetterThatFails(page);
+
+    // The transcript-only screen keeps the question box because in a live mode it works: the answers
+    // come from the text. Mode F has no prepared wording for this letter, so it says so rather than
+    // inventing one — the same rule that keeps a demo answer off a pasted letter (P-06).
+    await page.getByLabel('Your question').fill('When do I need to renew?');
+    await page.getByRole('button', { name: 'Ask', exact: true }).click();
+
+    await expect(page.getByTestId('status-message')).toBeVisible();
+    await expect(page.getByTestId('status-message')).toContainText('no prepared answer');
+    await expect(page.getByTestId('qa-entry')).toHaveCount(0);
+    // A-06: focus lands on the failure summary, on this screen as on the one that worked.
+    await expect(page.getByTestId('status-message')).toBeFocused();
+  });
+
+  test('Forget clears the degraded state too, so nothing survives on the way out', async ({ page }) => {
+    await readTheLetterThatFails(page);
+    await page.getByRole('button', { name: 'Forget this document' }).first().click();
+
+    await expect(page.getByTestId('nothing-read')).toBeVisible();
+    await expect(page.getByTestId('degraded-notice')).toHaveCount(0);
+    await expect(page.locator('.transcript')).toHaveCount(0);
+    await expect(page.getByTestId('trust-record')).toHaveCount(0);
+  });
+
+  test('axe finds nothing serious or critical on the screen a person meets when the service fails', async ({ page }) => {
+    await readTheLetterThatFails(page);
+
+    // A-01 was green on the screens that work. This markup only exists on the one that does not, so
+    // it has never been swept — heading levels and the list of cautions are new here.
+    const results = await new AxeBuilder({ page }).analyze();
+    const blocking = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
+    expect(
+      blocking.map((v) => `${v.id} (${v.impact}): ${v.nodes.map((n) => n.html).join(' | ')}`),
+      'axe on the transcript-only screen',
+    ).toEqual([]);
+
+    const heights = await page.locator('main button').evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().height)));
+    expect(heights.filter((h) => h < 44), 'AGENTS.md §8: no touch target under 44px').toEqual([]);
   });
 });
 

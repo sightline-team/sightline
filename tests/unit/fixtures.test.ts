@@ -2,13 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { createFixtureClient, demoDocuments, FIXTURE_MODEL, fixtureModeAvailable, preparedQuestions, transportFor } from '@/lib/fixtures/replay';
 import { FIXTURE_CASES } from '@/lib/fixtures/cases';
 import { NearError } from '@/lib/near-ai/client';
+import { appError } from '@/lib/errors';
 import { analysisSchema } from '@/features/analysis/schemas';
+import { structureUserPrompt } from '@/features/analysis/prompts';
+import { REPAIR_NOTE } from '@/lib/near-ai/completion';
 import { askAboutDocument } from '@/features/qa/ask';
-import { completionEnvelopeSchema } from '@/lib/near-ai/envelope';
+import { completionEnvelopeSchema, contentOf } from '@/lib/near-ai/envelope';
 import { quoteFound } from '@/features/analysis/grounding';
 import { runPipeline } from '@/features/analysis/pipeline';
 import { RunHalt, type AttestationGate, type SignatureVerifier } from '@/lib/near-ai/verification';
-import type { Analysis, QAEntry, Session, Transcript } from '@/types';
+import type { Analysis, AppError, QAEntry, Session, Transcript } from '@/types';
 
 /**
  * Fixture replay tests (item **F-09**).
@@ -56,6 +59,7 @@ function fixtureSession(text: string): Session {
 function runFixtureFlow(text: string) {
   const analyses: Analysis[] = [];
   const claims: string[] = [];
+  const degradations: AppError[] = [];
   return {
     promise: runPipeline({
       session: fixtureSession(text),
@@ -66,22 +70,29 @@ function runFixtureFlow(text: string) {
       signal: new AbortController().signal,
       onTranscript: () => {},
       onAnalysis: (a) => void analyses.push(a),
-      // P-08: every fixture reply is authored JSON, so there is nothing to repair and nothing to
-      // degrade. Being called would mean demo data was reported as unreadable.
-      onDegraded: (error) => {
-        throw new Error(`Mode F must not degrade a run: ${error.code}`);
-      },
+      // P-08: the three readable fixtures are authored JSON, so there is nothing to repair and
+      // nothing to degrade. Being called for one of them would mean demo data was reported as
+      // unreadable. The fourth case exists to be called for (`ferney-bus-pass`, P-11).
+      onDegraded: (error) => void degradations.push(error),
       onTrustRecord: (r) => void claims.push(r.claim),
     }),
     analyses,
     claims,
+    degradations,
   };
 }
 
+/** The cases that carry an authored reading; `ferney-bus-pass` carries prose instead (P-11). */
+function readableCases() {
+  return FIXTURE_CASES.filter((fixture) => fixture.unreadableReply === undefined);
+}
+
 describe('the demo corpus is labelled and valid before anything runs', () => {
-  it('has three distinct documents', () => {
-    expect(FIXTURE_CASES).toHaveLength(3);
-    expect(new Set(FIXTURE_CASES.map((c) => c.name)).size).toBe(3);
+  it('has four distinct documents, three of them with an authored reading', () => {
+    expect(FIXTURE_CASES).toHaveLength(4);
+    expect(new Set(FIXTURE_CASES.map((c) => c.name)).size).toBe(4);
+    expect(readableCases()).toHaveLength(3);
+    expect(FIXTURE_CASES.filter((c) => c.unreadableReply !== undefined).map((c) => c.name)).toEqual(['ferney-bus-pass']);
   });
 
   it('each document says in its own text that it is synthetic', () => {
@@ -94,13 +105,21 @@ describe('the demo corpus is labelled and valid before anything runs', () => {
   });
 
   it('each authored analysis satisfies the schema the real mode output is validated against', () => {
-    for (const fixture of FIXTURE_CASES) {
+    for (const fixture of readableCases()) {
       expect(() => analysisSchema.parse(fixture.analysis)).not.toThrow();
     }
   });
 
+  it('the one unreadable reply is genuinely not the JSON that was asked for', () => {
+    // If this ever stops throwing, the P-11 case has silently become a readable letter and the
+    // transcript-only screen has gone untested again.
+    const fixture = FIXTURE_CASES.find((c) => c.unreadableReply !== undefined)!;
+    expect(() => analysisSchema.parse(JSON.parse(fixture.unreadableReply) as unknown)).toThrow();
+    expect(fixture.qa).toEqual([]);
+  });
+
   it('carries exactly one deliberate misquote in the whole corpus, and it is the bank letter', () => {
-    const ungrounded = FIXTURE_CASES.flatMap((fixture) => {
+    const ungrounded = readableCases().flatMap((fixture) => {
       const { facts, actions } = fixture.analysis as { facts: { sourceQuote: string }[]; actions: { sourceQuote: string }[] };
       return [...facts, ...actions]
         .filter((item) => !quoteFound(fixture.text, item.sourceQuote))
@@ -186,7 +205,7 @@ describe('transport selection keeps Mode F away from the network module', () => 
 
   it('is available with no credentials of any kind', () => {
     expect(fixtureModeAvailable()).toBe(true);
-    expect(demoDocuments()).toHaveLength(3);
+    expect(demoDocuments()).toHaveLength(4);
     expect(demoDocuments()[0]!.text).toBe(FIXTURE_CASES[0]!.text);
   });
 });
@@ -234,6 +253,81 @@ describe('the whole text flow runs in fixture mode with no key and no doubles', 
     // nothing truthful to say about one.
     expect(run.claims).toEqual([]);
     expect(halt?.error.userMessage).not.toContain('metastatic');
+  });
+});
+
+/**
+ * The fourth corpus case, which exists so that §13's fallback is a thing Mode F **does** rather than
+ * a thing the reducer describes (item **P-11**). P-08 could only prove the degraded state at the
+ * seam; these run the real pipeline against the real replay client, so the retry, the two receipts
+ * and the named failure all execute for real. The browser half is
+ * `tests/e2e/flow.spec.ts` › `the transcript-only screen (P-11)`.
+ */
+describe('the unreadable demo reply degrades a real fixture run (P-11)', () => {
+  const ferney = FIXTURE_CASES.find((fixture) => fixture.unreadableReply !== undefined)!;
+
+  it('ends with no analysis and one named failure, after the retry', async () => {
+    const run = runFixtureFlow(ferney.text);
+    await expect(run.promise).resolves.toBeUndefined();
+
+    expect(run.analyses).toEqual([]);
+    expect(run.degradations).toHaveLength(1);
+    const error = run.degradations[0]!;
+    expect(error.code).toBe('invalid_model_output');
+    // The catalogue's own sentence, so the screen and the announcer cannot say two different things.
+    expect(error.userMessage).toBe(appError('invalid_model_output').userMessage);
+    expect(error.retryable).toBe(true);
+    expect(error.userMessage).not.toContain(ferney.unreadableReply);
+  });
+
+  it('emits one receipt per attempt, so the receipt shows the retry happened', async () => {
+    const run = runFixtureFlow(ferney.text);
+    await run.promise;
+
+    // Two records, not one and not three: the first attempt and its single repair. A run that
+    // silently retried twice, or reported only the last try, would be invisible on the receipt.
+    expect(run.claims).toEqual(['fixtures', 'fixtures']);
+  });
+
+  it('answers the repair request with the same prose, and both ids name the fixture', async () => {
+    const client = createFixtureClient();
+    const first = { model: FIXTURE_MODEL, messages: [{ role: 'user', content: structureUserPrompt(ferney.text) }] };
+    const retry = {
+      model: FIXTURE_MODEL,
+      messages: [{ role: 'user', content: `${structureUserPrompt(ferney.text)}\n\n${REPAIR_NOTE}` }],
+    };
+
+    const a = completionEnvelopeSchema.parse((await client.post('chat/completions', first)).json);
+    const b = completionEnvelopeSchema.parse((await client.post('chat/completions', retry)).json);
+
+    expect(contentOf(a)).toBe(ferney.unreadableReply);
+    expect(contentOf(b)).toBe(ferney.unreadableReply);
+    // Both attempts name the fixture, so the receipt cannot read like one live call and one ghost.
+    expect(a.id).toBe(`fixture-${ferney.name}`);
+    expect(b.id).toBe(`fixture-${ferney.name}`);
+  });
+
+  it('writes the letter into the session anyway, because the fallback needs something to show', async () => {
+    // The transcript is the product's last honest output. If the run cleared it on failure, the
+    // transcript-only screen would be an empty screen wearing the name.
+    const seen: Transcript[] = [];
+    await runPipeline({
+      session: fixtureSession(ferney.text),
+      model: FIXTURE_MODEL,
+      transport: createFixtureClient(),
+      gate: GATE_MUST_NOT_RUN,
+      verifySignature: VERIFIER_MUST_NOT_RUN,
+      signal: new AbortController().signal,
+      onTranscript: (t) => void seen.push(t),
+      onAnalysis: () => {
+        throw new Error('the unreadable fixture must not produce an analysis');
+      },
+      onDegraded: () => {},
+      onTrustRecord: () => {},
+    });
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.text).toBe(ferney.text);
   });
 });
 

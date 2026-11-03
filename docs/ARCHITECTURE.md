@@ -241,7 +241,7 @@ Two things that are **not** in the sentence above but are in the build: the word
 | `near-ai/completion` | `readCompletion` (**P-08**): the one sequence both document-derived calls run — gate, body, send, signature, record, read — plus the single repair retry and the `ok / truncated / refused / unreadable` outcome. The features keep the decisions that differ: what each outcome costs the user |
 | `analysis` | Pipeline, prompts, zod schemas, grounding check |
 | `qa` | Grounded Q&A: `ask.ts` (one `readCompletion` → grounding), `prompts.ts`, `schemas.ts`, `AskPanel` (question field, prepared questions, answers in the order asked) |
-| `safety` | `notices.ts` (P-07): the only sentences Sightline writes about document content, computed from the validated `Analysis`, with the fixed order and the plain-language limits in §13 |
+| `safety` | `notices.ts` (P-07): the only sentences Sightline writes about document content, computed from the validated `Analysis`, with the fixed order and the plain-language limits in §13. `appLimitationNotices()` is the half that needs no reading — the English-only line, said on the transcript-only screen too (**P-11**) |
 | `speech` | One read-aloud button, rate. `speak.ts` is the engine call with the synthesizer injected (Node has no `speechSynthesis`) plus `chunkForSpeech`; `SpeakButton.tsx` is the play/stop toggle, off by default, never auto-played, absent when the browser has no engine. What it reads is built by `app/_flow/spoken_answer.ts`, because the summary and Sightline's own cautions come from two features (**P-09**, §12) |
 | `settings` | `lib/settings.ts` is the whole feature and the only code that touches `localStorage['sightline.settings']`: the validated read (`speechRate`, `highContrast`), the read-modify-write that re-validates before storing, `applyHighContrast`, and the external store the controls subscribe to so a refused write snaps back. The UI is `app/_flow/SettingsControls.tsx` (four named speeds, one contrast checkbox) with `app/_flow/HighContrastTheme.tsx` mounted in the layout because the theme is a property of the app, not of the page it was chosen on (**A-15**, ADR-21) |
 | `trust` | `record.ts` builds the only `TrustRecord`s; `claims.ts` maps record → rung → copy; `TrustReceipt` shows one block per call |
@@ -249,7 +249,7 @@ Two things that are **not** in the sentence above but are in the build: the word
 | `session/store` | The one `SessionProvider`: the reducer behind it, the registry of in-flight `AbortController`s and object URLs, and `forget()` — which supplies `lib/session/forget.ts`'s injected collaborators from the browser and dispatches `forgotten` (**P-10**) |
 | `session/forget` | The pure half of **Forget**: `forgetSession(targets)` aborts → revokes → clears, in that order, attempts every target even when one throws, and returns a `ForgetReport` of what actually happened. Plus `sessionKeysOwnedBy`, which is the `sightline.` prefix rule that makes a stored value forgettable (**P-10**) |
 | `app/_flow` | The composition roots — the only place two features may meet (AGENTS.md §7). `useDocumentRun`: store + announcer + router + transport + pipeline for one run; `useAskAboutDocument`: the same for a question; `useForget`: P-10's press; `ReadAloud` + `spoken_answer.ts`: the text the voice reads (P-09); `SettingsControls` + `HighContrastTheme` + `useStoredSettings`: A-15's two controls; `refused_steps.ts`: what a live mode says it did not do. `_` is Next's "not a route" prefix. Live modes refuse here until T-01/T-02 exist |
-| `fixtures` | Mode F replay. `cases.ts` holds the authored synthetic corpus (`FixtureCase{name,title,text,analysis}`) and `replay.ts` answers a request **only** when the document in it is one of those, byte for byte; every attestation and signature call is refused, because there is no enclave to describe. `fixtures/{responses,attestation}/` stay empty until S-11 records real payloads |
+| `fixtures` | Mode F replay. `cases.ts` holds the authored synthetic corpus — `FixtureCase{name,title,text,qa}` plus exactly one reply per case, either `analysis` or `unreadableReply` (the prose case is how **P-11** reaches the transcript-only screen with no key) — and `replay.ts` answers a request **only** when the document in it is one of those, byte for byte; every attestation and signature call is refused, because there is no enclave to describe. `fixtures/{responses,attestation}/` stay empty until S-11 records real payloads |
 
 ## 7. Data models
 
@@ -563,6 +563,12 @@ CSP: `connect-src` limited to self and NEAR AI Cloud hosts (including `*.complet
     design, and a document's words must not (AGENTS.md §4 rule 7);
   - **no engine, no control:** where `speechSynthesis` is absent the button is not rendered, rather
     than being a button that says nothing;
+  - **no reading, no control** (the decision item **P-11** made with the screen rendered): the
+    transcript-only view has no read-aloud button. Of the two things P-09 speaks, that screen holds
+    only the English-only line — already printed where the button would sit — and its remaining
+    content is the full text, which P-09 excludes everywhere because reading a page aloud is the
+    person's own screen reader's job, not a second voice talking over it. Asserted in the browser,
+    along with zero utterances reaching the engine on that path;
   - **Forget stops it** (P-10): `app/_flow/useForget.ts` calls `stopSpeaking()`, which is why the
     speech call lives in a composition root — `src/lib/` may not import `src/features/` (§7).
   The engine is the device's own and is outside Sightline's control: some browser voices are
@@ -608,9 +614,27 @@ invalid JSON (one repair retry, then the transcript-only view), `finish_reason: 
 not repaired) and model refusal (`model_refused`, halting — the catalogue's sentence is the
 paste-text offer). `captureIssues` / `[illegible]` counts and "split by page" belong to the image
 path (C-01…C-05) and still have no code to run them; "alternate TEE model" belongs to F-04's
-allowlist. No row in this table is reachable in Mode F through the retry path: every fixture reply
-is authored JSON, so a demo run cannot be truncated without inventing a truncation, and the
-degraded screen is therefore proved by unit tests only (see ROADMAP §10).
+allowlist.
+
+**As built (P-11, 2026-11-03) — the "invalid JSON" row is now reachable in Mode F.** The fourth demo
+document (`ferney-bus-pass`) replays prose instead of the JSON that was asked for, on both the first
+attempt and the repair retry, so a run with no key goes through `readCompletion`'s retry, emits two
+`TrustRecord`s, dispatches `run_degraded` and renders the transcript-only view. `tests/e2e/flow.spec.ts`
+› `the transcript-only screen (P-11)` is that proof in a browser; `tests/unit/fixtures.test.ts` holds the
+same run with no browser. `finish_reason: length` and refusal still have **no** Mode F path — a demo
+truncation would have to be invented, and an authored refusal is a claim about a model that is not
+being called. Two decisions came out of seeing the screen rendered:
+
+- the English-only notice is on it (`appLimitationNotices()`), because that sentence is about Sightline
+  and a run with no reading still has it; the content cautions are not, because they fire on fields of
+  a reading this run does not have;
+- there is **no** read-aloud control on it. P-09 speaks the summary and our cautions, and the only one
+  of those here is the line printed two rows above where the button would sit. What is left is the full
+  text, which P-09 excludes on every screen because reading a page aloud is the person's own screen
+  reader's job, not a second voice talking over it.
+
+The unreadable reply's own words are asserted absent from the screen, and the transcript is asserted
+present: the fallback has to leave the person with the letter, not with a heading.
 
 ### As built (P-07, 2026-11-03) — the notices Sightline writes itself
 

@@ -69,22 +69,40 @@ const MONEY_DOC_TYPES: DocType[] = ['bill', 'bank'];
 const DEADLINE_DOC_TYPES: DocType[] = ['legal', 'government'];
 
 /**
+ * The notices that are about **Sightline** rather than about a document, so they need no reading to
+ * be said. This is the whole reason it is its own function (item **P-11**): the English-only limit is
+ * true of a run that produced no reading at all, and the transcript-only screen is exactly where a
+ * person most needs to know that the app reads English and guesses at nothing. `safetyNotices` below
+ * appends these rather than duplicating them, so the two screens cannot drift into saying different
+ * things about the same limit.
+ */
+const LIMITATION_NOTICE_IDS: SafetyNoticeId[] = ['language'];
+
+export function appLimitationNotices(): SafetyNotice[] {
+  return LIMITATION_NOTICE_IDS.map((id) => ({ id, text: NOTICE_COPY[id] }));
+}
+
+/**
  * Which notices apply to this reading, in the fixed order. Deterministic and content-only: no
  * clock, no mode, no randomness, so the same analysis always produces the same list.
  */
 export function safetyNotices(analysis: Analysis): SafetyNotice[] {
   const factKinds = new Set(analysis.facts.map((fact) => fact.kind));
-  const fired: Record<SafetyNoticeId, boolean> = {
+  const fired: Record<Exclude<SafetyNoticeId, 'language'>, boolean> = {
     medicine: MEDICINE_DOC_TYPES.includes(analysis.docType) || factKinds.has('medication') || factKinds.has('dose'),
     money: MONEY_DOC_TYPES.includes(analysis.docType) || factKinds.has('amount'),
     deadline:
       analysis.actions.some((action) => action.deadline !== undefined) ||
       (DEADLINE_DOC_TYPES.includes(analysis.docType) && factKinds.has('date')),
-    // About Sightline, not about the document, so it is always said when there is a reading.
-    language: true,
   };
 
-  return NOTICE_ORDER.filter((id) => fired[id]).map((id) => ({ id, text: NOTICE_COPY[id] }));
+  // Content cautions first, then the statements about Sightline's own limits — the order
+  // `NOTICE_ORDER` fixes, now produced by the two functions rather than by one flag.
+  const contentOnly = NOTICE_ORDER.filter((id): id is Exclude<SafetyNoticeId, 'language'> => id !== 'language');
+  return [
+    ...contentOnly.filter((id) => fired[id]).map((id) => ({ id, text: NOTICE_COPY[id] })),
+    ...appLimitationNotices(),
+  ];
 }
 
 /** The ids in display order, exported so a test can assert the order rather than assume it. */

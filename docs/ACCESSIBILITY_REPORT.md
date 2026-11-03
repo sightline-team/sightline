@@ -9,9 +9,10 @@ not tested, failures, fixes. Two rules make this file worth reading:
   not a conclusion; a screen-reader pass is the real test and it needs a human with a device (A-03,
   A-04, A-05, A-06 — all blocked on B-01 until a device and a user exist).
 
-**Status as of 2026-11-03: automated checks cover the whole demo flow; nothing has been tested with an
-assistive technology.** The shell and the Mode F results view are built and swept by axe. The rows below
-are the honest current state of each.
+**Status as of 2026-11-03: automated checks cover the whole demo flow, including the screen the demo flow
+reaches when an answer cannot be read; nothing has been tested with an assistive technology.** The shell,
+the Mode F results view, the Settings controls and the transcript-only view are built and swept by axe.
+The rows below are the honest current state of each.
 
 ## Tested
 
@@ -27,17 +28,18 @@ are the honest current state of each.
 | 8 | Only one `role="status"` region exists during client navigation, and the route title is identical on every route | Playwright, same file | 2026-11-03 | Pass |
 | 9 | The Forget control (P-10) is reachable on all four routes, and one press empties the screen, says so through the announcer, moves focus to the heading of what is left, and is ≥ 44 px | Playwright `toBeFocused()` + `boundingBox()`, same file | 2026-11-03 | Pass (47 tests: 12 shell, 35 flow) |
 | 10 | The read-aloud control (P-09): nothing is spoken before a press; the label and `aria-pressed` change together and revert when the engine reports the end; the rate comes from the stored setting and an unreadable one falls back to normal; Forget cancels it; no button appears where there is no answer or no engine; the section order does not move | Playwright, same file, with `window.speechSynthesis` replaced by a recorder before the app loads | 2026-11-03 | Pass (58 tests: 12 shell, 46 flow) |
-
 | 11 | The Settings controls (A-15) meet the target minimum as **rows**, not as 20 px native inputs; a speed chosen there is the speed the next reading uses; the theme reaches `globals.css`, is announced through the single live region, survives client navigation and a reload, and is not applied unless asked for; Forget leaves both values alone | Playwright, `tests/e2e/flow.spec.ts` ("Settings a person can change"), with the speech engine replaced by a recorder so the rate is read off the utterance | 2026-11-03 | Pass (69 tests: 12 shell, 57 flow) |
 | 12 | axe over `/settings` **with the controls on screen, in both themes** — default and high contrast | `AxeBuilder` twice in the same test, same file | 2026-11-03 | 0 serious or critical violations in either theme. This is an axe colour-contrast pass, **not** the 200%-zoom / real-device contrast check A-08 still owes |
+| 13 | **The screen a person meets when the service fails them** (P-11): the transcript-only view, reached in a browser by demo document 4 whose reply is prose rather than the JSON asked for — sections that need a reading asserted *absent* rather than empty, the failure announced through the single live region, focus on the heading, the English-only caution present and the content cautions not, no read-aloud control and zero utterances reaching the engine, both retry receipts on the page, the model's own prose nowhere on the screen, Forget clearing the degraded state, axe over the result | `tests/e2e/flow.spec.ts` ("the transcript-only screen"), Chromium headless, no credentials | 2026-11-03 | Pass — 0 serious or critical violations, and its `main button` targets measured ≥ 44 px. 80 tests overall (12 shell, 68 flow). Until this row the degraded view had **never been rendered by a browser**: P-08 proved it in a reducer only, which is the gap P-11 existed to close |
 
-**What these rows do not mean.** All twelve are automated checks in one headless browser. Nothing here was
+**What these rows do not mean.** All thirteen are automated checks in one headless browser. Nothing here was
 heard through a screen reader, and a green axe run cannot tell whether the announcer reads well, whether
 the document flow is comprehensible non-visually, or whether VoiceOver on iOS behaves the same. A-03..A-06
 remain open and blocked on B-01. Row 10 is the sharpest version of that limit: it records the **calls the
 app makes to the device's speech engine**, which is not evidence that anyone can hear the result clearly,
 at a usable speed, over their own reader. Row 11 inherits it: the rate the tests prove is the rate *sent*,
-not a speed anyone found comfortable.
+not a speed anyone found comfortable. Row 13 is the same limit on the failure screen: it proves the DOM
+contract a reader depends on there, not what a person hears when the app has no answer.
 
 Row 3 says "one live region" about the **server-rendered shell**. It is still true, but it is now a
 narrower statement than it sounds: see the Next.js route announcer in "Known gaps" below.
@@ -58,6 +60,7 @@ input view's stops, not the answer's).
 | Braille display / embosser path | Never covered by any item; PRD §12 assumption, unverified | — |
 | The read-aloud voice (P-09), and which device voices synthesise over the network | The tests record the calls the app makes; nobody has listened to the result, and whether a given browser voice is on-device is a property of the device | A-03, A-04 |
 | Whether four named speeds is the right set, and whether the theme is usable at high contrast on a real screen | The control exists and is checked structurally; whether it is *right* is a person's judgement, and the first one available is U-01 | A-08, U-01, B-01 |
+| The transcript-only screen as a person experiences it (P-11) | It is now rendered and swept in a browser, but nobody has landed on it with a reader running — and "there is no read-aloud control here" is a decision made from the DOM, not from hearing a failure | A-03, A-04, A-06, U-01 |
 | Real user session | U-01 open | U-02, U-03 |
 | Screen magnification / 200% zoom, `prefers-contrast`, `prefers-reduced-motion` | Not exercised since the styles exist | A-08 |
 | Dynamic text / OS font scaling | Not exercised | A-08 |
