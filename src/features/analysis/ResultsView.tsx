@@ -4,7 +4,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import Link from 'next/link';
 import { TrustReceipt } from '@/features/trust/TrustReceipt';
 import { useSessionStore } from '@/lib/session/store';
-import type { DocType, KeyFact } from '@/types';
+import type { DocType, KeyFact, Transcript } from '@/types';
 
 /**
  * `ResultsView` — item **P-04**.
@@ -41,10 +41,40 @@ export function ResultsView({ ask }: { ask: ReactNode }) {
   const analysis = session.analysis;
 
   // §8: focus moves to the new view's heading after navigation, so the reader starts at the
-  // answer rather than at the top of the page again. Only when there is an answer to land on.
+  // answer rather than at the top of the page again. Only when there is a view to land on —
+  // which after P-08 includes the transcript-only screen, where the heading is the answer's
+  // replacement and the notice below it is the first thing to be read.
   useEffect(() => {
-    if (analysis !== undefined) headingRef.current?.focus();
-  }, [analysis]);
+    if (analysis !== undefined || session.degraded !== undefined) headingRef.current?.focus();
+  }, [analysis, session.degraded]);
+
+  if (analysis === undefined && session.degraded !== undefined) {
+    // ARCH §13's "then show transcript only" (P-08). The reading is missing, so the sections
+    // that would contain it are *absent* rather than empty: an empty "Key facts" heading over
+    // nothing would read as "this document has no facts", which is a claim about the document
+    // and not about the failed reading. What stays is everything that does not need a reading:
+    // the words themselves, the question box, and the receipt showing which checks ran.
+    const degraded = session.degraded;
+    return (
+      <>
+        <h1 ref={headingRef} tabIndex={-1} data-testid="results-heading">
+          What Sightline read
+        </h1>
+        <div data-testid="degraded-notice">
+          <h2>No summary</h2>
+          <p>{degraded.userMessage}</p>
+          <p>Sightline has the words but could not turn them into an answer, so there is nothing to summarise yet. Below is the text exactly as it was given.</p>
+          {degraded.retryable ? <p className="muted">You can try again.</p> : null}
+        </div>
+
+        <TranscriptSection transcript={session.transcript} />
+
+        {ask}
+
+        <TrustReceipt records={session.trust} />
+      </>
+    );
+  }
 
   if (analysis === undefined) {
     return (
@@ -127,19 +157,25 @@ export function ResultsView({ ask }: { ask: ReactNode }) {
         )}
       </section>
 
-      <section aria-labelledby="full-text">
-        <h2 id="full-text">Full text</h2>
-        {transcript === undefined ? (
-          <p>The text you gave is not in this session any more.</p>
-        ) : (
-          <p className="transcript">{transcript.text}</p>
-        )}
-      </section>
+      <TranscriptSection transcript={transcript} />
 
       {ask}
 
       <TrustReceipt records={session.trust} />
     </>
+  );
+}
+
+function TranscriptSection({ transcript }: { transcript: Transcript | undefined }) {
+  return (
+    <section aria-labelledby="full-text">
+      <h2 id="full-text">Full text</h2>
+      {transcript === undefined ? (
+        <p>The text you gave is not in this session any more.</p>
+      ) : (
+        <p className="transcript">{transcript.text}</p>
+      )}
+    </section>
   );
 }
 

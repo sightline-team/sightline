@@ -1,9 +1,9 @@
 import { z } from 'zod';
 
 /**
- * The completion envelope (items **F-03**, **P-03**, shape from `docs/SPIKE_RESULTS.md` §1
- * and §2), and the one transport contract both document-derived calls depend on: the structure
- * step (P-03) and question answering (P-06) post to the same endpoint and get this back.
+ * The completion envelope (items **F-03**, **P-03**, **P-08**; shape from `docs/SPIKE_RESULTS.md` §1
+ * and §2), and the one transport contract both document-derived calls depend on: the structure step
+ * (P-03) and question answering (P-06) post to the same endpoint and get this back.
  *
  * It lives beside the client that produces those bytes rather than in a feature, so neither
  * feature has to import the other to check the shape of a response.
@@ -13,15 +13,67 @@ import { z } from 'zod';
  * Sightline acts on are required: `id` is the key ADR-19 fetches the signature with, `model` is
  * what the receipt names, and `content` is the only thing that reaches the user.
  *
- * `finish_reason` is deliberately not parsed here — P-08 owns truncation, and reading a field
- * without acting on it is how a bug hides.
+ * ### `finish_reason` and `refusal` are optional, and that is a decision, not an oversight
+ *
+ * SPIKE §1 records the openapi response properties at the **top level** — `choices`, `created`,
+ * `id`, `model`, `object`, `usage` — and never enumerates what sits inside a choice. Both fields
+ * below are what an OpenAI-compatible endpoint is expected to carry (`PRD.md` §"Error handling" and
+ * `ARCHITECTURE.md` §13 both plan around `finish_reason: length`), so they are **[Unverified]**
+ * here, and the honest reading of that is:
+ *
+ *  - **they are optional**, so a response that omits them still parses and still gets verified;
+ *  - **`finish_reason` is compared only against the one value a plan exists for** (`length`). Any
+ *  other string is left alone rather than interpreted, because inventing a meaning for a value we
+ *  have never seen is how a truncation bug becomes a wrong answer;
+ *  - **absence never counts as a pass.** A missing `finish_reason` does not say "the answer is
+ *  complete"; the content still has to parse, and if it does not, P-08's repair retry and
+ *  transcript-only path run anyway. Detection is a faster, clearer route to the same behaviour, not
+ *  a precondition for it.
+ *
+ * Confirming both field names and their real value set is S-08/S-11 (blocker B-05); until then this
+ * file is the only place that reads them, and `truncated`/`refusalOf` are the only way to ask.
  */
 export const completionEnvelopeSchema = z.object({
   id: z.string().min(1),
   model: z.string().min(1).optional(),
   choices: z
-    .array(z.object({ message: z.object({ content: z.string() }) }))
+    .array(
+      z.object({
+        message: z.object({
+          content: z.string(),
+          /** Present on a safety or capability refusal. Model-authored, so treated as data (§11). */
+          refusal: z.string().nullable().optional(),
+        }),
+        /** OpenAI-compatible reason string. **[Unverified]** on this endpoint; see above. */
+        finish_reason: z.string().nullable().optional(),
+      }),
+    )
     .min(1, 'a completion with no choices has nothing to show the user'),
 });
 
 export type CompletionEnvelope = z.infer<typeof completionEnvelopeSchema>;
+
+const choice = (envelope: CompletionEnvelope) => envelope.choices[0]!;
+
+/**
+ * True when the service said the answer was cut off at the token limit. Only `length` is claimed,
+ * for the reason in the header comment: it is the one value `PRD.md` and ARCH §13 plan around.
+ */
+export function truncated(envelope: CompletionEnvelope): boolean {
+  return choice(envelope).finish_reason === 'length';
+}
+
+/** The content string this run should try to read — empty content is not an answer. */
+export function contentOf(envelope: CompletionEnvelope): string {
+  return choice(envelope).message.content;
+}
+
+/**
+ * The service's own refusal, or `undefined`. Returned so a caller can decide *whether* to report a
+ * refusal; nobody reads the prose aloud (see `features/analysis/pipeline.ts`, which reports
+ * Sightline's sentence instead, because model output is untrusted data — AGENTS.md §11).
+ */
+export function refusalOf(envelope: CompletionEnvelope): string | undefined {
+  const refusal = choice(envelope).message.refusal;
+  return typeof refusal === 'string' && refusal.trim().length > 0 ? refusal : undefined;
+}

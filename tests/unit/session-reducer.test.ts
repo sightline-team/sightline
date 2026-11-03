@@ -206,6 +206,42 @@ describe('session reducer (F-07)', () => {
     expect(sessionReducer(errored, { type: 'error_cleared' })).toMatchObject({ status: 'idle', error: undefined });
   });
 
+  it('a degraded run is ready, not errored, and keeps the transcript (P-08)', () => {
+    const degraded = run(
+      [{ type: 'transcript_received', transcript: transcript() }, { type: 'run_degraded', code: 'invalid_model_output' }],
+      'fixtures',
+    );
+    // ARCH §13: "then show transcript only". `error` would mean a step stopped and would be
+    // cleared by the next step that works; this is the state of the results view instead.
+    expect(degraded.status).toBe('ready');
+    expect(degraded.degraded?.code).toBe('invalid_model_output');
+    expect(degraded.error).toBeUndefined();
+    expect(degraded.analysis).toBeUndefined();
+    expect(degraded.transcript?.text).toContain('840');
+  });
+
+  it('a degraded run drops the analysis from the attempt before it', () => {
+    const used = run([
+      { type: 'transcript_received', transcript: transcript() },
+      { type: 'analysis_received', analysis: analysis() },
+      { type: 'run_degraded', code: 'output_truncated' },
+    ]);
+    // A summary of words that are no longer on screen, sitting under "this could not be read",
+    // is a contradiction the reader has to resolve themselves.
+    expect(used.analysis).toBeUndefined();
+    expect(used.degraded?.code).toBe('output_truncated');
+  });
+
+  it('a later successful read clears the degraded notice', () => {
+    const recovered = run([
+      { type: 'transcript_received', transcript: transcript() },
+      { type: 'run_degraded', code: 'invalid_model_output' },
+      { type: 'analysis_received', analysis: analysis() },
+    ]);
+    expect(recovered).toMatchObject({ status: 'ready', degraded: undefined });
+    expect(recovered.analysis).toBeDefined();
+  });
+
   it('forgetting leaves a fresh session with nothing document-derived and keeps the mode', () => {
     const used = run(
       [
@@ -226,6 +262,7 @@ describe('session reducer (F-07)', () => {
     expect(forgotten.transcript).toBeUndefined();
     expect(forgotten.analysis).toBeUndefined();
     expect(forgotten.error).toBeUndefined();
+    expect(forgotten.degraded).toBeUndefined();
     expect(forgotten.id).not.toBe(used.id);
     expect(JSON.stringify(forgotten)).not.toContain('840');
   });

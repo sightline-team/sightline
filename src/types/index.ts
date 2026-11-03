@@ -37,6 +37,15 @@ export interface Session {
   trust: TrustRecord[];
   status: SessionStatus;
   error?: AppError;
+  /**
+   * The run finished, but it has no answer to show (item **P-08**, `docs/ARCHITECTURE.md` §13:
+   * "invalid JSON → one repair retry, then show transcript only"). Distinct from `error`, which
+   * says a step *stopped*: here `status` is `ready`, the transcript is real and stays on screen,
+   * and what is missing is the reading of it. A second field rather than a reused `error`
+   * because `error` is cleared by the next successful step and describes the last thing the user
+   * tried, while this describes the state of the results view itself.
+   */
+  degraded?: AppError;
 }
 
 export interface Page {

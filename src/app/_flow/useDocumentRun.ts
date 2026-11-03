@@ -9,7 +9,7 @@ import { LIVE_MODE_UNAVAILABLE, refusedGate, refusedSignatureVerifier } from '@/
 import { useSessionStore } from '@/lib/session/store';
 import { useAnnouncer } from '@/lib/a11y/announcer';
 import type { PublicConfig } from '@/lib/config';
-import type { Transcript } from '@/types';
+import type { AppError, Transcript } from '@/types';
 
 /**
  * The composition root for one run (item **P-05**).
@@ -54,6 +54,11 @@ export function useDocumentRun(config: PublicConfig) {
       // Mode F has no verification step to describe, so "checking the enclave" would be the lie.
       announce('Reading the demo text.');
 
+      // Set by the run when it finished with nothing readable to show (P-08). It has to be
+      // captured here rather than read back from the store, because this hook is what decides
+      // which sentence the announcer gets and whether to navigate at all.
+      let degraded: AppError | undefined;
+
       try {
         await runPipeline({
           session: { ...session, input: 'text', transcript },
@@ -66,9 +71,20 @@ export function useDocumentRun(config: PublicConfig) {
           onTranscript: (t) => dispatch({ type: 'transcript_received', transcript: t }),
           onTrustRecord: (record) => dispatch({ type: 'trust_recorded', record }),
           onAnalysis: (analysis) => dispatch({ type: 'analysis_received', analysis }),
+          onDegraded: (error) => {
+            degraded = error;
+            dispatch({ type: 'run_degraded', code: error.code, context: error.context });
+          },
         });
 
-        announce('Done. Showing what Sightline read.');
+        // Both outcomes navigate: the transcript is on `/read` either way, and leaving the user
+        // on the paste screen with no idea the run ended is the silent transition §8 forbids.
+        // What differs is the sentence — a degraded run must not announce "here is what I read".
+        announce(
+          degraded === undefined
+            ? 'Done. Showing what Sightline read.'
+            : `${degraded.userMessage} Showing the text you gave instead.`,
+        );
         router.push('/read');
         return { ok: true };
       } catch (cause) {

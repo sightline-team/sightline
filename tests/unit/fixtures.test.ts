@@ -66,6 +66,11 @@ function runFixtureFlow(text: string) {
       signal: new AbortController().signal,
       onTranscript: () => {},
       onAnalysis: (a) => void analyses.push(a),
+      // P-08: every fixture reply is authored JSON, so there is nothing to repair and nothing to
+      // degrade. Being called would mean demo data was reported as unreadable.
+      onDegraded: (error) => {
+        throw new Error(`Mode F must not degrade a run: ${error.code}`);
+      },
       onTrustRecord: (r) => void claims.push(r.claim),
     }),
     analyses,

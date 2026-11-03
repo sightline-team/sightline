@@ -82,8 +82,9 @@ sightline/
 │  ├─ lib/
 │  │  ├─ near-ai/
 │  │  │  ├─ client.ts             # baseUrl + header provider; abort; one retry; returns the exact wire bytes. Mode F is `fixtures/replay.ts`, never this
-│  │  │  ├─ envelope.ts             # Completion-envelope zod schema shared by the analysis call and the Q&A call
+│  │  │  ├─ envelope.ts             # Completion-envelope zod schema shared by the analysis call and the Q&A call; optional [U] `finish_reason`/`refusal` + the three readers
 │  │  │  ├─ verification.ts         # Gate + signature-verifier contracts, RunHalt, Mode F outcomes, halt mapping (the T-01/T-02 shapes)
+│  │  │  ├─ completion.ts           # readCompletion (P-08): gate → body → signature → record → read, one repair retry, ok/truncated/refused/unreadable
 │  │  │  ├─ models.ts             # Per-model metadata call (attestationSupported/providerType/inputModalities) + allowlist — NOT /v1/models (ADR-18)
 │  │  │  ├─ attestation.ts        # Nonce, fetch, call /api/verify, named checks; `createTrustSession` binds gate + verifier to one session nonce (T-01)
 │  │  │  ├─ signatures.ts         # fetch by chat id → rebuild hash pair → verify; retry "not found"; streaming trailing newlines (ADR-19)

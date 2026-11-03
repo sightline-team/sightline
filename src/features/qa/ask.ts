@@ -2,31 +2,27 @@ import { appError } from '@/lib/errors';
 import { newId } from '@/lib/session/reducer';
 import { buildTrustRecord } from '@/features/trust/record';
 import { quoteFound } from '@/features/analysis/grounding';
-import { qaSchema } from '@/features/qa/schemas';
+import { qaSchema, type QaOutput } from '@/features/qa/schemas';
 import { QA_SYSTEM_PROMPT, qaUserPrompt } from '@/features/qa/prompts';
-import { completionEnvelopeSchema, type CompletionEnvelope } from '@/lib/near-ai/envelope';
-import {
-  RunHalt,
-  fixtureGate,
-  fixtureSignature,
-  haltFrom,
-  type AttestationGate,
-  type GateOutcome,
-  type SignatureOutcome,
-  type SignatureVerifier,
-} from '@/lib/near-ai/verification';
-import type { NearClient, NearResponse } from '@/lib/near-ai/client';
+import { readCompletion } from '@/lib/near-ai/completion';
+import { RunHalt, type AttestationGate, type SignatureVerifier } from '@/lib/near-ai/verification';
+import type { NearClient } from '@/lib/near-ai/client';
 import type { QAEntry, Session, TrustRecord } from '@/types';
 
 /**
  * Grounded Q&amp;A (item **P-06**, flow `docs/ARCHITECTURE.md` §5.3, prompt spec §9).
  *
- * The same two checks the reading pipeline runs, in the same order, on the same rule: the
- * document is data, so a question about it is document-derived and goes nowhere until the
- * attestation gate has passed, and the answer is discarded if its signature cannot be proved
- * (AGENTS.md §4 rules 4 and 6). Order is why `gate` and `verifySignature` are injected rather
- * than called here directly — the checks themselves are T-01/T-02, and this file owns the
- * sequencing, which is the part that can be tested without a live enclave (B-05).
+ * The same checks the reading pipeline runs, in the same order, on the same rule: the document is
+ * data, so a question about it is document-derived and goes nowhere until the attestation gate has
+ * passed, and the answer is discarded if its signature cannot be proved (AGENTS.md §4 rules 4 and
+ * 6). That sequence is `readCompletion` (**P-08**), shared with `pipeline.ts` so the two runs
+ * cannot drift apart on it — including the one repair retry, which a question gets on exactly the
+ * same terms as an analysis.
+ *
+ * What differs is the consequence, and it differs for a product reason: a reading that could not
+ * be made still leaves the transcript to show, but a question with no answer leaves nothing. So
+ * all three not-ok outcomes halt here with their own named code (§13), rather than degrading to a
+ * screen that would have to say "no answer".
  *
  * The question is asked against the **transcript only**, never the image: an answer can then be
  * checked for having come from the document, which is the whole point of the two-step pipeline.
@@ -44,12 +40,6 @@ export interface AskDeps {
   onTrustRecord: (record: TrustRecord) => void;
 }
 
-interface QuestionCall {
-  envelope: CompletionEnvelope;
-  rawText: string;
-  sentBody: string;
-}
-
 export async function askAboutDocument(deps: AskDeps): Promise<QAEntry> {
   const transcript = deps.session.transcript;
   if (transcript === undefined) {
@@ -63,83 +53,34 @@ export async function askAboutDocument(deps: AskDeps): Promise<QAEntry> {
     throw new RunHalt(appError('unknown'));
   }
 
-  const isFixture = deps.session.mode === 'fixtures';
-
-  let gate: GateOutcome;
-  if (isFixture) {
-    gate = fixtureGate();
-  } else {
-    gate = await deps.gate({ model: deps.model, signal: deps.signal });
-    // Rule 6 again: a failed check stops the run while the only document-derived bytes in
-    // existence are still on the user's screen.
-    if (gate.status === 'failed') throw new RunHalt(appError('verification_failed'));
-  }
-
-  const call = await questionStep(deps, transcript.text, question);
-
-  const signature: SignatureOutcome = isFixture
-    ? fixtureSignature()
-    : await deps.verifySignature({
-        chatId: call.envelope.id,
-        model: deps.model,
-        sentBody: call.sentBody,
-        rawText: call.rawText,
-        signal: deps.signal,
-      });
-
-  const record = buildTrustRecord({
+  const reply = await readCompletion({
     purpose: 'qa',
-    model: call.envelope.model ?? deps.model,
-    endpoint: deps.session.mode,
-    requestId: call.envelope.id,
-    gate,
-    signature,
+    mode: deps.session.mode,
+    model: deps.model,
+    transport: deps.transport,
+    gate: deps.gate,
+    verifySignature: deps.verifySignature,
+    signal: deps.signal,
+    onTrustRecord: deps.onTrustRecord,
+    buildRecord: buildTrustRecord,
+    request: {
+      system: QA_SYSTEM_PROMPT,
+      // Question *and* transcript (§9). The transcript is fenced, so an instruction written
+      // inside the document arrives as quoted data (AGENTS.md §11).
+      user: qaUserPrompt(transcript.text, question),
+    },
+    parse: (content) => qaSchema.parse(JSON.parse(content) as unknown),
   });
-  deps.onTrustRecord(record);
 
-  // Same shape as the analysis run: the receipt goes out first, then the answer is thrown away.
-  // A question answered by a key we cannot prove is not an answer the user may be shown.
-  if (!isFixture && !signature.verified) throw new RunHalt(appError('signature_invalid'));
-
-  try {
-    const parsed: unknown = JSON.parse(call.envelope.choices[0]!.message.content);
-    return groundAnswer(parsed, question, transcript.text);
-  } catch (cause) {
-    return haltFrom(cause);
-  }
-}
-
-/**
- * The one call this path makes. Split out so a schema rejection and a transport failure both
- * leave through the same door, and so the body is built **after** the gate.
- */
-async function questionStep(deps: AskDeps, transcriptText: string, question: string): Promise<QuestionCall> {
-  try {
-    const response: NearResponse = await deps.transport.post(
-      'chat/completions',
-      {
-        // No `stream`, no `response_format`, no sampling fields — the same restraint as the
-        // structure step: nothing in the request that SPIKE §1 does not document.
-        model: deps.model,
-        messages: [
-          { role: 'system', content: QA_SYSTEM_PROMPT },
-          // Question *and* transcript (§9). The transcript is fenced, so an instruction written
-          // inside the document arrives as quoted data (AGENTS.md §11).
-          { role: 'user', content: qaUserPrompt(transcriptText, question) },
-        ],
-      },
-      // `purpose` is local metadata for Mode F's replay client; it never enters the body, so
-      // the bytes a live mode hashes are exactly the bytes it sent (ADR-19).
-      { signal: deps.signal, purpose: 'qa' },
-    );
-
-    return {
-      envelope: completionEnvelopeSchema.parse(response.json),
-      rawText: response.rawText,
-      sentBody: response.sentBody ?? '',
-    };
-  } catch (cause) {
-    return haltFrom(cause);
+  switch (reply.kind) {
+    case 'ok':
+      return groundAnswer(reply.value, question, transcript.text);
+    case 'refused':
+    case 'truncated':
+    case 'unreadable':
+      // No half-answer, and no invented one: a question the service would not answer, or answered
+      // in words we could not read, is a question that has not been answered.
+      throw new RunHalt(reply.error);
   }
 }
 
@@ -152,8 +93,7 @@ async function questionStep(deps: AskDeps, transcriptText: string, question: str
  * the model's own statement about *this document*, not a claim about the world, and the panel
  * words it that way (`notInDocument` is what the view reads to decide which sentence to show).
  */
-function groundAnswer(parsed: unknown, question: string, transcriptText: string): QAEntry {
-  const output = qaSchema.parse(parsed);
+function groundAnswer(output: QaOutput, question: string, transcriptText: string): QAEntry {
   const base = { id: newId(), question, askedAt: Date.now() };
 
   if (output.notInDocument) return { ...base, answer: output.answer, notInDocument: true };

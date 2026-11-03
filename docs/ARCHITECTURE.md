@@ -152,8 +152,9 @@ Notes:
 ### 5.2 Analyse (pasted text)
 Skip capture, transcription and image prep. Run attestation check, then the structure step. This path is also the **fallback if no TEE vision model is usable**.
 
-Built by **P-03** in `features/analysis/pipeline.ts` (`runPipeline`, text path). Three ordering
-rules the implementation is held to, each with a test in `tests/unit/pipeline.test.ts`:
+Built by **P-03** in `features/analysis/pipeline.ts` (`runPipeline`, text path) and shared with
+§5.3 by **P-08** in `lib/near-ai/completion.ts` (`readCompletion`). Three ordering rules the
+implementation is held to, each with a test in `tests/unit/pipeline.test.ts`:
 
 - The attestation gate is awaited **before** the request body is assembled, so a failed check
   stops the run while there is still nothing document-derived to send (AGENTS.md §4 rule 6). A
@@ -165,6 +166,29 @@ rules the implementation is held to, each with a test in `tests/unit/pipeline.te
 - Mode F runs no gate and no signature check: the record carries `attestation.status: 'not_run'`
   and the checks that could not run, and `claimFor` lands it on the demo-data rung. The analysis
   is still shown, because fixture mode is a demo, not an error screen.
+
+`readCompletion` then reads what survived those checks, in this order: a stated refusal, a stated
+truncation (`finish_reason: length`), then the content parsed against the feature's schema. Both
+`finish_reason` and `message.refusal` are **[Unverified]** on this endpoint (SPIKE §1 lists only
+top-level response properties), so they are optional in `envelope.ts`, are compared only against
+the values a plan exists for, and **their absence never counts as a pass** — an unreadable answer
+takes the same route whether the field was missing or present. Confirming them is S-08/S-11 (B-05).
+
+The §13 error paths this decides (item **P-08**):
+
+| Outcome | Structure step | Asked of `pipeline.ts` |
+|---|---|---|
+| Content is prose, or JSON that fails the schema | One repair retry. The note goes in the **user** message, so the system prompt stays byte-identical, and the retry is gated and signature-checked like the first call — two `TrustRecord`s, one per completion | If the retry also fails: `onDegraded(invalid_model_output)` |
+| `finish_reason: 'length'` | **Not** retried. §13's answer is "split by page, retry once", and this path has one page; re-sending the same request spends a second completion for the same cut-off tail | `onDegraded(output_truncated)` |
+| `message.refusal` present | Halt. The service declined to read this document, so there is no half-answer to show | `RunHalt(model_refused)` |
+| Signature unverifiable, gate failed | Halt inside the helper, before anything is read | `RunHalt(signature_invalid / verification_failed)` |
+
+A degraded run dispatches `run_degraded`: `status: 'ready'`, `degraded: AppError`, and **no**
+analysis. `ResultsView` then shows the notice, the full text, the question box and the receipt, and
+the four sections that would have contained the reading are **absent rather than empty** — an empty
+"Key facts" over nothing would read as a statement about the document, when the fact is about the
+failed reading. `error` is not reused for this: it describes the last step the user took and is
+cleared by the next one that works.
 
 The transcript is normalised once and that one object is what the UI shows, what `quoteFound` is
 checked against, and what goes inside the fenced user message. Text inside that fence is **data**
@@ -183,6 +207,8 @@ Prompt = transcript + question + "answer only from the document". Response: `{ a
 
 A question is a second document-derived call, so it runs the same two checks in the same order as §5.2 (attestation gate before the request body exists, signature before the answer is shown) and emits its own `TrustRecord` with `purpose: 'qa'`. The receipt therefore shows one block per call: a question must not be able to rewrite the record of the document it was asked about.
 
+It also gets §5.2's **P-08** paths on the same terms — the same `readCompletion`, so the same one repair retry — with one difference that is a product decision: every not-ok outcome **halts** rather than degrades. A reading that could not be made still leaves the transcript to show; a question with no answer leaves nothing, and a screen that says "no answer" in the results area would only repeat what the error summary already says. So an unreadable answer halts `invalid_model_output` (after the retry, two records), a cut-off one halts `output_truncated`, and a refusal halts `model_refused`.
+
 Mode F answers only the wordings prepared for that document (`no_fixture_for_question`); an improvised question is refused rather than answered, because authored prose served up as a model's reading of the user's own letter is the exact lie this mode exists to avoid.
 
 ### 5.4 Forget
@@ -198,6 +224,7 @@ Reset reducer state, revoke object URLs, abort in-flight requests with `AbortCon
 | `near-ai/models` | Candidate list + **per-model metadata call** (ADR-18: the TEE flags are not on `/v1/models`); TEE and modality filtering; exact-id allowlist |
 | `near-ai/attestation` | Nonce, fetch report, call `/api/verify`, short-lived cache, produce named checks |
 | `near-ai/signatures` | Fetch and verify per-response signatures |
+| `near-ai/completion` | `readCompletion` (**P-08**): the one sequence both document-derived calls run — gate, body, send, signature, record, read — plus the single repair retry and the `ok / truncated / refused / unreadable` outcome. The features keep the decisions that differ: what each outcome costs the user |
 | `analysis` | Pipeline, prompts, zod schemas, grounding check |
 | `qa` | Grounded Q&A: `ask.ts` (gate → one call → signature → record → grounding), `prompts.ts`, `schemas.ts`, `AskPanel` (question field, prepared questions, answers in the order asked) |
 | `speech` | One read-aloud button, rate |
@@ -227,6 +254,7 @@ interface Session {
   status: 'idle' | 'preparing' | 'verifying' | 'transcribing'
         | 'needs_retake' | 'analysing' | 'ready' | 'error' | 'forgotten';
   error?: AppError;
+  degraded?: AppError;                 // run finished with no answer to show: transcript-only view (P-08)
 }
 
 interface Page {
@@ -500,6 +528,15 @@ plain-language message and one `retryable` decision, checked by `tests/unit/erro
 | Rate limit (Mode B) | Plain message; suggest Mode A or try later |
 | Mode F asked about text it has no demo answer for | Show the demo-data explanation (`no_fixture_for_input`); do **not** replay an authored answer over the user's own words (F-09) |
 | Mode F asked a question the demo letter has no prepared answer for | Show the prepared-answer explanation (`no_fixture_for_question`); the answers already given stay on screen (P-06) |
+
+**As built (P-08, 2026-11-03).** Three of these rows became code rather than prose on the text path:
+invalid JSON (one repair retry, then the transcript-only view), `finish_reason: length` (reported,
+not repaired) and model refusal (`model_refused`, halting — the catalogue's sentence is the
+paste-text offer). `captureIssues` / `[illegible]` counts and "split by page" belong to the image
+path (C-01…C-05) and still have no code to run them; "alternate TEE model" belongs to F-04's
+allowlist. No row in this table is reachable in Mode F through the retry path: every fixture reply
+is authored JSON, so a demo run cannot be truncated without inventing a truncation, and the
+degraded screen is therefore proved by unit tests only (see ROADMAP §10).
 
 ## 14. Day 1 spike checklist (go/no-go)
 

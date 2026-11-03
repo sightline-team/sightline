@@ -8,6 +8,7 @@ import {
   type SignatureVerifier,
 } from '@/lib/near-ai/verification';
 import { NearError, type NearClient, type NearResponse } from '@/lib/near-ai/client';
+import { REPAIR_NOTE } from '@/lib/near-ai/completion';
 import { appError } from '@/lib/errors';
 import { QA_SYSTEM_PROMPT } from '@/features/qa/prompts';
 import { claimCopy } from '@/features/trust/claims';
@@ -68,6 +69,10 @@ interface Options {
   signature?: SignatureOutcome;
   /** The model's JSON content, as a string, so a test can hand it prose. */
   content?: string;
+  /** One entry per attempt (P-08's repair retry). The last entry repeats. */
+  contents?: string[];
+  /** `finish_reason` / `message.refusal`, present on the envelope only when a test puts them. */
+  extra?: { finish_reason?: string | null; refusal?: string | null };
   postThrows?: unknown;
   /** ADR-19 keys the signature fetch on the completion id, so a missing one is its own case. */
   noEnvelopeId?: boolean;
@@ -75,11 +80,8 @@ interface Options {
 
 function harness(opts: Options = {}) {
   const mode = opts.mode ?? 'relay';
-  const content = opts.content ?? qaJson({});
-  const envelope = opts.noEnvelopeId
-    ? { model: MODEL, choices: [{ message: { content } }] }
-    : { id: 'chat-qa-1', model: MODEL, choices: [{ message: { content } }] };
-  const rawText = JSON.stringify(envelope) + '\n\n';
+  const contents = opts.contents ?? [opts.content ?? qaJson({})];
+  const contentFor = (attempt: number): string => contents[Math.min(attempt, contents.length - 1)]!;
 
   const log: string[] = [];
   const posts: { body: unknown; sent: string; raw: string }[] = [];
@@ -88,12 +90,27 @@ function harness(opts: Options = {}) {
   const records: TrustRecord[] = [];
   const gets: string[] = [];
 
+  /** Each attempt is its own exchange: its own id, its own bytes, its own signature to check. */
+  function envelopeFor(attempt: number): Record<string, unknown> {
+    const message: Record<string, unknown> = { content: contentFor(attempt) };
+    if (opts.extra !== undefined && 'refusal' in opts.extra) message.refusal = opts.extra.refusal;
+    const choice: Record<string, unknown> = { message };
+    if (opts.extra !== undefined && 'finish_reason' in opts.extra) choice.finish_reason = opts.extra.finish_reason;
+    return {
+      ...(opts.noEnvelopeId ? {} : { id: `chat-qa-${attempt + 1}` }),
+      model: MODEL,
+      choices: [choice],
+    };
+  }
+
   const transport: NearClient = {
     mode,
     baseUrl: mode === 'fixtures' ? 'fixtures://local' : '/api/relay/v1',
     post: async (path, body): Promise<NearResponse> => {
       log.push('post');
       const sent = JSON.stringify(body);
+      const envelope = envelopeFor(posts.length);
+      const rawText = JSON.stringify(envelope) + '\n\n';
       posts.push({ body, sent, raw: rawText });
       if (opts.postThrows !== undefined) throw opts.postThrows;
       return { status: 200, path, sentBody: sent, rawText, json: envelope };
@@ -294,9 +311,14 @@ describe('grounding decides what the user is told (AGENTS.md §4 rule 8)', () =>
 describe('an unreadable answer fails closed', () => {
   it('rejects content that is not the expected JSON instead of showing a guess', async () => {
     const h = harness({ content: 'I could not find an answer, sorry.' });
+
     await expectHalt(h, 'invalid_model_output');
-    // The receipt still went out: a check ran, and silence about it would be its own lie.
-    expect(h.records).toHaveLength(1);
+
+    // Two receipts, not one: P-08's repair retry was a real second call, and the answer is
+    // discarded either way. A question has no transcript-only screen to degrade to — the
+    // transcript is already on the page, and what is missing is the answer.
+    expect(h.posts).toHaveLength(2);
+    expect(h.records).toHaveLength(2);
   });
 
   it('rejects an answer with no text in it', async () => {
@@ -332,6 +354,77 @@ describe('an unreadable answer fails closed', () => {
     const halt = await expectHalt(h, 'invalid_model_output');
     expect(halt.error.userMessage).not.toContain(secret);
     expect(JSON.stringify(halt.error)).not.toContain(secret);
+  });
+});
+
+describe('the repair retry and the named error paths (P-08)', () => {
+  const PROSE = 'I could not find an answer, sorry.';
+
+  function messagesOf(h: Harness, i: number): { role: string; content: string }[] {
+    const body = h.posts[i]?.body;
+    if (typeof body !== 'object' || body === null || !('messages' in body)) throw new Error(`no messages in attempt ${i}`);
+    return (body as { messages: { role: string; content: string }[] }).messages;
+  }
+  const content = (h: Harness, i: number, role: string) => messagesOf(h, i).find((m) => m.role === role)!.content;
+
+  it('answers from the second attempt when the first came back as prose', async () => {
+    const h = harness({ contents: [PROSE, qaJson({})] });
+
+    const entry = await answered(h);
+
+    expect(entry.answer).toBe('You have to pay 840 pounds.');
+    expect(h.posts).toHaveLength(2);
+    expect(h.records).toHaveLength(2);
+  });
+
+  it('asks for the repair in the user message, and checks the second signature against the second exchange', async () => {
+    const h = harness({ transcriptText: `${TRANSCRIPT}\n${INJECTION}`, contents: [PROSE, qaJson({})] });
+
+    await answered(h);
+
+    expect(content(h, 0, 'system')).toBe(QA_SYSTEM_PROMPT);
+    expect(content(h, 1, 'system')).toBe(QA_SYSTEM_PROMPT);
+    expect(content(h, 1, 'user').startsWith(`${content(h, 0, 'user')}\n\n${REPAIR_NOTE}`)).toBe(true);
+    // The document's instruction is still quoted data on the retry, never part of the ask.
+    expect(content(h, 1, 'user')).toContain(INJECTION);
+    expect(QA_SYSTEM_PROMPT).not.toContain(INJECTION);
+    // ADR-19: each attempt's signature is proved over *its own* bytes and fetched by its own id.
+    expect(h.sigCalls[1]?.chatId).toBe('chat-qa-2');
+    expect(h.sigCalls[1]?.sentBody).toBe(h.posts[1]?.sent);
+    expect(h.sigCalls[1]?.rawText).toBe(h.posts[1]?.raw);
+  });
+
+  it('spends the retry once and then stops', async () => {
+    const h = harness({ contents: [PROSE, PROSE, qaJson({})] });
+
+    await expectHalt(h, 'invalid_model_output');
+
+    expect(h.posts).toHaveLength(2);
+  });
+
+  it('reports a cut-off answer with its own code instead of repairing it', async () => {
+    const h = harness({ content: '{"answer":"You have to pay 840', extra: { finish_reason: 'length' } });
+
+    await expectHalt(h, 'output_truncated');
+
+    expect(h.posts).toHaveLength(1);
+  });
+
+  it('halts on a refusal, and never speaks the model’s own words as though they were ours', async () => {
+    const refusal = 'I am not able to answer questions about this document.';
+    const h = harness({ extra: { refusal } });
+
+    const halt = await expectHalt(h, 'model_refused');
+
+    expect(h.posts).toHaveLength(1);
+    expect(halt.error.userMessage).not.toContain(refusal);
+    expect(halt.error.userMessage).toBe(appError('model_refused').userMessage);
+  });
+
+  it('reads `refusal: null`, which is what an ordinary answer carries, as no refusal', async () => {
+    const entry = await answered(harness({ extra: { refusal: null } }));
+
+    expect(entry.answer).toBe('You have to pay 840 pounds.');
   });
 });
 

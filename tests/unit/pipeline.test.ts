@@ -8,11 +8,12 @@ import {
   type SignatureVerifier,
 } from '@/lib/near-ai/verification';
 import { NearError, type NearClient, type NearResponse } from '@/lib/near-ai/client';
+import { REPAIR_NOTE } from '@/lib/near-ai/completion';
 import { NotBuilt } from '@/lib/not_built';
 import { appError } from '@/lib/errors';
 import { STRUCTURE_SYSTEM_PROMPT } from '@/features/analysis/prompts';
 import { claimCopy } from '@/features/trust/claims';
-import type { Analysis, CheckResult, ErrorCode, InputKind, Mode, Session, Transcript, TrustRecord } from '@/types';
+import type { Analysis, AppError, CheckResult, ErrorCode, InputKind, Mode, Session, Transcript, TrustRecord } from '@/types';
 
 /**
  * Pipeline tests (item **P-03**).
@@ -66,8 +67,19 @@ const SIG_OK: SignatureOutcome = {
   checks: [{ name: 'response_signature', ran: true, passed: true, detail: 'Signature verified against the attested key.' }],
 };
 
-function envelopeJson(content: string): Record<string, unknown> {
-  return { id: 'chat-77', model: MODEL, choices: [{ message: { content } }] };
+/**
+ * The two fields P-08 reads, set only when a test says to — `refusal: null` (the shape for an
+ * answer that is *not* a refusal) has to be distinguishable from the field being absent, because
+ * both are `[Unverified]` upstream and the difference is what the code claims about them.
+ */
+type EnvelopeExtras = { finish_reason?: string | null; refusal?: string | null };
+
+function envelopeJson(content: string, extra: EnvelopeExtras = {}): Record<string, unknown> {
+  const message: Record<string, unknown> = { content };
+  if ('refusal' in extra) message.refusal = extra.refusal;
+  const choice: Record<string, unknown> = { message };
+  if ('finish_reason' in extra) choice.finish_reason = extra.finish_reason;
+  return { id: 'chat-77', model: MODEL, choices: [choice] };
 }
 
 function session(mode: Mode, input: InputKind, text: string): Session {
@@ -92,6 +104,10 @@ interface Options {
   gate?: GateOutcome;
   signature?: SignatureOutcome;
   content?: string;
+  /** One entry per attempt. The last entry repeats, so a run cannot get a third answer by luck. */
+  contents?: string[];
+  /** `finish_reason` / `message.refusal` to put on the envelope. */
+  extra?: EnvelopeExtras;
   /** Replaces the whole parsed envelope — used for malformed transport shapes. */
   envelope?: unknown;
   /** What `post` throws instead of answering. */
@@ -104,10 +120,8 @@ interface Options {
  */
 function harness(opts: Options = {}) {
   const mode = opts.mode ?? 'relay';
-  const content = opts.content ?? ANALYSIS_JSON;
-  const envelope = opts.envelope ?? envelopeJson(content);
-  /** Streaming bodies end with newlines (SPIKE §5) and the hash is of these bytes, so keep them. */
-  const rawText = JSON.stringify(envelope) + '\n\n';
+  const contents = opts.contents ?? [opts.content ?? ANALYSIS_JSON];
+  const contentFor = (attempt: number): string => contents[Math.min(attempt, contents.length - 1)]!;
 
   const log: string[] = [];
   const posts: { path: string; body: unknown; sent: string; raw: string }[] = [];
@@ -117,6 +131,7 @@ function harness(opts: Options = {}) {
   const transcripts: Transcript[] = [];
   const records: TrustRecord[] = [];
   const analyses: Analysis[] = [];
+  const degraded: AppError[] = [];
 
   const transport: NearClient = {
     mode,
@@ -124,9 +139,12 @@ function harness(opts: Options = {}) {
     post: async (path, body) => {
       log.push('post');
       const sent = JSON.stringify(body);
-      posts.push({ path, body, sent, raw: rawText });
+      const json = opts.envelope ?? envelopeJson(contentFor(posts.length), opts.extra);
+      /** Streaming bodies end with newlines (SPIKE §5) and the hash is of these bytes, so keep them. */
+      const raw = JSON.stringify(json) + '\n\n';
+      posts.push({ path, body, sent, raw });
       if (opts.postThrows !== undefined) throw opts.postThrows;
-      const response: NearResponse = { status: 200, path, sentBody: sent, rawText, json: envelope };
+      const response: NearResponse = { status: 200, path, sentBody: sent, rawText: raw, json };
       return response;
     },
     get: async (path) => {
@@ -162,13 +180,17 @@ function harness(opts: Options = {}) {
       log.push('onAnalysis');
       analyses.push(a);
     },
+    onDegraded: (error) => {
+      log.push('onDegraded');
+      degraded.push(error);
+    },
     onTrustRecord: (r) => {
       log.push('onTrustRecord');
       records.push(r);
     },
   };
 
-  return { deps, log, posts, gateCalls, sigCalls, gets, transcripts, records, analyses };
+  return { deps, log, posts, gateCalls, sigCalls, gets, transcripts, records, analyses, degraded };
 }
 
 type Harness = ReturnType<typeof harness>;
@@ -194,6 +216,15 @@ async function expectHalt(h: Harness, code: ErrorCode): Promise<RunHalt> {
 async function expectComplete(h: Harness): Promise<void> {
   const halt = await haltOf(h);
   if (halt !== undefined) throw new Error(`expected completion, got halt ${halt.error.code}`);
+}
+
+/**
+ * Runs the pipeline expecting the P-08 outcome: no halt, no analysis, one degraded notice with
+ * this code. Returns the harness so a test can look at how many calls it took to get there.
+ */
+async function expectDegraded(h: Harness, code: ErrorCode): Promise<void> {
+  await expectComplete(h);
+  expect(h.degraded.map((error) => error.code)).toEqual([code]);
 }
 
 describe('nothing document-derived is sent before the checks (AGENTS.md §4 rule 6)', () => {
@@ -386,11 +417,13 @@ describe('unreadable or absent model output fails closed', () => {
     expect(h.analyses).toEqual([]);
   });
 
-  it('rejects content that is not the expected JSON instead of showing a guess (P-08 owns the repair retry)', async () => {
+  it('rejects content that is not the expected JSON instead of showing a guess', async () => {
     const h = harness({ content: 'I cannot help with that.' });
 
-    await expectHalt(h, 'invalid_model_output');
-
+    // P-08: this is now a *degraded* run, not a halt — one repair retry, then transcript-only.
+    // The unreadable-output path is named in the block below; here the assertion is that the
+    // failure to read never becomes an analysis.
+    await expectDegraded(h, 'invalid_model_output');
     expect(h.analyses).toEqual([]);
   });
 
@@ -410,6 +443,163 @@ describe('unreadable or absent model output fails closed', () => {
     const emitted = [halt.error.userMessage, ...h.records.flatMap((r) => r.attestation.checks.flatMap((c) => c.detail ?? []))].join('\n');
     expect(emitted).not.toContain('£840');
     expect(emitted).not.toContain(INJECTION);
+  });
+});
+
+describe('the repair retry (P-08, ARCH §13 “invalid JSON → one repair retry, then transcript only”)', () => {
+  const PROSE = 'I cannot help with that.';
+
+  /** The two messages of attempt `i`, read back out of the body the harness was given. */
+  function messagesOf(h: Harness, i: number): { role: string; content: string }[] {
+    const body = h.posts[i]?.body;
+    if (typeof body !== 'object' || body === null || !('messages' in body)) throw new Error(`no messages in attempt ${i}`);
+    return (body as { messages: { role: string; content: string }[] }).messages;
+  }
+  const content = (h: Harness, i: number, role: string) => messagesOf(h, i).find((m) => m.role === role)!.content;
+
+  it('retries once and shows the reading the second attempt produced', async () => {
+    const h = harness({ contents: [PROSE, ANALYSIS_JSON] });
+
+    await expectComplete(h);
+
+    expect(h.posts).toHaveLength(2);
+    expect(h.analyses).toHaveLength(1);
+    // One receipt per call: the retry was a real second completion, and the receipt says so.
+    expect(h.records).toHaveLength(2);
+  });
+
+  it('re-gates and re-verifies the retry, against that attempt’s own bytes', async () => {
+    const h = harness({ contents: [PROSE, ANALYSIS_JSON] });
+
+    await expectComplete(h);
+
+    // The retry sends document data too, so it is gated like the first (rule 4), and the second
+    // signature is checked against the second exchange — not the bytes of the answer we threw away.
+    expect(h.log).toEqual([
+      'onTranscript',
+      'gate',
+      'post',
+      'signature',
+      'onTrustRecord',
+      'gate',
+      'post',
+      'signature',
+      'onTrustRecord',
+      'onAnalysis',
+    ]);
+    expect(h.sigCalls[1]?.sentBody).toBe(h.posts[1]?.sent);
+    expect(h.sigCalls[1]?.rawText).toBe(h.posts[1]?.raw);
+  });
+
+  it('asks for the repair in the user message and leaves the system prompt byte-identical', async () => {
+    const h = harness({ transcriptText: ADVERSARIAL_DOC, contents: [PROSE, ANALYSIS_JSON] });
+
+    await expectComplete(h);
+
+    expect(content(h, 0, 'system')).toBe(STRUCTURE_SYSTEM_PROMPT);
+    expect(content(h, 1, 'system')).toBe(STRUCTURE_SYSTEM_PROMPT);
+    const firstUser = content(h, 0, 'user');
+    const secondUser = content(h, 1, 'user');
+    expect(secondUser.startsWith(`${firstUser}\n\n${REPAIR_NOTE}`)).toBe(true);
+    // The instruction written into the document is still quoted data on the retry, and the repair
+    // note is ours — nothing the document supplied reaches the sentence that asks for a redo.
+    expect(secondUser).toContain(INJECTION);
+    expect(STRUCTURE_SYSTEM_PROMPT).not.toContain(INJECTION);
+  });
+
+  it('spends the retry once: a second unreadable answer degrades rather than asking again', async () => {
+    const h = harness({ contents: [PROSE, PROSE, ANALYSIS_JSON] });
+
+    await expectDegraded(h, 'invalid_model_output');
+
+    // A third attempt would mean the limit is a comment rather than a structure.
+    expect(h.posts).toHaveLength(2);
+    expect(h.analyses).toEqual([]);
+    expect(h.degraded[0]?.retryable).toBe(true);
+  });
+
+  it('the degraded run still put the transcript on screen first', async () => {
+    const h = harness({ content: PROSE });
+
+    await expectDegraded(h, 'invalid_model_output');
+
+    // §13's promise is *transcript* only, so the words the user gave are what that screen shows.
+    expect(h.transcripts).toHaveLength(1);
+    expect(h.transcripts[0]?.text).toBe(DOC);
+    expect(h.log.at(-1)).toBe('onDegraded');
+  });
+
+  it('Mode F repairs the same way, consulting no gate and no verifier', async () => {
+    const h = harness({ mode: 'fixtures', contents: [PROSE, ANALYSIS_JSON] });
+
+    await expectComplete(h);
+
+    expect(h.gateCalls).toEqual([]);
+    expect(h.sigCalls).toEqual([]);
+    expect(h.log).toEqual(['onTranscript', 'post', 'onTrustRecord', 'post', 'onTrustRecord', 'onAnalysis']);
+  });
+});
+
+describe('truncation and refusal (P-08, ARCH §13)', () => {
+  const REFUSAL = 'I am not able to read this document.';
+
+  it('reports a cut-off answer instead of repairing it, and degrades to the transcript', async () => {
+    // Cut off mid-object: a repair note would not make a too-long answer fit, and re-sending the
+    // same oversized request spends a second completion for the same truncated tail.
+    const h = harness({ content: '{"docType":"bill","summary":"A care trust bill for', extra: { finish_reason: 'length' } });
+
+    await expectDegraded(h, 'output_truncated');
+
+    expect(h.posts).toHaveLength(1);
+    expect(h.analyses).toEqual([]);
+  });
+
+  it('claims nothing about a finish_reason it has never seen', async () => {
+    const h = harness({ extra: { finish_reason: 'stop' } });
+
+    await expectComplete(h);
+
+    // Only `length` is read (SPIKE §1 never enumerates this field's values); anything else is
+    // left alone rather than interpreted, and a good answer stays a good answer.
+    expect(h.degraded).toEqual([]);
+    expect(h.analyses).toHaveLength(1);
+  });
+
+  it('treats an absent finish_reason as nothing at all, not as “complete”', async () => {
+    const h = harness({ content: 'not json' });
+
+    await expectDegraded(h, 'invalid_model_output');
+
+    expect(h.posts).toHaveLength(2);
+  });
+
+  it('halts on a refusal with its own code, because there is no reading to fall back to', async () => {
+    const h = harness({ extra: { refusal: REFUSAL } });
+
+    await expectHalt(h, 'model_refused');
+
+    expect(h.degraded).toEqual([]);
+    expect(h.analyses).toEqual([]);
+    expect(h.posts).toHaveLength(1);
+  });
+
+  it('does not read the model’s refusal prose aloud', async () => {
+    const h = harness({ extra: { refusal: REFUSAL } });
+
+    const halt = await expectHalt(h, 'model_refused');
+
+    // Sightline's own sentence, from the catalogue: model output is untrusted data (§11), and a
+    // refusal written by the model is not something to speak as though it were ours (rule 7).
+    expect(halt.error.userMessage).not.toContain(REFUSAL);
+    expect(halt.error.userMessage).toBe(appError('model_refused').userMessage);
+  });
+
+  it('reads `refusal: null`, which is what an ordinary answer carries, as no refusal', async () => {
+    const h = harness({ extra: { refusal: null } });
+
+    await expectComplete(h);
+
+    expect(h.analyses).toHaveLength(1);
   });
 });
 

@@ -1,23 +1,13 @@
-import { z } from 'zod';
 import type { NearClient } from '@/lib/near-ai/client';
 import { appError } from '@/lib/errors';
 import { notBuilt } from '@/lib/not_built';
 import { buildTrustRecord } from '@/features/trust/record';
-import {
-  RunHalt,
-  fixtureGate,
-  fixtureSignature,
-  haltFrom,
-  type AttestationGate,
-  type GateOutcome,
-  type SignatureOutcome,
-  type SignatureVerifier,
-} from '@/lib/near-ai/verification';
+import { readCompletion } from '@/lib/near-ai/completion';
+import { RunHalt, type AttestationGate, type SignatureVerifier } from '@/lib/near-ai/verification';
 import { STRUCTURE_SYSTEM_PROMPT, structureUserPrompt } from '@/features/analysis/prompts';
 import { analysisSchema } from '@/features/analysis/schemas';
-import { completionEnvelopeSchema } from '@/lib/near-ai/envelope';
 import { groundFacts } from '@/features/analysis/grounding';
-import type { Analysis, Session, Transcript, TrustRecord } from '@/types';
+import type { Analysis, AppError, Session, Transcript, TrustRecord } from '@/types';
 
 /**
  * The two-step pipeline (item **P-03**, flow `docs/ARCHITECTURE.md` §5).
@@ -31,21 +21,20 @@ import type { Analysis, Session, Transcript, TrustRecord } from '@/types';
  * so capture, image prep and transcription are skipped and the structure step is the only
  * call. The image path is C-05 and refuses here rather than pretending.
  *
- * What is deliberately *not* here, because a stub may not fake it:
- *  - the repair retry for unreadable output, `finish_reason: length` and refusals — **P-08**;
- *    this file fails closed with the named code instead of silently degrading;
- *  - the attestation and signature checks themselves — **T-01/T-02/T-03**, injected as
- *    `gate` and `verifySignature`. The pipeline owns the *ordering* and the fail-closed
- *    consequence, which is exactly what makes it testable without a live enclave (B-05);
- *  - `numbersRechecked` — **T-11**, conditional on C-10.
+ * The call itself — gate, body, signature, receipt, one repair retry — is `readCompletion`
+ * (**P-08**), shared with question answering so the two runs cannot drift apart on the order.
+ * What is decided *here* is what each outcome costs the user, because that is feature-specific:
+ *  - an unreadable or cut-off reading becomes the transcript-only screen §13 promises, never a
+ *    partial summary and never a guess (rules 6 and 10);
+ *  - a refusal halts — the service declined to read this document, so there is no half-answer;
+ *  - a failed gate or an unverifiable signature halts inside the helper, before any of this.
+ *
+ * Still deliberately *not* here: the attestation and signature checks themselves (**T-01/T-02/
+ * T-03**), injected as `gate` and `verifySignature` so the ordering is testable without a live
+ * enclave (B-05), page-splitting a truncated *photo* run (**C-03/C-05** — there is one page on
+ * this path and nothing to split), and `numbersRechecked` (**T-11**, conditional on C-10).
  */
 
-/**
- * The verification contracts this run depends on — `GateOutcome`, `SignatureOutcome`,
- * `AttestationGate`, `SignatureVerifier` and the `RunHalt` failure shape — live in
- * `lib/near-ai/verification.ts`, because question answering (P-06) makes the same two checks
- * in the same order and must not be handed a second copy of the rule to drift from.
- */
 export interface PipelineDeps {
   session: Session;
   /** The allowlisted, TEE-hosted model chosen by F-04/C-02. Never a user-typed string. */
@@ -56,13 +45,9 @@ export interface PipelineDeps {
   signal: AbortSignal;
   onTranscript: (transcript: Transcript) => void;
   onAnalysis: (analysis: Analysis) => void;
+  /** The run ended with nothing readable to show, so the transcript is shown alone (P-08). */
+  onDegraded: (error: AppError) => void;
   onTrustRecord: (record: TrustRecord) => void;
-}
-
-interface StructureCall {
-  envelope: z.infer<typeof completionEnvelopeSchema>;
-  rawText: string;
-  sentBody: string;
 }
 
 export async function runPipeline(deps: PipelineDeps): Promise<void> {
@@ -90,98 +75,52 @@ export async function runPipeline(deps: PipelineDeps): Promise<void> {
   };
   deps.onTranscript(transcript);
 
-  const isFixture = deps.session.mode === 'fixtures';
-
-  let gate: GateOutcome;
-  if (isFixture) {
-    gate = fixtureGate();
-  } else {
-    gate = await deps.gate({ model: deps.model, signal: deps.signal });
-    // Rule 6, and the whole reason the gate is called before the body is built: a failed
-    // check stops the run while there is still nothing document-derived to send.
-    if (gate.status === 'failed') throw new RunHalt(appError('verification_failed'));
-  }
-
-  const completion = await structureStep(deps, transcript);
-
-  const signature: SignatureOutcome = isFixture ? fixtureSignature() : await deps.verifySignature({
-    chatId: completion.envelope.id,
-    model: deps.model,
-    sentBody: completion.sentBody,
-    rawText: completion.rawText,
-    signal: deps.signal,
-  });
-
-  const record: TrustRecord = buildTrustRecord({
+  const reading = await readCompletion({
     purpose: 'analyse',
-    // The service names the model it answered with; the request only says what we asked for.
-    model: completion.envelope.model ?? deps.model,
-    endpoint: deps.session.mode,
-    requestId: completion.envelope.id,
-    gate,
-    signature,
+    mode: deps.session.mode,
+    model: deps.model,
+    transport: deps.transport,
+    gate: deps.gate,
+    verifySignature: deps.verifySignature,
+    signal: deps.signal,
+    onTrustRecord: deps.onTrustRecord,
+    buildRecord: buildTrustRecord,
+    request: {
+      system: STRUCTURE_SYSTEM_PROMPT,
+      // Transcript only (§9): the structure step never sees an image, so it cannot invent a
+      // number it liked the look of. The document's words stay inside the fence, and the retry
+      // note belongs to the user message so the system prompt never changes (§11).
+      user: structureUserPrompt(transcript.text),
+    },
+    parse: (content) => analysisSchema.parse(JSON.parse(content) as unknown),
   });
-  deps.onTrustRecord(record);
 
-  // A response we cannot prove came from the attested key is discarded, not displayed
-  // (rule 6). The record goes out first: the receipt must show that a completion was
-  // fetched and rejected, rather than leaving the user with silence where a check ran.
-  if (!isFixture && !signature.verified) throw new RunHalt(appError('signature_invalid'));
-
-  let analysis: Analysis;
-  try {
-    const parsed: unknown = JSON.parse(completion.envelope.choices[0]!.message.content);
-    const output = analysisSchema.parse(parsed);
-    analysis = {
-      docType: output.docType,
-      ...(output.sender === undefined ? {} : { sender: output.sender }),
-      summary: output.summary,
-      // `quoteFound` is set by code against our transcript, never taken from the model
-      // (rule 8, ADR-11). Ungrounded facts are kept and flagged, not dropped.
-      facts: groundFacts(transcript.text, output.facts),
-      actions: groundFacts(transcript.text, output.actions),
-      warnings: output.warnings,
-      model: record.model,
-    };
-  } catch (cause) {
-    return haltFrom(cause);
-  }
-
-  deps.onAnalysis(analysis);
-}
-
-/**
- * The one call this path makes. Split out so a schema rejection and a transport failure
- * both leave through the same door, and so the request body is built **after** the gate.
- */
-async function structureStep(deps: PipelineDeps, transcript: Transcript): Promise<StructureCall> {
-  try {
-    const response = await deps.transport.post(
-      'chat/completions',
-      {
-        // No `stream`, no `response_format`, no sampling fields: SPIKE §1 documents the
-        // response shape only, and a request field we cannot point at a source for is a
-        // field nobody can explain when it misbehaves.
-        model: deps.model,
-        messages: [
-          { role: 'system', content: STRUCTURE_SYSTEM_PROMPT },
-          // Transcript only (§9): the structure step never sees an image, so it cannot
-          // invent a number it liked the look of.
-          { role: 'user', content: structureUserPrompt(transcript.text) },
-        ],
-      },
-      // `purpose` is local metadata for the Mode F replay client (F-09), which has to know
-      // which of the two document-derived calls it is answering. It is never put in the body,
-      // so the bytes a live mode signs are unchanged.
-      { signal: deps.signal, purpose: 'analyse' },
-    );
-
-    return {
-      envelope: completionEnvelopeSchema.parse(response.json),
-      rawText: response.rawText,
-      sentBody: response.sentBody ?? '',
-    };
-  } catch (cause) {
-    return haltFrom(cause);
+  switch (reading.kind) {
+    case 'ok': {
+      const output = reading.value;
+      deps.onAnalysis({
+        docType: output.docType,
+        ...(output.sender === undefined ? {} : { sender: output.sender }),
+        summary: output.summary,
+        // `quoteFound` is set by code against our transcript, never taken from the model
+        // (rule 8, ADR-11). Ungrounded facts are kept and flagged, not dropped.
+        facts: groundFacts(transcript.text, output.facts),
+        actions: groundFacts(transcript.text, output.actions),
+        warnings: output.warnings,
+        // The service names the model it answered with; the request only says what we asked for.
+        model: reading.model,
+      });
+      return;
+    }
+    case 'truncated':
+    case 'unreadable':
+      // §13's "then show transcript only", after the one retry. Showing half a reading would be
+      // guessing at the rest of it, and guessing is the one thing this product may not do.
+      deps.onDegraded(reading.error);
+      return;
+    case 'refused':
+      // A refusal is the service declining to read *this* document, so there is no reading to
+      // fall back to. The catalogue's sentence offers the paste-text path (§13).
+      throw new RunHalt(reading.error);
   }
 }

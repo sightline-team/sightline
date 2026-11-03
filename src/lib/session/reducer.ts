@@ -28,6 +28,7 @@ export type SessionAction =
   | { type: 'question_answered'; entry: QAEntry }
   | { type: 'trust_recorded'; record: TrustRecord }
   | { type: 'failed'; code: ErrorCode; context?: { page?: number } }
+  | { type: 'run_degraded'; code: ErrorCode; context?: { page?: number } }
   | { type: 'error_cleared' }
   | { type: 'mode_changed'; mode: Mode }
   | { type: 'forgotten' };
@@ -96,7 +97,7 @@ export function sessionReducer(state: Session, action: SessionAction): Session {
       return { ...state, status: 'analysing' };
 
     case 'analysis_received':
-      return { ...state, analysis: action.analysis, status: 'ready', error: undefined };
+      return { ...state, analysis: action.analysis, status: 'ready', error: undefined, degraded: undefined };
 
     case 'question_answered':
       // An answer also clears a failure left by an earlier question. The error box describes the
@@ -119,6 +120,15 @@ export function sessionReducer(state: Session, action: SessionAction): Session {
       // not lose the session (ARCH §13), while the status still says the step
       // did not finish.
       return { ...state, status: 'error', error: appError(action.code, action.context) };
+
+    case 'run_degraded':
+      // P-08 / ARCH §13: the reading could not be made, so the run ends showing the transcript
+      // alone. `ready` and not `error`, because the step that failed was the reading of the
+      // document, not the document's arrival — and the results view has to stay reachable for a
+      // screen-reader user to read their own text back. Any analysis already on screen is dropped
+      // rather than kept under a "this could not be read" notice: a run starts from a new
+      // transcript, so an older summary describes words that are no longer on the page.
+      return { ...state, status: 'ready', analysis: undefined, error: undefined, degraded: appError(action.code, action.context) };
 
     case 'error_cleared':
       return { ...state, status: 'idle', error: undefined };
