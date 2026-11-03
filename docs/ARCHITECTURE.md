@@ -429,6 +429,15 @@ Two operational facts the code must handle: **streaming bodies end with two newl
 
 Each check is a named entry in `CheckResult[]` with `ran` and `passed`. Overclaiming is not acceptable; an omitted check is a documented omission.
 
+### As built (T-01, T-02) — what the code decides today
+
+`lib/near-ai/attestation.ts` and `lib/near-ai/signatures.ts` implement the two cheap rungs and nothing else; `createTrustSession({ client })` composes them into the `AttestationGate` + `SignatureVerifier` pair the pipeline is typed against (`lib/near-ai/verification.ts`), sharing **one nonce per session** (§4 rule 4) and a TTL cache.
+
+- The gate runs, in the browser: `attestation_report` (a report was fetched through the typed client), `nonce_fresh` (its `request_nonce` equals ours — compared case-insensitively, and an absent nonce is a **fail**, not a shrug), `signing_address_shape` (20 hex bytes for ECDSA, 32 for Ed25519), `signing_public_key_shape` (a 32-byte key to encrypt to, which is what keeps the strong rung out of reach without one), then `server_verification` from `/api/verify`. `signingKey` on the outcome is what the signature check verifies against; the `signing_address` a signature response claims about itself is **data, never an authority**.
+- `status` is `verified` only when the local binding and the server verdict both say so, `failed` when a required check fails — and a 501, an unreachable verifier or an unparseable body is `failed`, not silence (§4 rule 6). `partial` otherwise. The handler in `app/api/verify` is still T-03's 501, so today **no live session can read `verified`**; that is the honest ceiling, and `fixtures/attestation/README.md` says why a synthetic "good" report may not close it.
+- The signature check rebuilds the ADR-19 text from the **exact** bytes it was handed, tries both `provider_tee` and `gateway` origins when the record does not state one, and reports two named checks: `response_signature` (signature valid *and* the served `text` agrees with our hashes) and `signed_by_model_enclave` (`provider_tee` only — a gateway signature is labelled as one, never as the enclave).
+- Not built: checks 3–5 of the minimum set (NRAS verdict, TDX quote, measurement replay) — they belong to T-08 and are gated on B-05. Live modes do not reach any of this yet: the composition roots still refuse at the door, because F-04 has no allowlist and F-05 forwards nothing.
+
 ### Where heavy checks run
 - Running them on `/api/verify` means the user trusts our server's verdict for those checks. Disclose it. The endpoint never sees documents.
 - If a check can run in the browser, prefer that.

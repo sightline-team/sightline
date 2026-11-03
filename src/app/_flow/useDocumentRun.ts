@@ -24,8 +24,10 @@ import type { Transcript } from '@/types';
  *
  * **Live modes refuse here, at the door.** The refusal text and the two throwing placeholders
  * are in `refused_steps.ts`, shared with the Q&A hook so a question and a document cannot get
- * two different answers about what this build can do. When T-01/T-02 land, the refusal is
- * deleted and the gate and verifier are constructed there; nothing else about the run changes.
+ * two different answers about what this build can do. The gate and verifier themselves exist
+ * (T-01, T-02); what is missing is a service they could reach, which is F-04 and F-05. When
+ * those land the refusal is deleted and `createTrustSession` / `createSignatureVerifier` are
+ * constructed here; nothing else about the run changes.
  */
 export interface RunOutcome {
   ok: boolean;

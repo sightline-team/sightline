@@ -262,13 +262,19 @@ function main(argv: string[]): number {
 
   const text = readFileSync(ROADMAP, 'utf8');
   const report = checkLedger(text);
-  const problems = [...report.problems];
+  // Ledger problems and repository problems are kept apart because `--write` can only repair the
+  // former: it rewrites §1 from §6, so the "dashboard does not match" it just made true is a
+  // complaint about bytes that no longer exist. Reporting it as-is made `--write` exit 1 on a
+  // successful repair, which breaks any command chained after it. A commit that skipped
+  // ROADMAP.md is a different kind of fact, and no amount of writing fixes that — so `git`
+  // problems survive the re-read.
+  const repoProblems: string[] = [];
 
   const git = (args: string[]): string[] => {
     try {
       return execFileSync('git', args, { encoding: 'utf8' }).split('\n').filter(Boolean);
     } catch {
-      problems.push(`git ${args.join(' ')} failed — is this a git checkout with the refs the range names?`);
+      repoProblems.push(`git ${args.join(' ')} failed — is this a git checkout with the refs the range names?`);
       return [];
     }
   };
@@ -276,17 +282,17 @@ function main(argv: string[]): number {
   if (staged) {
     const files = git(['diff', '--cached', '--name-only']);
     if (files.length > 0 && !files.includes('ROADMAP.md')) {
-      problems.push(`this commit stages ${files.length} file(s) and no ROADMAP.md — AGENTS.md §2: every contribution updates the roadmap in the same commit`);
+      repoProblems.push(`this commit stages ${files.length} file(s) and no ROADMAP.md — AGENTS.md §2: every contribution updates the roadmap in the same commit`);
     }
   } else {
     const commitRange = range ?? 'HEAD';
     const shas = git(['rev-list', '--no-merges', commitRange]);
-    if (shas.length === 0) problems.push(`git rev-list found no commits in "${commitRange}" — a range that names nothing is not a pass`);
+    if (shas.length === 0) repoProblems.push(`git rev-list found no commits in "${commitRange}" — a range that names nothing is not a pass`);
     for (const sha of shas) {
       const lineage = (git(['rev-list', '--parents', '-n', '1', sha])[0] ?? '').trim().split(/\s+/);
       if (lineage.length <= 1) continue; // the root commit imported the docs; there was no rule to break
       if (!git(['show', '--name-only', '--format=', sha]).includes('ROADMAP.md')) {
-        problems.push(`commit ${sha.slice(0, 8)} does not touch ROADMAP.md (AGENTS.md §2)`);
+        repoProblems.push(`commit ${sha.slice(0, 8)} does not touch ROADMAP.md (AGENTS.md §2)`);
       }
     }
   }
@@ -299,6 +305,7 @@ function main(argv: string[]): number {
     console.log(`roadmap:check: §1 dashboard rewritten from ${report.items} checkbox lines.`);
   }
 
+  const problems = [...(write ? checkLedger(readFileSync(ROADMAP, 'utf8')).problems : report.problems), ...repoProblems];
   if (problems.length > 0) {
     console.error(`roadmap:check — ${problems.length} problem(s):`);
     for (const problem of problems) console.error(`  · ${problem}`);

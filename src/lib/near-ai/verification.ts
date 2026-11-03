@@ -39,6 +39,12 @@ export interface GateOutcome {
   signingAlgo: 'ecdsa' | 'ed25519';
   /** When the report was fetched. `0` means never, which is only honest in Mode F. */
   fetchedAt: number;
+  /**
+   * The key material this report attested to, which is what a response signature is checked
+   * against (T-02). Absent until a report has been fetched and bound. Deliberately a structured
+   * field and not a `detail` string: details are read aloud on the receipt, keys are not.
+   */
+  signingKey?: { algo: 'ecdsa' | 'ed25519'; keyOrAddress: string };
 }
 
 export interface SignatureOutcome {

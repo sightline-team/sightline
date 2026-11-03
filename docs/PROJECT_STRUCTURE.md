@@ -85,7 +85,7 @@ sightline/
 │  │  │  ├─ envelope.ts             # Completion-envelope zod schema shared by the analysis call and the Q&A call
 │  │  │  ├─ verification.ts         # Gate + signature-verifier contracts, RunHalt, Mode F outcomes, halt mapping (the T-01/T-02 shapes)
 │  │  │  ├─ models.ts             # Per-model metadata call (attestationSupported/providerType/inputModalities) + allowlist — NOT /v1/models (ADR-18)
-│  │  │  ├─ attestation.ts        # Nonce, fetch, call /api/verify, named checks
+│  │  │  ├─ attestation.ts        # Nonce, fetch, call /api/verify, named checks; `createTrustSession` binds gate + verifier to one session nonce (T-01)
 │  │  │  ├─ signatures.ts         # fetch by chat id → rebuild hash pair → verify; retry "not found"; streaming trailing newlines (ADR-19)
 │  │  │  ├─ e2ee.ts               # X25519 ECDH + HKDF-SHA256 + XChaCha20-Poly1305 via @noble/*; T-10, gated on the browser path being proven
 │  │  │  └─ verifier/             # Ported from nearai-cloud-verifier ts/ (MIT; keep license + attribution); dcap-qvl-node for TDX quotes
