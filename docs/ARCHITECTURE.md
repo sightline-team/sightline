@@ -51,7 +51,7 @@ Markers: **[Verified]** = read in official NEAR AI Cloud docs, the machine-reada
 | State | **One `useReducer` + context** | Tiny, in-memory | Zustand / Redux |
 | Validation | zod | External JSON must be validated | |
 | Capture | Native `<input type="file" capture>` | Native camera is accessible | Custom `getUserMedia` camera |
-| Image prep | Browser: `createImageBitmap` (with resize) → canvas → JPEG | Downscale, honour orientation, strip EXIF | Server-side processing; local blur/brightness scoring |
+| Image prep | Browser: `createImageBitmap` → canvas → JPEG (built, **C-01**) | Re-encode is what strips EXIF/GPS; the decoder hands back upright pixels before the draw; long edge capped at 1600 px, each page budgeted at 768 KiB so five pages stay clear of the relay cap. The decode is full-resolution — downscaling happens at draw time, and C-07 measures what that costs on a phone | Server-side processing; local blur/brightness scoring |
 | Speech out | Web Speech `speechSynthesis`, single button | Private, free, optional | Voice picker, spell-out, auto-speak |
 | Question input | Text field (OS dictation allowed, disclosed) | Simple, accessible | Own recording + transcription pipeline |
 | AI | NEAR AI Cloud, TEE-hosted models only | The point | Proxied third-party models |
@@ -238,7 +238,7 @@ Two things that are **not** in the sentence above but are in the build: the word
 | Component | Responsibility |
 |---|---|
 | `capture` | File input, page list (remove, retake last) |
-| `image/prepare` | Resize via `createImageBitmap`, orientation, JPEG, EXIF strip |
+| `image/prepare` | Orientation-aware resize, JPEG re-encode (which is what removes EXIF/GPS), quality ladder and per-page byte budget; decode/encode injected so the logic is unit-testable (C-01) |
 | `near-ai/client` | Typed fetch wrapper; base URL + header provider; abort; one retry on transient errors. Returns the **exact bytes sent and received** alongside the parsed JSON, because ADR-19's hashes are of the wire form, not of a re-serialisation |
 | `near-ai/models` | Candidate list + **per-model metadata call** (ADR-18: the TEE flags are not on `/v1/models`); TEE and modality filtering; exact-id allowlist |
 | `near-ai/attestation` | Nonce, fetch report, call `/api/verify`, short-lived cache, produce named checks |

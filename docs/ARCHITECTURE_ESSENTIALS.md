@@ -38,7 +38,7 @@ Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.m
 
 ## Pipeline
 1. Input: native camera (`<input capture>`) 1–5 pages **or** pasted text.
-2. Browser: `createImageBitmap` resize → fix orientation → JPEG (strips EXIF/GPS).
+2. Browser (`lib/image/prepare.ts`, C-01): `createImageBitmap` → canvas → JPEG. The re-encode is the stripping: the decoder returns upright pixels and the encoder writes a fresh file, so EXIF, GPS and the orientation tag itself are gone by construction. Long edge 1600 px, ≤768 KiB per page.
 3. Attestation fetch + checks (nonce) → `/api/verify` for heavy checks (no document sent there).
 4. **Step 1 transcribe** (vision, one request per page): verbatim, tables row by row, `[illegible]`, `captureIssues[]`, page labels.
 5. If `captureIssues` → announce, offer retake (before spending analysis time).

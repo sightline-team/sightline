@@ -257,7 +257,7 @@ Ranked by (likelihood × damage).
 | Very long wait with no audio feedback | Interval announcements (every ~10 s), then done tone/haptic | P0 |
 | Attestation changes between check and use (model redeploy) | Re-fetch once; then fail with a clear message | P0 |
 | Screen reader announces progress twice | Single announcer instance | P0 |
-| Large camera images (memory) | Decode with downscaling (`createImageBitmap` resize) | P0 |
+| Large camera images (memory) | One page decoded at a time, bitmap closed as soon as its JPEG is written; output ≤1600 px / ≤768 KiB. **As built (C-01): the downscale is at draw time, not during decode** — `createImageBitmap` resize options need the target size, which is only known after decoding. Whether that is survivable across five pages on a mid-range phone is C-07, on a device | P0 |
 | User already has text from their phone | Paste-text path | P0 |
 | User's own dictation sends audio to the OS vendor | Disclose in the UI | P0 |
 | Relay abuse (arbitrary path/host, huge bodies) | Exact-path allowlist, model allowlist, size cap | P0 |
