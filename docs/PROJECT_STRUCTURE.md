@@ -58,9 +58,10 @@ sightline/
 │
 ├─ src/
 │  ├─ app/
-│  │  ├─ layout.tsx               # <html lang>, skip link, landmarks, announcer + session store mount, fixtures banner
+│  │  ├─ layout.tsx               # <html lang>, skip link, landmarks, announcer + session store (over the nav too, so Forget reaches every route), fixtures banner
 │  │  ├─ _flow/useDocumentRun.ts  # Composition root for one run: store, announcer, router, transport, pipeline. `_` = not a route
 │  │  ├─ _flow/useAskAboutDocument.ts # Same shape for one question (P-06); reads the mode off the session, not the build
+│  │  ├─ _flow/useForget.ts       # Same shape for Forget (P-10): store + announcer + the read-aloud stop, and the sentence built from what was counted
 │  │  ├─ _flow/refused_steps.ts   # Live modes refuse at the door (T-01/T-02 unbuilt) with one shared sentence
 │  │  ├─ page.tsx                 # Add pages or paste text (`features/paste/PasteView.tsx`)
 │  │  ├─ read/page.tsx            # Results + ask (`features/analysis/ResultsView.tsx`)
@@ -93,7 +94,7 @@ sightline/
 │  │  │  └─ verifier/             # Ported from nearai-cloud-verifier ts/ (MIT; keep license + attribution); dcap-qvl-node for TDX quotes
 │  │  ├─ image/prepare.ts         # createImageBitmap resize, orientation, JPEG, EXIF strip
 │  │  ├─ a11y/announcer.tsx       # Single aria-live announcer + interval progress
-│  │  ├─ session/                 # reducer.ts (state shape, page cap), store.tsx (provider + in-flight run registry), forget.ts
+│  │  ├─ session/                 # reducer.ts (state shape, page cap), store.tsx (provider + in-flight run + object-URL registry + forget()), forget.ts (P-10: the pure clear, the `sightline.` key rule)
 │  │  ├─ fixtures/                # replay.ts (content-matched Mode F client, `transportFor`), cases.ts (authored synthetic demo corpus)
 │  │  ├─ server/                  # Server-only: env.ts, allowlist.ts, rateLimit.ts (all `import 'server-only'`)
 │  │  ├─ config.ts                # Env validation (zod); mode selection
@@ -101,11 +102,11 @@ sightline/
 │  │  └─ not_built.ts             # `NotBuilt` + `notBuilt(item, what)`: every scaffold stub throws this, naming its ROADMAP item
 │                                 # A stub that returned a plausible fake would let a pipeline 'work' on nothing
 │  │
-│  ├─ components/                 # Button, StatusMessage (focusable, ref as prop), SkipLink (native elements)
+│  ├─ components/                 # Button, StatusMessage (focusable, ref as prop), SkipLink, ForgetButton (P-10: the shell control, in the nav on every route)
 │  └─ types/index.ts
 │
 └─ tests/
-   ├─ unit/                       # config, server-env, session reducer, errors, nonce, grounding, schemas, near-client, pipeline, fixtures, qa, roadmap-check; image prep still to write
+   ├─ unit/                       # config, server-env, session reducer, errors, nonce, grounding, schemas, near-client, pipeline, fixtures, qa, roadmap-check, forget (P-10); image prep still to write
    ├─ verification/               # attestation.test.ts: stubs refuse + strong claim unreachable; 9 `it.todo` rows name what T-01/T-02/T-05 must still prove
    ├─ relay/                      # relay.test.ts: both API routes answer 501, name their item, forward nothing, leak no key. A-09 adds rejected path/oversize/rate limit
    ├─ stubs/server-only.ts        # no-op stand-in so unit tests can import server modules (see vitest.config.mts)

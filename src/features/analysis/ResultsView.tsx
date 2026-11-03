@@ -49,6 +49,15 @@ export function ResultsView({ ask }: { ask: ReactNode }) {
     if (analysis !== undefined || session.degraded !== undefined) headingRef.current?.focus();
   }, [analysis, session.degraded]);
 
+  // P-10, and deliberately a second effect: Forget empties this screen while the user is
+  // standing on it, and §8 forbids the silent version, so focus goes to the heading that now
+  // says nothing has been read. It cannot live in the effect above — a refused question changes
+  // `status` too, and an effect that re-focused the heading on every status change would pull
+  // focus away from the failure summary A-06 puts it on.
+  useEffect(() => {
+    if (session.status === 'forgotten') headingRef.current?.focus();
+  }, [session.status]);
+
   if (analysis === undefined && session.degraded !== undefined) {
     // ARCH §13's "then show transcript only" (P-08). The reading is missing, so the sections
     // that would contain it are *absent* rather than empty: an empty "Key facts" heading over
@@ -78,10 +87,14 @@ export function ResultsView({ ask }: { ask: ReactNode }) {
   }
 
   if (analysis === undefined) {
+    // The screen a user is left on after Forget (P-10) if they pressed it here: the heading is
+    // the same one, so the announcement and the focus move land somewhere they already know.
     return (
       <>
-        <h1>What Sightline read</h1>
-        <p>Nothing has been read yet.</p>
+        <h1 ref={headingRef} tabIndex={-1} data-testid="results-heading">
+          What Sightline read
+        </h1>
+        <p data-testid="nothing-read">Nothing has been read yet.</p>
         <p>
           <Link href="/">Add a document</Link>
         </p>

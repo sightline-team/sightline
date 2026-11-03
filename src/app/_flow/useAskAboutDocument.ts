@@ -48,11 +48,17 @@ export function useAskAboutDocument(): (question: string) => Promise<RunOutcome>
           onTrustRecord: (record) => dispatch({ type: 'trust_recorded', record }),
         });
 
+        // A reply that arrives after Forget belongs to a session that no longer exists.
+        if (controller.signal.aborted) return { ok: false };
         dispatch({ type: 'question_answered', entry });
         announce(spokenAnswer(entry));
         return { ok: true };
       } catch (cause) {
         if (cause instanceof RunHalt) {
+          // Forget (P-10) aborts the question too, and an answer or an error arriving after it
+          // would be written into a session that has already been cleared — `useDocumentRun`
+          // holds the same rule.
+          if (controller.signal.aborted) return { ok: false };
           dispatch({ type: 'failed', code: cause.error.code, context: cause.error.context });
           announce(cause.error.userMessage);
           return { ok: false };

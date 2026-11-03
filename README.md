@@ -74,6 +74,33 @@ None of the NEAR AI verification checks above has been run. Until it is, Sightli
 verification claim to make — which is why the receipt in fixture mode states the demo-data sentence
 from `claims.ts` instead of a list of checks that passed.
 
+## Forgetting a document
+
+**Forget this document** sits in the navigation, so it is reachable from every screen — including
+the one a run is happening on. One press: empties the session (the words you gave, the reading,
+every answer, the receipt), clears the text you had typed but not yet sent, stops any request still
+going, revokes any image preview this tab created, removes this app's own `sessionStorage` keys, and
+stops Sightline's own read-aloud. It stays where you are; the announcement says what was cleared and
+the screen you were on changes underneath you.
+
+What the button **cannot** do, stated here rather than implied by a tidy word on a control:
+
+- **It cannot recall what already left the tab.** A document that was sent is gone from this app's
+  reach; what a service keeps, and for how long, is its own behaviour and is not changed by a
+  Forget press here.
+- **It cannot reach the device's own copies.** A screen reader's speech history or speech viewer,
+  the clipboard, what the operating system's keyboard suggested or predicted, browser history and
+  form autofill, screenshots, and any photo the person took with the camera app are all outside
+  this app.
+- **It cannot reach another tab, and it cannot promise what a browser keeps for itself.** A page
+  restored from a browser's back/forward cache is that browser's decision, not ours; a full page
+  load loses the document anyway, because this build has no database and no document store
+  (ADR-8 — the session lives in memory, which is why the app navigates with client-side links).
+
+In fixture mode there is nothing to recall in the first place, because no document is sent anywhere
+(`ROADMAP.md` F-09) — but the sentence above is what the button means in *every* mode, and it is
+written as the honest version rather than the convenient one.
+
 ## Accuracy
 
 No accuracy number exists. The golden set is item C-09 with its cases designed in

@@ -77,6 +77,13 @@ export function useDocumentRun(config: PublicConfig) {
           },
         });
 
+        // Forget (P-10) aborts a run that is still going. From here on this run's result
+        // belongs to a session that no longer exists, so it writes nothing — not state, not a
+        // sentence over the Forget announcement, not a navigation the user did not ask for.
+        // The check is the signal rather than an error type because the fixture transport
+        // answers regardless of cancellation, so a completed run can arrive after Forget too.
+        if (controller.signal.aborted) return { ok: false };
+
         // Both outcomes navigate: the transcript is on `/read` either way, and leaving the user
         // on the paste screen with no idea the run ended is the silent transition §8 forbids.
         // What differs is the sentence — a degraded run must not announce "here is what I read".
@@ -89,6 +96,9 @@ export function useDocumentRun(config: PublicConfig) {
         return { ok: true };
       } catch (cause) {
         if (cause instanceof RunHalt) {
+          // The same rule as above: a halt caused by the user pressing Forget is not an error
+          // to report on a screen they just cleared.
+          if (controller.signal.aborted) return { ok: false };
           dispatch({ type: 'failed', code: cause.error.code, context: cause.error.context });
           announce(cause.error.userMessage);
           return { ok: false };

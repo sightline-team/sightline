@@ -539,3 +539,121 @@ test.describe('accessibility with content (extends F-08)', () => {
     await expect(page.getByTestId('trust-claim')).not.toContainText('verified');
   });
 });
+
+test.describe('Forgetting the document (P-10)', () => {
+  /** What the announcer says. Built from what `forgetSession` counted, so it is one sentence here. */
+  const FORGOT = 'Forgotten. Sightline has cleared the document and everything it read.';
+  const FORGET = { name: 'Forget this document' };
+
+  test('the control is on every route, because a run is stoppable from the screen it started on', async ({ page }) => {
+    // The item's own reasoning: the two moments Forget exists for are bailing out of a run that
+    // is still going (the user is on the paste view) and clearing a reading already on screen.
+    for (const route of ['/', '/read', '/trust', '/settings']) {
+      await page.goto(route);
+      await expect(page.getByRole('button', FORGET), `Forget on ${route}`).toBeVisible();
+    }
+  });
+
+  test('pressing Forget clears the screen, says so, and leaves focus on the heading it emptied', async ({ page }) => {
+    const text = await chooseDemoDocument(page, DEMO.bill);
+    await runText(page, text);
+    await expect(page.getByTestId('results-heading')).toBeVisible();
+
+    await page.getByRole('button', FORGET).click();
+
+    await expect(page.getByTestId('announcer')).toHaveText(FORGOT);
+    await expect(page.getByTestId('nothing-read')).toBeVisible();
+    // §8: the view changed underneath the user, so focus goes to its heading rather than staying
+    // on a control they have just pressed and a page that no longer says what it said.
+    await expect(page.getByTestId('results-heading')).toBeFocused();
+    // The button is not a back arrow. Being told the document is gone while being sent somewhere
+    // else is two changes from one press.
+    await expect(page).toHaveURL(/\/read$/);
+  });
+
+  test('the document’s words are nowhere on the page afterwards', async ({ page }) => {
+    // The done-when for this item, asserted where it matters: not in the reducer but in the DOM.
+    // The transcript section, the summary, the facts, the answers and the receipt are all gone,
+    // so a person checking the page with a find-bar or a braille display finds nothing.
+    const text = await chooseDemoDocument(page, DEMO.bill);
+    await runText(page, text);
+    await page.getByRole('button', { name: 'How much do I have to pay?' }).click();
+    await page.getByRole('button', { name: 'Ask', exact: true }).click();
+    await expect(page.getByTestId('qa-answer')).toBeVisible();
+
+    await page.getByRole('button', FORGET).click();
+
+    const body = (await page.locator('body').innerText()).toLowerCase();
+    for (const phrase of ['840', 'nc-2026-0441', 'care trust', 'amount due', 'invoice']) {
+      expect(body, `“${phrase}” survived Forget`).not.toContain(phrase);
+    }
+  });
+
+  test('Forget from the paste view takes the typed words out of the box as well', async ({ page }) => {
+    // The obvious miss: the box is component state, not session state, so clearing the session
+    // alone would leave the document sitting in the very field it was typed into.
+    await page.goto('/');
+    await page.getByLabel('Paste the text of your document').fill('My own rent agreement. Rent is £900 due on the 1st.');
+    await page.getByRole('button', FORGET).click();
+
+    await expect(page.getByTestId('announcer')).toHaveText(FORGOT);
+    await expect(page.getByLabel('Paste the text of your document')).toHaveValue('');
+  });
+
+  test('the receipt goes back to “nothing has been verified”, so the records went too', async ({ page }) => {
+    const text = await chooseDemoDocument(page, DEMO.bill);
+    await runText(page, text);
+    await expect(page.getByTestId('trust-record')).toHaveCount(1);
+
+    await page.getByRole('button', FORGET).click();
+    await page.getByRole('link', { name: 'Verification' }).click();
+
+    await expect(page.getByTestId('trust-empty')).toBeVisible();
+    await expect(page.getByTestId('trust-record')).toHaveCount(0);
+  });
+
+  test('the announcement claims nothing about where the bytes went', async ({ page }) => {
+    // Rule 1, checked as a sentence rather than as a review note: the app may say what *this tab*
+    // cleared. What may be said about the document's journey comes from `claims.ts` and a
+    // `TrustRecord` — and Forget leaves no record behind to compute one from.
+    for (const route of ['/', '/read', '/trust', '/settings']) {
+      await page.goto(route);
+      await page.getByRole('button', FORGET).click();
+
+      const spoken = (await page.getByTestId('announcer').innerText()).toLowerCase();
+      expect(spoken, `the Forget sentence on ${route}`).toMatch(/^forgotten\./);
+      expect(spoken, `the Forget sentence on ${route}`).not.toMatch(/enclave|encrypt|private|attest|verif|stored|sent|delete|remov|destroy/);
+    }
+  });
+
+  test('it clears this app’s own storage keys and leaves anyone else’s alone', async ({ page }) => {
+    // The seam `tests/unit/forget.test.ts` cannot reach: the unit test proves the prefix rule
+    // against a `Storage` double, and this proves `store.forget()` really hands it the browser's
+    // own store. The second key is the point — a control that wiped the origin's other data
+    // would be a worse bug than one that cleared too little.
+    await page.goto('/');
+    await page.evaluate(() => {
+      window.sessionStorage.setItem('sightline.e2eKey', 'a value nobody else owns');
+      window.sessionStorage.setItem('other-tab.e2eKey', 'must survive');
+    });
+
+    await page.getByRole('button', FORGET).click();
+    await expect(page.getByTestId('announcer')).toHaveText(FORGOT);
+
+    const kept = await page.evaluate(() => ({
+      ours: window.sessionStorage.getItem('sightline.e2eKey'),
+      foreign: window.sessionStorage.getItem('other-tab.e2eKey'),
+    }));
+    expect(kept.ours).toBeNull();
+    expect(kept.foreign).toBe('must survive');
+  });
+
+  test('the nav control meets the same 44px minimum as the flow buttons', async ({ page }) => {
+    await page.goto('/');
+    const box = await page.getByRole('button', FORGET).boundingBox();
+    // `boundingBox()` is null when the element is not in the layout, so it is checked rather than
+    // asserted away: a missing box is this test failing, not a pass.
+    if (box === null) throw new Error('the Forget control is not laid out, so its size cannot be measured');
+    expect(box.height, 'AGENTS.md §8: no touch target under 44px').toBeGreaterThanOrEqual(44);
+  });
+});

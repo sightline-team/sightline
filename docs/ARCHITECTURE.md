@@ -214,6 +214,20 @@ Mode F answers only the wordings prepared for that document (`no_fixture_for_que
 ### 5.4 Forget
 Reset reducer state, revoke object URLs, abort in-flight requests with `AbortController`, clear `sessionStorage` entries owned by the session. Be honest in the README about what cannot be cleared (OS, screen-reader history, bfcache, screenshots, clipboard).
 
+**As built (P-10, 2026-11-03).** `lib/session/forget.ts` is the pure half — it takes its collaborators (`revokeObjectUrl`, `removeSessionItem`, the lists to clear) and returns a `ForgetReport { aborted, revoked, cleared, failed }`, so vitest can prove each one was called in Node, where neither `URL` nor `sessionStorage` exists. `session/store.tsx` supplies them from the browser and dispatches `forgotten`; `app/_flow/useForget.ts` is the composition root that also stops read-aloud, because `src/lib/` may not import `src/features/` (§7) and the store therefore cannot make that call itself. Four decisions the sentence above leaves open:
+
+| Question | Answer, and why |
+|---|---|
+| Order of the four? | Abort first, then revoke, then clear. A request still in flight can write document data back into a screen the user just emptied, so the order is part of the guarantee. Asserted by a call-timeline test, not by a comment. |
+| What if a collaborator throws? | Every target is still attempted and the failures are **counted**, not swallowed. `sessionStorage.removeItem` genuinely fails in some private-browsing modes; a report that said `cleared: 3` after two were removed is exactly the false claim rule 1 exists to prevent. `useForget` says the count out loud. |
+| Which storage keys are “owned by the session”? | Everything under the `sightline.` prefix (`SESSION_STORAGE_PREFIX`), read from the live store rather than from a registry — so Mode A’s key (T-13) is found whether or not its author remembered to register it. T-13 and A-15 must store under that prefix or their values survive Forget by construction. Keys that are not ours are never touched. |
+| Does it navigate? | No. The view changes underneath the user and `ResultsView` moves focus to its heading when it does (§8). Pressing one button should not be two changes. |
+
+Two things that are **not** in the sentence above but are in the build: the words typed into the paste box are document data too, so `PasteView` is remounted on the new session id and starts empty (an effect that set state was rejected by lint and by the argument behind it — the old words would render once more first); and a run whose controller was aborted writes nothing afterwards, so a late reply or a cancellation halt cannot resurrect a session the user just cleared.
+
+### 5.5 Forget's limits (the part the README owns)
+`README.md` §Forgetting a document states what one press cannot do: recall what already left the tab, reach the device's own copies (screen-reader history, clipboard, OS keyboard predictions, screenshots, browser history and autofill), or bind a browser's back/forward cache. That text lives in the README rather than in the UI because it is a statement about the *platform*, and the app has no rung to compute it from (rule 1).
+
 ## 6. Components
 
 | Component | Responsibility |
@@ -231,7 +245,8 @@ Reset reducer state, revoke object URLs, abort in-flight requests with `AbortCon
 | `speech` | One read-aloud button, rate |
 | `trust` | `record.ts` builds the only `TrustRecord`s; `claims.ts` maps record → rung → copy; `TrustReceipt` shows one block per call |
 | `a11y` | Single announcer; focus helper; interval progress announcements; optional haptic and wake-lock |
-| `session/store` | The one `SessionProvider`: the reducer behind it, and the registry of in-flight `AbortController`s that Forget (P-10) uses to stop a run whose bytes are still leaving the device |
+| `session/store` | The one `SessionProvider`: the reducer behind it, the registry of in-flight `AbortController`s and object URLs, and `forget()` — which supplies `lib/session/forget.ts`'s injected collaborators from the browser and dispatches `forgotten` (**P-10**) |
+| `session/forget` | The pure half of **Forget**: `forgetSession(targets)` aborts → revokes → clears, in that order, attempts every target even when one throws, and returns a `ForgetReport` of what actually happened. Plus `sessionKeysOwnedBy`, which is the `sightline.` prefix rule that makes a stored value forgettable (**P-10**) |
 | `app/_flow` | `useDocumentRun`: the composition root that joins store + announcer + router + transport + pipeline for one run. `_` is Next's "not a route" prefix. Live modes refuse here until T-01/T-02 exist |
 | `fixtures` | Mode F replay. `cases.ts` holds the authored synthetic corpus (`FixtureCase{name,title,text,analysis}`) and `replay.ts` answers a request **only** when the document in it is one of those, byte for byte; every attestation and signature call is refused, because there is no enclave to describe. `fixtures/{responses,attestation}/` stay empty until S-11 records real payloads |
 

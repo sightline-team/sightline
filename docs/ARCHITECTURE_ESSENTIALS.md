@@ -62,6 +62,10 @@ Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.m
 - `KeyFact { kind, label, value, sourceQuote, quoteFound, numbersRechecked? }`
 - `TrustRecord { model, endpoint, e2ee, attestation{checks[], status}, signature, claim }`
 - Everything in memory. Key in `sessionStorage`. Settings (rate, high-contrast, mode) in `localStorage`.
+- **Forget** (P-10) clears the tab's own memory: session state, the typed-but-unsent text, running
+  requests, object URLs, and `sessionStorage` under the `sightline.` prefix — which is the rule that
+  makes a future key or setting forgettable, so store under it or say so in the README. What it
+  cannot reach (the device's copies, anything already sent) is stated in `README.md`, not on the button.
 
 ## Routes
 - `POST /api/verify` — report in, named checks out, no user content

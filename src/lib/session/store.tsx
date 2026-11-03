@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useCallback, useContext, useMemo, useReducer, useRef, type Dispatch, type ReactNode } from 'react';
+import { forgetSession, sessionKeysOwnedBy, type ForgetReport } from '@/lib/session/forget';
 import { initialSession, sessionReducer, type SessionAction } from '@/lib/session/reducer';
 import type { Mode, Session } from '@/types';
 
@@ -25,6 +26,17 @@ export interface SessionStore {
   /** Called by the run when it ends, success or failure. */
   endRun(controller: AbortController): void;
   activeRunCount(): number;
+  /**
+   * An object URL this session created, so Forget can revoke it. Its first producer is the
+   * capture previews (C-02); until one exists the list is honestly empty rather than assumed.
+   */
+  trackObjectUrl(url: string): void;
+  /**
+   * Forget (P-10): abort what is running, revoke what was made, clear the session's own
+   * storage keys, and reset the reducer. Returns what was actually done, because the caller
+   * has to say so out loud and a count nobody computed cannot be spoken.
+   */
+  forget(): ForgetReport;
 }
 
 const SessionContext = createContext<SessionStore | null>(null);
@@ -32,6 +44,7 @@ const SessionContext = createContext<SessionStore | null>(null);
 export function SessionProvider({ mode, children }: { mode: Mode; children: ReactNode }) {
   const [session, dispatch] = useReducer(sessionReducer, mode, initialSession);
   const runs = useRef<Set<AbortController>>(new Set());
+  const objectUrls = useRef<Set<string>>(new Set());
 
   const beginRun = useCallback(() => {
     const controller = new AbortController();
@@ -45,9 +58,30 @@ export function SessionProvider({ mode, children }: { mode: Mode; children: Reac
 
   const activeRunCount = useCallback(() => runs.current.size, []);
 
+  const trackObjectUrl = useCallback((url: string) => {
+    objectUrls.current.add(url);
+  }, []);
+
+  const forget = useCallback(() => {
+    const report = forgetSession({
+      inFlight: [...runs.current],
+      objectUrls: [...objectUrls.current],
+      // A store also renders on the server, where there is no browser storage to clear.
+      sessionStorageKeys: typeof window === 'undefined' ? [] : sessionKeysOwnedBy(window.sessionStorage),
+      revokeObjectUrl: (url) => URL.revokeObjectURL(url),
+      removeSessionItem: (key) => window.sessionStorage.removeItem(key),
+    });
+    // Drained here rather than left in: the next document must not inherit the last one's
+    // registrations, and `endRun` on a controller already aborted is a harmless delete.
+    runs.current.clear();
+    objectUrls.current.clear();
+    dispatch({ type: 'forgotten' });
+    return report;
+  }, []);
+
   const value = useMemo(
-    () => ({ session, dispatch, beginRun, endRun, activeRunCount }),
-    [session, beginRun, endRun, activeRunCount],
+    () => ({ session, dispatch, beginRun, endRun, activeRunCount, trackObjectUrl, forget }),
+    [session, beginRun, endRun, activeRunCount, trackObjectUrl, forget],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

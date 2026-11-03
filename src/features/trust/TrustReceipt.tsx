@@ -30,7 +30,9 @@ export function TrustReceipt({ records }: { records: TrustRecord[] }) {
     return (
       <section aria-labelledby="trust-heading">
         <h2 id="trust-heading">Verification</h2>
-        <p>Nothing has been verified yet, because nothing has been read yet.</p>
+        {/* `data-testid` because P-10's evidence is that this state is *back*: the records are
+            gone from memory, not merely hidden behind a reading that is still on screen. */}
+        <p data-testid="trust-empty">Nothing has been verified yet, because nothing has been read yet.</p>
       </section>
     );
   }

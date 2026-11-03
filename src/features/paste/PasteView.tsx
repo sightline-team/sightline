@@ -20,7 +20,21 @@ import type { PublicConfig } from '@/lib/config';
  * what the build does and does not do; the claim about verification appears only in the
  * receipt, computed from the `TrustRecord`.
  */
+/**
+ * The keyed wrapper (item **P-10**).
+ *
+ * The words in the text box are document data, and they belong to the session that typed them.
+ * `forgotten` mints a new session id, so the box is remounted under the new key and starts
+ * empty — React's own way to say "this subtree describes a different thing now". Doing it with
+ * an effect that sets state was rejected by the lint rule and by the argument behind it: the
+ * old words would be rendered once more before they disappeared.
+ */
 export function PasteView({ config }: { config: PublicConfig }) {
+  const { session } = useSessionStore();
+  return <PasteForm key={session.id} config={config} />;
+}
+
+function PasteForm({ config }: { config: PublicConfig }) {
   const { session } = useSessionStore();
   const run = useDocumentRun(config);
   const announce = useAnnouncer().announce;
