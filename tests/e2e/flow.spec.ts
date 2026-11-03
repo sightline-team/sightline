@@ -281,8 +281,9 @@ test.describe('the demo flow, with no credentials (F-09 done-when)', () => {
     await page.getByRole('button', { name: 'Read this text' }).click();
     await expect(page.getByTestId('results-heading')).toBeVisible();
     await expect(page.getByText('Sightline thinks this is a letter about health.')).toBeVisible();
-    // Two warnings arrive from the corpus; this version does not yet add its own safety notices.
-    await expect(page.locator('#warnings-heading ~ ul li')).toHaveCount(2);
+    // Two warnings arrive from the corpus; Sightline's own notices are a separate list (P-07).
+    await expect(page.getByTestId('model-warnings').locator('li')).toHaveCount(2);
+    await expect(page.getByTestId('safety-notices').locator('li')).toHaveCount(3);
   });
 
   test('answering an arbitrary document is refused, not invented', async ({ page }) => {
@@ -410,6 +411,83 @@ test.describe('the demo flow, with no credentials (F-09 done-when)', () => {
       }
     }
     expect(tooSmall, 'AGENTS.md §8: no touch target under 44px').toEqual([]);
+  });
+});
+
+test.describe("Sightline's own safety notices (P-07)", () => {
+  /**
+   * The notices are computed from the reading's own fields, so each demo letter must show exactly
+   * the cautions its analysis justifies — no more. A notice that fired on the wrong document would
+   * be Sightline talking about a letter it had not read, which is the failure the flagged-fact
+   * markup exists to prevent, and `tests/unit/safety-notices.test.ts` holds the same rule in code.
+   */
+  const NOTICES = {
+    [DEMO.bill]: [
+      'This seems to mention money. Sightline reads every letter the same way, so it cannot tell you whether this one is genuine. Before you pay anything, check the amount with the sender using contact details you already have.',
+      'This seems to set a date to act by. A date can be misread, so check it with the sender before you rely on it.',
+      'Sightline reads English documents only. It will not guess at words in another language.',
+    ],
+    [DEMO.statement]: [
+      'This seems to mention money. Sightline reads every letter the same way, so it cannot tell you whether this one is genuine. Before you pay anything, check the amount with the sender using contact details you already have.',
+      'Sightline reads English documents only. It will not guess at words in another language.',
+    ],
+    [DEMO.gpLetter]: [
+      'This seems to mention a medicine or a dose. Sightline is not a medical professional and does not give medical advice. Check with your doctor, a pharmacist or the surgery before you change anything.',
+      'This seems to set a date to act by. A date can be misread, so check it with the sender before you rely on it.',
+      'Sightline reads English documents only. It will not guess at words in another language.',
+    ],
+  } as const;
+
+  for (const [index, expected] of Object.entries(NOTICES)) {
+    test(`the notices on demo document ${Number(index) + 1} are exactly the ones its reading justifies`, async ({ page }) => {
+      const text = await chooseDemoDocument(page, Number(index));
+      await runText(page, text);
+
+      await expect(page.getByTestId('results-heading')).toBeVisible();
+      await expect(page.getByTestId('safety-notices').locator('li')).toHaveText(expected);
+    });
+  }
+
+  test('the notices live inside Warnings, so the fixed section order does not move', async ({ page }) => {
+    const text = await chooseDemoDocument(page, DEMO.gpLetter);
+    await runText(page, text);
+    await expect(page.getByTestId('results-heading')).toBeVisible();
+
+    // AGENTS.md §8 fixes the order a reader navigates by. P-07 adds content, not a section, so
+    // the heading array a returning user has learned is unchanged.
+    expect(await page.locator('main h2').allTextContents()).toEqual(SECTION_ORDER);
+
+    const warnings = page.locator('section[aria-labelledby="warnings-heading"]');
+    await expect(warnings.getByTestId('safety-notices')).toBeVisible();
+    await expect(page.getByRole('heading', { level: 3, name: 'What the reading flagged' })).toBeVisible();
+  });
+
+  test('our caution and the reading’s own warning stay two separate lists', async ({ page }) => {
+    const text = await chooseDemoDocument(page, DEMO.gpLetter);
+    await runText(page, text);
+
+    // Two voices, named as such: the model's sentence must not be absorbed into ours, because
+    // "the app says check with the surgery" and "the model said check with the surgery" are
+    // different claims about who told the person what.
+    const model = page.getByTestId('model-warnings').locator('li');
+    await expect(model).toHaveText([
+      'This letter describes a medicine and a dose. Confirm any change with the surgery.',
+      'The letter gives a number to call straight away if things get worse.',
+    ]);
+    const ours = page.getByTestId('safety-notices');
+    await expect(ours).not.toContainText('This letter describes a medicine');
+    await expect(ours).not.toContainText('The letter gives a number');
+  });
+
+  test('the notices never speak a fake-letter claim, and never a dose', async ({ page }) => {
+    const text = await chooseDemoDocument(page, DEMO.gpLetter);
+    await runText(page, text);
+
+    const words = (await page.getByTestId('safety-notices').innerText()).toLowerCase();
+    // PRD §12: no detection claim. PRD §6 R7: the notice sends the person to a professional.
+    expect(words).not.toMatch(/scam|fraud|detect/);
+    expect(words).not.toContain('sertraline');
+    expect(words).toContain('does not give medical advice');
   });
 });
 

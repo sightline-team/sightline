@@ -3,6 +3,7 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import Link from 'next/link';
 import { TrustReceipt } from '@/features/trust/TrustReceipt';
+import { safetyNotices } from '@/features/safety/notices';
 import { useSessionStore } from '@/lib/session/store';
 import type { DocType, KeyFact, Transcript } from '@/types';
 
@@ -146,10 +147,17 @@ export function ResultsView({ ask }: { ask: ReactNode }) {
 
       <section aria-labelledby="warnings-heading">
         <h2 id="warnings-heading">Warnings</h2>
+        {/* P-07: our own cautions, in a separate list from the model's because the two may disagree. */}
+        <ul data-testid="safety-notices">
+          {safetyNotices(analysis).map((notice) => (
+            <li key={notice.id}>{notice.text}</li>
+          ))}
+        </ul>
+        <h3>What the reading flagged</h3>
         {analysis.warnings.length === 0 ? (
-          <p>Nothing here needs a warning.</p>
+          <p>The reading did not flag anything of its own.</p>
         ) : (
-          <ul>
+          <ul data-testid="model-warnings">
             {analysis.warnings.map((warning, index) => (
               <li key={`${warning.text}-${index}`}>{warning.text}</li>
             ))}

@@ -76,6 +76,7 @@ sightline/
 │  │  ├─ paste/PasteView.tsx      # Text input, demo document buttons, error summary focus
 │  │  ├─ analysis/                # pipeline.ts, prompts.ts, schemas.ts, grounding.ts, ResultsView
 │  │  ├─ qa/                      # ask.ts (grounded Q&A), prompts.ts, schemas.ts, AskPanel.tsx
+│  │  ├─ safety/notices.ts        # P-07: Sightline's own cautions (medicine, money, deadline, English-only), computed from the validated Analysis — never the model's warnings, never a privacy sentence
 │  │  ├─ speech/                  # speak.ts, SpeakButton.tsx
 │  │  └─ trust/                   # claims.ts (record → claim → copy), record.ts (the only TrustRecord builder), TrustReceipt.tsx, TrustView.tsx
 │  │

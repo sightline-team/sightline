@@ -226,7 +226,8 @@ Reset reducer state, revoke object URLs, abort in-flight requests with `AbortCon
 | `near-ai/signatures` | Fetch and verify per-response signatures |
 | `near-ai/completion` | `readCompletion` (**P-08**): the one sequence both document-derived calls run — gate, body, send, signature, record, read — plus the single repair retry and the `ok / truncated / refused / unreadable` outcome. The features keep the decisions that differ: what each outcome costs the user |
 | `analysis` | Pipeline, prompts, zod schemas, grounding check |
-| `qa` | Grounded Q&A: `ask.ts` (gate → one call → signature → record → grounding), `prompts.ts`, `schemas.ts`, `AskPanel` (question field, prepared questions, answers in the order asked) |
+| `qa` | Grounded Q&A: `ask.ts` (one `readCompletion` → grounding), `prompts.ts`, `schemas.ts`, `AskPanel` (question field, prepared questions, answers in the order asked) |
+| `safety` | `notices.ts` (P-07): the only sentences Sightline writes about document content, computed from the validated `Analysis`, with the fixed order and the plain-language limits in §13 |
 | `speech` | One read-aloud button, rate |
 | `trust` | `record.ts` builds the only `TrustRecord`s; `claims.ts` maps record → rung → copy; `TrustReceipt` shows one block per call |
 | `a11y` | Single announcer; focus helper; interval progress announcements; optional haptic and wake-lock |
@@ -503,6 +504,9 @@ CSP: `connect-src` limited to self and NEAR AI Cloud hosts (including `*.complet
   forbids it. Guarded by `tests/e2e/flow.spec.ts`; decided properly by item **A-16**.
 - Focus moves to the new view's heading on route change; to the error summary on failure.
 - Results order: Summary → Key facts → Actions → Warnings → Full text → Ask → Trust receipt. "Skip to full text" link.
+  Warnings holds two named lists (§13, P-07): Sightline's own notices first, then the reading's own
+  warnings under an `<h3>`. Adding content there rather than a section is deliberate — the order
+  above is what a returning reader navigates by.
 - Read-aloud is opt-in and off by default.
 - Haptic and wake-lock are optional enhancements, feature-detected, never required.
 - Colour tokens meeting 4.5:1; one high-contrast mode.
@@ -537,6 +541,45 @@ path (C-01…C-05) and still have no code to run them; "alternate TEE model" bel
 allowlist. No row in this table is reachable in Mode F through the retry path: every fixture reply
 is authored JSON, so a demo run cannot be truncated without inventing a truncation, and the
 degraded screen is therefore proved by unit tests only (see ROADMAP §10).
+
+### As built (P-07, 2026-11-03) — the notices Sightline writes itself
+
+`docs/PRD.md` §6 R7 asks for a short notice on medication, dosage, legal-deadline and money
+content, no scam-detection claim, and an English-only statement. That copy is **ours**, computed in
+`features/safety/notices.ts` from fields of the validated `Analysis`, and it is a different thing
+from `analysis.warnings`, which is the model's own sentence about the document. The results view
+shows them as two lists inside the existing Warnings section, the second under the heading "What
+the reading flagged", because "Sightline says check with the surgery" and "the model said check with
+the surgery" are different claims about who told the person what. No section was added, so §12's
+fixed order is unchanged.
+
+| Notice | Fires when | Never fires when |
+|---|---|---|
+| `medicine` | `docType` is `medical`/`prescription`, or a fact is kind `medication`/`dose` | a health letter whose facts were filed as `other` |
+| `money` | `docType` is `bill`/`bank`, or a fact is kind `amount` | a letter that only names a phone number or a reference |
+| `deadline` | an action carries a `deadline`, or a `legal`/`government` letter states a date | a date that nothing asks anything of — an issue date is not urgency |
+| `language` | always, when there is a reading to show | — (it is about Sightline, not about the document) |
+
+Two rules the implementation is held to, both by test:
+
+- **Triggers read the reading, never the transcript.** Keyword-hunting "£" or "tablet" in the text
+  would put a second, unvalidated reader inside the app whose misses are invisible; a notice fired
+  that way would be a claim about a document based on a pattern match rather than on what was read.
+  The cost is stated rather than hidden: if the model files a medicine as `other`, the medicine
+  notice does not fire (`tests/unit/safety-notices.test.ts` pins both halves).
+- **The copy may not exceed what the project claims.** It never uses the words scam, fraud or
+  detect, and says instead that Sightline reads every letter the same way and cannot tell whether
+  this one is genuine (PRD §12: "**do not** claim detection"). It names a professional or the sender
+  and carries no dose, no amount and no date of its own — repeating the figure here would put an
+  ungrounded copy of it outside the flagged-facts list. Each notice is at most three sentences of at
+  most twenty words, with no jargon (§12 and AGENTS.md §8), which is the measurable half of "plain
+  language".
+
+**What "reviewed for plain language" does not yet mean here:** the copy was reviewed against
+PRD §6 R7, PRD §7 and AGENTS.md §8, and the constraints above are enforced by tests. It has **not**
+been read by a blind or low-vision person, which is **U-01**/**A-03** and still open (blocker
+**B-01**); `docs/USER_RESEARCH.md` is the protocol that would change this wording if a person says
+it does not work spoken.
 
 ## 14. Day 1 spike checklist (go/no-go)
 
