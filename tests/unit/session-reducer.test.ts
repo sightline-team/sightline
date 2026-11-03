@@ -177,6 +177,30 @@ describe('session reducer (F-07)', () => {
     expect(s.status).toBe('idle');
   });
 
+  it('an answered question clears the error a refused question left, so the box cannot contradict the page', () => {
+    const entry: QAEntry = { id: 'q1', question: 'Is there a payment plan?', answer: 'Nothing offers one.', notInDocument: true, askedAt: 3 };
+    const s = run([
+      { type: 'transcript_received', transcript: transcript() },
+      { type: 'analysis_received', analysis: analysis() },
+      { type: 'failed', code: 'no_fixture_for_question' },
+      { type: 'question_answered', entry },
+    ]);
+    expect(s.error).toBeUndefined();
+    expect(s.status).toBe('ready');
+    // The refused question left no entry behind, the answered one is on screen: answers are
+    // appended in the order asked (P-06), never substituted.
+    expect(s.qa.map((q) => q.id)).toEqual(['q1']);
+  });
+
+  it('keeps the status honest when there is no analysis to show', () => {
+    const entry: QAEntry = { id: 'q1', question: 'When is it due?', answer: 'Not stated.', notInDocument: true, askedAt: 2 };
+    const s = run([{ type: 'failed', code: 'no_fixture_for_question' }, { type: 'question_answered', entry }]);
+    // Nothing has been read, so nothing may claim the results view is ready (AGENTS.md §4 rule 5
+    // applies to statuses as much as to verification).
+    expect(s.status).toBe('idle');
+    expect(s.error).toBeUndefined();
+  });
+
   it('clears an error back to idle', () => {
     const errored = run([{ type: 'failed', code: 'verification_failed' }]);
     expect(sessionReducer(errored, { type: 'error_cleared' })).toMatchObject({ status: 'idle', error: undefined });

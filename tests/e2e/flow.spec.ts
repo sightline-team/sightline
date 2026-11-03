@@ -83,13 +83,13 @@ test.describe('the demo flow, with no credentials (F-09 done-when)', () => {
     const receipt = page.getByTestId('trust-receipt');
     await expect(receipt).toBeVisible();
     await expect(page.getByTestId('trust-claim')).toHaveText('Demo data. No real privacy guarantee.');
-    await expect(receipt.getByRole('heading', { level: 3, name: 'Checks that ran' })).toBeVisible();
-    await expect(receipt.getByRole('heading', { level: 3, name: 'Checks that did not run' })).toBeVisible();
+    await expect(receipt.getByRole('heading', { level: 4, name: 'Checks that ran' })).toBeVisible();
+    await expect(receipt.getByRole('heading', { level: 4, name: 'Checks that did not run' })).toBeVisible();
     // Rule 5: nothing here is presented as a verdict of "verified".
     await expect(receipt.getByText('Verified', { exact: true })).toHaveCount(0);
-    // P-06 is not built, and the section says so instead of showing a box that does nothing.
+    // P-06 lives in this position in the order: a question box exists, above the receipt.
     await expect(page.getByRole('heading', { level: 2, name: 'Ask a question' })).toBeVisible();
-    await expect(page.getByRole('textbox', { name: /question/i })).toHaveCount(0);
+    await expect(page.getByLabel('Your question')).toBeVisible();
 
     // §8: the announcer carried the outcome, and it is the region the app owns.
     await expect(page.getByTestId('announcer')).toHaveText('Done. Showing what Sightline read.');
@@ -145,6 +145,127 @@ test.describe('the demo flow, with no credentials (F-09 done-when)', () => {
     await expect(page.locator('.fact-list dt', { hasText: /^Balance$/ })).toBeVisible();
     // The grounded twin of that fact still shows its quote, so the flag is per-fact not per-run.
     await expect(page.locator('.fact-list dt', { hasText: /^Closing balance$/ })).toBeVisible();
+  });
+
+  /**
+   * P-06 in the browser. The prepared-question buttons exist so a reviewer (and the demo video)
+   * asks a wording that demo mode actually has an answer for — the alternative is a person
+   * typing a question, getting a refusal, and concluding the feature does not work.
+   */
+  test('a prepared question is answered from the text, quoted and grounded', async ({ page }) => {
+    const text = await chooseDemoDocument(page, DEMO.bill);
+    await runText(page, text);
+
+    await page.getByRole('button', { name: 'How much do I have to pay?' }).click();
+    await expect(page.getByLabel('Your question')).toHaveValue('How much do I have to pay?');
+    await expect(page.getByTestId('announcer')).toHaveText(
+      'How much do I have to pay? is in the question box. Choose Ask to continue.',
+    );
+
+    await page.getByRole('button', { name: 'Ask', exact: true }).click();
+
+    const answer = page.getByTestId('qa-answer');
+    await expect(answer).toHaveText('You have to pay 840 pounds. — quoted from the text: “Amount due: £840”');
+    // The box is emptied for the next question; the question itself stays on screen with its answer.
+    await expect(page.getByLabel('Your question')).toHaveValue('');
+    await expect(page.getByTestId('announcer')).toHaveText('Answer: You have to pay 840 pounds.');
+    // No flag on a grounded answer: rule 8 cuts both ways.
+    await expect(page.getByTestId('answer-flagged')).toHaveCount(0);
+  });
+
+  test('a near-miss quote is flagged in the browser and the flag is spoken after the answer', async ({ page }) => {
+    const text = await chooseDemoDocument(page, DEMO.bill);
+    await runText(page, text);
+
+    await page.getByRole('button', { name: 'What is the invoice reference?' }).click();
+    await page.getByRole('button', { name: 'Ask', exact: true }).click();
+
+    // The letter says "Invoice NC-2026-0441"; the reply quoted "Invoice number NC-2026-0441", so
+    // the words are not a literal excerpt and the answer must not read as sourced (rule 8).
+    await expect(page.getByTestId('answer-flagged')).toHaveText('— Sightline could not find these words in the text it was given.');
+    await expect(page.getByTestId('announcer')).toHaveText(
+      'Answer: The invoice reference is NC-2026-0441. Sightline could not match what it quoted to the text it was given.',
+    );
+    // The answer is still shown: a flag qualifies it, it does not hide it.
+    await expect(page.getByTestId('qa-answer')).toContainText('The invoice reference is NC-2026-0441.');
+  });
+
+  test('a question the letter does not answer says so, and does not invent a quote', async ({ page }) => {
+    const text = await chooseDemoDocument(page, DEMO.bill);
+    await runText(page, text);
+
+    await page.getByRole('button', { name: 'Does it offer a payment plan?' }).click();
+    await page.getByRole('button', { name: 'Ask', exact: true }).click();
+
+    await expect(page.getByTestId('qa-answer')).toContainText('the document does not answer this.');
+    await expect(page.getByTestId('answer-flagged')).toHaveCount(0);
+    await expect(page.getByTestId('answer-unsourced')).toHaveCount(0);
+    // A "not in the document" answer needs no warning spoken twice: the lead sentence already is
+    // the qualifier, so the announcer carries the answer alone.
+    await expect(page.getByTestId('announcer')).toContainText('Answer: Nothing in the letter offers a payment plan.');
+  });
+
+  test('an unprepared question is refused, and the answers already given stay on screen', async ({ page }) => {
+    const text = await chooseDemoDocument(page, DEMO.bill);
+    await runText(page, text);
+
+    await page.getByRole('button', { name: 'How much do I have to pay?' }).click();
+    await page.getByRole('button', { name: 'Ask', exact: true }).click();
+    await expect(page.getByTestId('qa-entry')).toHaveCount(1);
+
+    await page.getByLabel('Your question').fill('What is my date of birth?');
+    await page.getByRole('button', { name: 'Ask', exact: true }).click();
+
+    const summary = page.getByTestId('status-message');
+    await expect(summary).toBeVisible();
+    await expect(summary).toContainText(
+      'Demo letters answer the questions written for them. That question has no prepared answer, so there is nothing to show.',
+    );
+    // A-06: focus lands on the failure summary rather than staying in the field.
+    await expect(summary).toBeFocused();
+    // Refused, not improvised: no second answer appeared, and the first is still where it was.
+    await expect(page.getByTestId('qa-entry')).toHaveCount(1);
+    await expect(page.getByTestId('qa-answer')).toContainText('You have to pay 840 pounds.');
+
+    // The next successful answer clears the stale failure box off the page (AGENTS.md §8).
+    await page.getByLabel('Your question').fill('Who do I call if I cannot pay by the deadline?');
+    await page.getByRole('button', { name: 'Ask', exact: true }).click();
+    await expect(summary).toHaveCount(0);
+    await expect(page.getByTestId('qa-entry')).toHaveCount(2);
+  });
+
+  test('every question is a separate call and gets its own receipt block (T-09)', async ({ page }) => {
+    const text = await chooseDemoDocument(page, DEMO.bill);
+    await runText(page, text);
+    await expect(page.getByTestId('trust-record')).toHaveCount(1);
+
+    await page.getByRole('button', { name: 'How much do I have to pay?' }).click();
+    await page.getByRole('button', { name: 'Ask', exact: true }).click();
+    await expect(page.getByTestId('trust-record')).toHaveCount(2);
+
+    // The receipt names what each block is, so a question cannot rewrite the document's record.
+    await expect(page.getByTestId('record-count')).toHaveText(
+      'Each answer below comes from a separate call, and each is checked on its own.',
+    );
+    await expect(page.getByText('Reading the document')).toBeVisible();
+    await expect(page.getByText('Answering a question')).toBeVisible();
+    // Mode F earns no rung on either block, and neither is presented as verified (rule 5).
+    await expect(page.getByTestId('trust-claim')).toHaveText(['Demo data. No real privacy guarantee.', 'Demo data. No real privacy guarantee.']);
+  });
+
+  test('the question field works with the keyboard alone', async ({ page }) => {
+    const text = await chooseDemoDocument(page, DEMO.bill);
+    await runText(page, text);
+
+    await tabUntilFocused(page, 'question');
+    // A wording the demo letter actually has a prepared answer for; typing any other question
+    // here would land on the refusal, which the test above already covers.
+    await page.keyboard.type('How much do I have to pay?');
+    // Enter inside a form field submits it: no mouse needed to reach the Ask button.
+    await page.keyboard.press('Enter');
+
+    await expect(page.getByTestId('qa-answer')).toContainText('You have to pay 840 pounds.');
+    await expect(page.getByTestId('announcer')).toContainText('Answer:');
   });
 
   test('a demo document button fills the box and says what happened', async ({ page }) => {
@@ -306,6 +427,27 @@ test.describe('accessibility with content (extends F-08)', () => {
         `document ${index} on /read`,
       ).toEqual([]);
     }
+  });
+
+  test('axe finds no serious or critical violation once answers are on the page (extends A-01)', async ({ page }) => {
+    // A-01 was green before Q&A existed. The answer list, the form and the per-call receipt blocks
+    // are new markup, so the sweep has to include them — a heading-level or label problem here
+    // would be invisible to every assertion above.
+    const text = await chooseDemoDocument(page, DEMO.bill);
+    await runText(page, text);
+    for (const question of ['How much do I have to pay?', 'What is the invoice reference?', 'Does it offer a payment plan?']) {
+      await page.getByRole('button', { name: question }).click();
+      await page.getByRole('button', { name: 'Ask', exact: true }).click();
+    }
+    await expect(page.getByTestId('qa-entry')).toHaveCount(3);
+    await expect(page.getByTestId('trust-record')).toHaveCount(4);
+
+    const results = await new AxeBuilder({ page }).analyze();
+    const blocking = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
+    expect(
+      blocking.map((v) => `${v.id} (${v.impact}): ${v.nodes.map((n) => n.html).join(' | ')}`),
+      'axe on /read with three answers',
+    ).toEqual([]);
   });
 
   test('the flag is not carried by colour alone', async ({ page }) => {

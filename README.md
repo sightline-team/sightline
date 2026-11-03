@@ -132,5 +132,8 @@ detail in `docs/ARCHITECTURE.md` (and its one-page `ARCHITECTURE_ESSENTIALS.md`)
 ## For contributors
 
 Read `AGENTS.md` first. The non-negotiable one: **every contribution updates `ROADMAP.md` in the
-same commit** — status, evidence, a §10 log entry, the dashboard and current focus (`npm run
-roadmap:check` once F-11 exists; by hand until then).
+same commit** — status, evidence, a §10 log entry, the dashboard and current focus. `npm run
+roadmap:check` verifies it (item F-11), `npm run hooks:install` puts that check in front of every
+local commit, and CI (F-12) runs it on the commits each push adds. The gate itself is tested in
+`tests/unit/roadmap-check.test.ts` against ledgers that break one rule each, because a gate only
+ever run against the one file it guards has never been *observed* to reject anything.

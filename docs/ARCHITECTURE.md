@@ -172,7 +172,18 @@ checked against, and what goes inside the fenced user message. Text inside that 
 assembled into a system message.
 
 ### 5.3 Ask a question
-Prompt = transcript + question + "answer only from the document". Response: `{ answer, notInDocument, sourceQuote }`. `sourceQuote` must be a substring of the transcript, else the answer is shown without a quote and flagged.
+Prompt = transcript + question + "answer only from the document". Response: `{ answer, notInDocument, sourceQuote }`. `quoteFound` is set by code against the transcript, never taken from the model (rule 8), and the panel states which of four things happened:
+
+| Model output | What the user is told |
+|---|---|
+| `notInDocument: true` | The answer, plus "the document does not answer this". No quote, no flag — there is nothing to have sourced it from |
+| `sourceQuote` present and in the transcript | The answer, plus "quoted from the text: …" |
+| `sourceQuote` present but not in the transcript | The answer **kept and flagged**: "Sightline could not find these words in the text it was given" |
+| no `sourceQuote` at all | The answer and "the answer gave no words from the text to check" — a different fact from the row above, so it does not borrow its wording |
+
+A question is a second document-derived call, so it runs the same two checks in the same order as §5.2 (attestation gate before the request body exists, signature before the answer is shown) and emits its own `TrustRecord` with `purpose: 'qa'`. The receipt therefore shows one block per call: a question must not be able to rewrite the record of the document it was asked about.
+
+Mode F answers only the wordings prepared for that document (`no_fixture_for_question`); an improvised question is refused rather than answered, because authored prose served up as a model's reading of the user's own letter is the exact lie this mode exists to avoid.
 
 ### 5.4 Forget
 Reset reducer state, revoke object URLs, abort in-flight requests with `AbortController`, clear `sessionStorage` entries owned by the session. Be honest in the README about what cannot be cleared (OS, screen-reader history, bfcache, screenshots, clipboard).
@@ -188,9 +199,9 @@ Reset reducer state, revoke object URLs, abort in-flight requests with `AbortCon
 | `near-ai/attestation` | Nonce, fetch report, call `/api/verify`, short-lived cache, produce named checks |
 | `near-ai/signatures` | Fetch and verify per-response signatures |
 | `analysis` | Pipeline, prompts, zod schemas, grounding check |
-| `qa` | Grounded Q&A |
+| `qa` | Grounded Q&A: `ask.ts` (gate → one call → signature → record → grounding), `prompts.ts`, `schemas.ts`, `AskPanel` (question field, prepared questions, answers in the order asked) |
 | `speech` | One read-aloud button, rate |
-| `trust` | `TrustRecord` store; mapping to the claims ladder statement |
+| `trust` | `record.ts` builds the only `TrustRecord`s; `claims.ts` maps record → rung → copy; `TrustReceipt` shows one block per call |
 | `a11y` | Single announcer; focus helper; interval progress announcements; optional haptic and wake-lock |
 | `session/store` | The one `SessionProvider`: the reducer behind it, and the registry of in-flight `AbortController`s that Forget (P-10) uses to stop a run whose bytes are still leaving the device |
 | `app/_flow` | `useDocumentRun`: the composition root that joins store + announcer + router + transport + pipeline for one run. `_` is Next's "not a route" prefix. Live modes refuse here until T-01/T-02 exist |
@@ -322,6 +333,7 @@ type ErrorCode =
   | 'illegible_content' | 'output_truncated' | 'model_refused' | 'invalid_model_output'
   | 'network_lost' | 'aborted' | 'rate_limited' | 'relay_disabled' | 'unsupported_language'
   | 'no_fixture_for_input'   // Mode F only: no authored demo answer exists for this text (F-09)
+  | 'no_fixture_for_question'  // Mode F only: the document was recognised, the wording has no prepared answer (P-06)
   | 'unknown';
 
 interface AppError {
@@ -478,6 +490,7 @@ plain-language message and one `retryable` decision, checked by `tests/unit/erro
 | Network loss or app backgrounded | Abort cleanly, keep session in memory, allow retry |
 | Rate limit (Mode B) | Plain message; suggest Mode A or try later |
 | Mode F asked about text it has no demo answer for | Show the demo-data explanation (`no_fixture_for_input`); do **not** replay an authored answer over the user's own words (F-09) |
+| Mode F asked a question the demo letter has no prepared answer for | Show the prepared-answer explanation (`no_fixture_for_question`); the answers already given stay on screen (P-06) |
 
 ## 14. Day 1 spike checklist (go/no-go)
 

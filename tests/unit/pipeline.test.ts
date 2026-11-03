@@ -1,15 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { runPipeline, type PipelineDeps } from '@/features/analysis/pipeline';
 import {
-  PipelineHalt,
-  runPipeline,
+  RunHalt,
   type AttestationGate,
   type GateOutcome,
-  type PipelineDeps,
   type SignatureOutcome,
   type SignatureVerifier,
-} from '@/features/analysis/pipeline';
-import { NotBuilt } from '@/lib/not_built';
+} from '@/lib/near-ai/verification';
 import { NearError, type NearClient, type NearResponse } from '@/lib/near-ai/client';
+import { NotBuilt } from '@/lib/not_built';
 import { appError } from '@/lib/errors';
 import { STRUCTURE_SYSTEM_PROMPT } from '@/features/analysis/prompts';
 import { claimCopy } from '@/features/trust/claims';
@@ -175,17 +174,17 @@ function harness(opts: Options = {}) {
 type Harness = ReturnType<typeof harness>;
 
 /** Runs the pipeline and hands back the halt, or throws if a *different* error escapes. */
-async function haltOf(h: Harness): Promise<PipelineHalt | undefined> {
+async function haltOf(h: Harness): Promise<RunHalt | undefined> {
   try {
     await runPipeline(h.deps);
     return undefined;
   } catch (cause) {
-    if (cause instanceof PipelineHalt) return cause;
+    if (cause instanceof RunHalt) return cause;
     throw cause;
   }
 }
 
-async function expectHalt(h: Harness, code: ErrorCode): Promise<PipelineHalt> {
+async function expectHalt(h: Harness, code: ErrorCode): Promise<RunHalt> {
   const halt = await haltOf(h);
   if (halt === undefined) throw new Error('expected the pipeline to halt, but it completed');
   expect(halt.error.code).toBe(code);

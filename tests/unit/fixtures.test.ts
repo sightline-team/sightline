@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { createFixtureClient, demoDocuments, fixtureModeAvailable, transportFor } from '@/lib/fixtures/replay';
+import { createFixtureClient, demoDocuments, FIXTURE_MODEL, fixtureModeAvailable, preparedQuestions, transportFor } from '@/lib/fixtures/replay';
 import { FIXTURE_CASES } from '@/lib/fixtures/cases';
 import { NearError } from '@/lib/near-ai/client';
-import { analysisSchema, completionEnvelopeSchema } from '@/features/analysis/schemas';
+import { analysisSchema } from '@/features/analysis/schemas';
+import { askAboutDocument } from '@/features/qa/ask';
+import { completionEnvelopeSchema } from '@/lib/near-ai/envelope';
 import { quoteFound } from '@/features/analysis/grounding';
-import { PipelineHalt, runPipeline, type AttestationGate, type SignatureVerifier } from '@/features/analysis/pipeline';
-import type { Analysis, Session, Transcript } from '@/types';
+import { runPipeline } from '@/features/analysis/pipeline';
+import { RunHalt, type AttestationGate, type SignatureVerifier } from '@/lib/near-ai/verification';
+import type { Analysis, QAEntry, Session, Transcript } from '@/types';
 
 /**
  * Fixture replay tests (item **F-09**).
@@ -212,11 +215,11 @@ describe('the whole text flow runs in fixture mode with no key and no doubles', 
   it('refuses to put a demo answer over the text a person pasted', async () => {
     const run = runFixtureFlow(PASTED_SENTINEL);
 
-    let halt: PipelineHalt | undefined;
+    let halt: RunHalt | undefined;
     try {
       await run.promise;
     } catch (cause) {
-      if (cause instanceof PipelineHalt) halt = cause;
+      if (cause instanceof RunHalt) halt = cause;
       else throw cause;
     }
 
@@ -225,6 +228,84 @@ describe('the whole text flow runs in fixture mode with no key and no doubles', 
     // No record either: the run stopped before a completion was fetched, so the receipt has
     // nothing truthful to say about one.
     expect(run.claims).toEqual([]);
+    expect(halt?.error.userMessage).not.toContain('metastatic');
+  });
+});
+
+/**
+ * Every prepared question on every demo document, through the **real** ask path with the **real**
+ * replay client (item **P-06**, whose done-when is "5 prepared questions on 3 docs answered
+ * correctly or correctly refused"). Table-driven rather than sampled on purpose: hand-picking
+ * which questions to check is exactly how a demo passes while a user meets the one that does not.
+ */
+describe('every prepared question in the corpus resolves to its honest state', () => {
+  function askFixture(text: string, question: string): Promise<QAEntry> {
+    return askAboutDocument({
+      session: fixtureSession(text),
+      model: FIXTURE_MODEL,
+      transport: createFixtureClient(),
+      gate: GATE_MUST_NOT_RUN,
+      verifySignature: VERIFIER_MUST_NOT_RUN,
+      question,
+      signal: new AbortController().signal,
+      onTrustRecord: () => {},
+    });
+  }
+
+  for (const fixture of FIXTURE_CASES) {
+    for (const reply of fixture.qa) {
+      it(`${fixture.name} — "${reply.question}"`, async () => {
+        const entry = await askFixture(fixture.text, reply.question);
+        expect(entry.answer).toBe(reply.answer);
+
+        if (reply.notInDocument) {
+          // The refusal state carries no quote and no flag: there is nothing to source it to, and
+          // a flag here would imply the answer had been checked against the text.
+          expect(entry.notInDocument).toBe(true);
+          expect(entry.sourceQuote).toBeUndefined();
+          expect(entry.quoteFound).toBeUndefined();
+          return;
+        }
+
+        expect(entry.notInDocument).toBe(false);
+        // The oracle is a plain containment check, deliberately *not* the grounding module: if
+        // `quoteFound` and "is this string in the document" ever disagree, that is the bug.
+        const literal = reply.sourceQuote !== undefined && fixture.text.includes(reply.sourceQuote);
+        expect(entry.quoteFound).toBe(literal);
+      });
+    }
+  }
+
+  it('the corpus contains at least five answered questions and one deliberate near-miss', () => {
+    // P-06's done-when counts five; the near-miss is what proves the flag is not decorative.
+    const answered = FIXTURE_CASES.flatMap((f) => f.qa).filter((reply) => !reply.notInDocument);
+    const ungrounded = answered.filter((reply) => !FIXTURE_CASES.some((f) => f.text.includes(reply.sourceQuote ?? '')));
+    expect(answered.length).toBeGreaterThanOrEqual(5);
+    expect(ungrounded).toHaveLength(1);
+  });
+
+  it('refuses a wording the letter was not prepared for, without answering it', async () => {
+    let halt: RunHalt | undefined;
+    try {
+      await askFixture(FIXTURE_CASES[0]!.text, 'What is my date of birth?');
+    } catch (cause) {
+      if (cause instanceof RunHalt) halt = cause;
+      else throw cause;
+    }
+    expect(halt?.error.code).toBe('no_fixture_for_question');
+    expect(halt?.error.userMessage).toContain('no prepared answer');
+  });
+
+  it('refuses the document before refusing the question, so a real letter is never half-demoed', async () => {
+    let halt: RunHalt | undefined;
+    try {
+      await askFixture(PASTED_SENTINEL, 'How much do I have to pay?');
+    } catch (cause) {
+      if (cause instanceof RunHalt) halt = cause;
+      else throw cause;
+    }
+    // The wording is prepared — for a *different* document — and that must not earn an answer.
+    expect(halt?.error.code).toBe('no_fixture_for_input');
     expect(halt?.error.userMessage).not.toContain('metastatic');
   });
 });

@@ -214,6 +214,24 @@ section {
   padding: var(--space-2);
 }
 
+/* Answers in the order they were asked, each holding its question, its answer and its grounding
+   sentence together (P-06). */
+.answer-list {
+  padding-left: var(--space-3);
+}
+
+.answer-list li {
+  margin-bottom: var(--space-2);
+}
+
+/* One receipt block per call, separated rather than merged, so a later question cannot read as
+   though it were part of the record of the document that was opened (T-09). */
+.trust-record {
+  border-top: 2px solid var(--border);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+}
+
 .check-list,
 .detail-list {
   list-style: none;

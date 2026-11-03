@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  analysisSchema,
-  captureIssueSchema,
-  factKindSchema,
-  qaSchema,
-  transcribeSchema,
-} from '@/features/analysis/schemas';
+import { analysisSchema, captureIssueSchema, factKindSchema, transcribeSchema } from '@/features/analysis/schemas';
+import { qaSchema } from '@/features/qa/schemas';
 
 /**
  * Model output is untrusted input (AGENTS.md §7), so these tests are about what the schema

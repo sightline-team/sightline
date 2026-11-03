@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import Link from 'next/link';
 import { TrustReceipt } from '@/features/trust/TrustReceipt';
 import { useSessionStore } from '@/lib/session/store';
@@ -13,6 +13,11 @@ import type { DocType, KeyFact } from '@/types';
  * position: Summary → Key facts → Actions → Warnings → Full text → Ask → Trust receipt. The
  * order is asserted by an e2e test (`tests/e2e/flow.spec.ts`) so a later refactor cannot
  * quietly move the receipt above the answer.
+ *
+ * The Ask section arrives as a **slot** from `app/read/page.tsx`, which composes the two
+ * features (P-06). This file does not import the qa feature — the order stays owned here, and
+ * the question-answering plumbing stays owned there, with the route as the only place that
+ * knows both (AGENTS.md §7: avoid features importing each other).
  *
  * Two rules this file is written against:
  *  - a fact whose `quoteFound` is false is shown **flagged**, never as sourced (rule 8);
@@ -30,7 +35,7 @@ const DOC_TYPE_WORDS: Record<DocType, string> = {
   other: 'a document Sightline could not classify',
 };
 
-export function ResultsView() {
+export function ResultsView({ ask }: { ask: ReactNode }) {
   const { session } = useSessionStore();
   const headingRef = useRef<HTMLHeadingElement | null>(null);
   const analysis = session.analysis;
@@ -131,10 +136,7 @@ export function ResultsView() {
         )}
       </section>
 
-      <section aria-labelledby="ask-heading">
-        <h2 id="ask-heading">Ask a question</h2>
-        <p>Asking about the document is not built in this version yet, so there is no question box to use.</p>
-      </section>
+      {ask}
 
       <TrustReceipt records={session.trust} />
     </>

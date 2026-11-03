@@ -24,6 +24,8 @@ sightline/
 ├─ playwright.config.mts          # one chromium project; see the honesty note inside
 ├─ .env.example                   # No secrets. App must run with NO .env (fixtures)
 ├─ .gitignore
+├─ .githooks/pre-commit           # F-11: runs `roadmap:check --staged` (this commit stages ROADMAP.md + the ledger is valid). Opt-in: `npm run hooks:install`
+├─ .github/workflows/ci.yml       # F-12: lint, typecheck, test, roadmap:check --range on main and on every PR. No e2e here yet — see B-08
 │
 ├─ docs/
 │  ├─ PRD.md
@@ -51,12 +53,15 @@ sightline/
 │  ├─ record-fixtures.ts          # Saves real responses to fixtures/
 │  ├─ run-golden.ts               # Runs sample-docs through the pipeline; prints fact accuracy
 │  ├─ crosscheck.ts               # Official SDK as a *second opinion* against our own verifier output (ADR-20); never in the app bundle
-│  └─ roadmap-check.ts            # Fails if a commit skips ROADMAP.md, dashboard counts are wrong, or [x] lacks Evidence
+│  └─ roadmap-check.ts            # F-11 gate: commits must touch ROADMAP.md, `[x]` needs Evidence, IDs unique, dashboard must equal §6, §2/§8/§10 shape.
+│                                 # `-- --write` refreshes §1, `-- --staged` for the hook, `-- --range=<git range>` for CI. Ledger rules are `checkLedger(text)`, tested in tests/unit/roadmap-check.test.ts
 │
 ├─ src/
 │  ├─ app/
 │  │  ├─ layout.tsx               # <html lang>, skip link, landmarks, announcer + session store mount, fixtures banner
 │  │  ├─ _flow/useDocumentRun.ts  # Composition root for one run: store, announcer, router, transport, pipeline. `_` = not a route
+│  │  ├─ _flow/useAskAboutDocument.ts # Same shape for one question (P-06); reads the mode off the session, not the build
+│  │  ├─ _flow/refused_steps.ts   # Live modes refuse at the door (T-01/T-02 unbuilt) with one shared sentence
 │  │  ├─ page.tsx                 # Add pages or paste text (`features/paste/PasteView.tsx`)
 │  │  ├─ read/page.tsx            # Results + ask (`features/analysis/ResultsView.tsx`)
 │  │  ├─ trust/page.tsx           # Trust receipt, exact claim, checks that ran / did not
@@ -70,13 +75,15 @@ sightline/
 │  │  ├─ capture/                 # CaptureView, PageList (remove, retake last), useCapture
 │  │  ├─ paste/PasteView.tsx      # Text input, demo document buttons, error summary focus
 │  │  ├─ analysis/                # pipeline.ts, prompts.ts, schemas.ts, grounding.ts, ResultsView
-│  │  ├─ qa/                      # ask.ts, AskPanel.tsx
+│  │  ├─ qa/                      # ask.ts (grounded Q&A), prompts.ts, schemas.ts, AskPanel.tsx
 │  │  ├─ speech/                  # speak.ts, SpeakButton.tsx
-│  │  └─ trust/                   # claims.ts (record → claim → copy), TrustReceipt.tsx, TrustView.tsx
+│  │  └─ trust/                   # claims.ts (record → claim → copy), record.ts (the only TrustRecord builder), TrustReceipt.tsx, TrustView.tsx
 │  │
 │  ├─ lib/
 │  │  ├─ near-ai/
-│  │  │  ├─ client.ts             # baseUrl + header provider; abort; one retry. Mode F is `fixtures/replay.ts`, never this
+│  │  │  ├─ client.ts             # baseUrl + header provider; abort; one retry; returns the exact wire bytes. Mode F is `fixtures/replay.ts`, never this
+│  │  │  ├─ envelope.ts             # Completion-envelope zod schema shared by the analysis call and the Q&A call
+│  │  │  ├─ verification.ts         # Gate + signature-verifier contracts, RunHalt, Mode F outcomes, halt mapping (the T-01/T-02 shapes)
 │  │  │  ├─ models.ts             # Per-model metadata call (attestationSupported/providerType/inputModalities) + allowlist — NOT /v1/models (ADR-18)
 │  │  │  ├─ attestation.ts        # Nonce, fetch, call /api/verify, named checks
 │  │  │  ├─ signatures.ts         # fetch by chat id → rebuild hash pair → verify; retry "not found"; streaming trailing newlines (ADR-19)
@@ -96,12 +103,12 @@ sightline/
 │  └─ types/index.ts
 │
 └─ tests/
-   ├─ unit/                       # config, server-env, session reducer, errors, nonce, grounding, schemas, near-client, pipeline, fixtures; image prep still to write
+   ├─ unit/                       # config, server-env, session reducer, errors, nonce, grounding, schemas, near-client, pipeline, fixtures, qa, roadmap-check; image prep still to write
    ├─ verification/               # attestation.test.ts: stubs refuse + strong claim unreachable; 9 `it.todo` rows name what T-01/T-02/T-05 must still prove
    ├─ relay/                      # relay.test.ts: both API routes answer 501, name their item, forward nothing, leak no key. A-09 adds rejected path/oversize/rate limit
    ├─ stubs/server-only.ts        # no-op stand-in so unit tests can import server modules (see vitest.config.mts)
    ├─ e2e/shell.spec.ts           # Playwright + axe on the four shell routes, skip link/tab order, one live region, zoomable viewport, off-origin request assertion
-   ├─ e2e/flow.spec.ts            # The whole Mode F flow with no key: demo document → fixed section order → flagged fact → receipt; refusals; focus; axe with content
+   ├─ e2e/flow.spec.ts            # The whole Mode F flow with no key: demo document → fixed section order → flagged fact → questions and answers → receipt; refusals; focus; axe with content
    └─ a11y/manual-checklist.md    # Screen-reader scripts and results
 ```
 
@@ -163,7 +170,8 @@ Nothing secret may start with `NEXT_PUBLIC_`. The user's own key (Mode A) lives 
 | `fixtures:record` | `scripts/record-fixtures.ts` |
 | `golden` | `scripts/run-golden.ts` |
 | `crosscheck` | `scripts/crosscheck.ts` — official SDK as a second opinion against our verifier output; dev-only, never imported by the app (ADR-20, T-15) |
-| `roadmap:check` | `scripts/roadmap-check.ts` (`-- --write` refreshes the ROADMAP dashboard) |
+| `roadmap:check` | `scripts/roadmap-check.ts` (`-- --write` refreshes the ROADMAP dashboard, `-- --staged` for the hook, `-- --range=<git range>` for CI) |
+| `hooks:install` | `git config core.hooksPath .githooks` — turns the F-11 pre-commit hook on for this checkout. It changes git config, so a human runs it (`git config --unset core.hooksPath` turns it off) |
 
 ## 6. Build order (maps to PRD timeline)
 

@@ -28,7 +28,7 @@ Before you commit, do all of this (full protocol: `ROADMAP.md` §3):
 3. Append an entry at the **top** of `ROADMAP.md` §10 (date UTC, who, item IDs, summary, files, evidence, follow-ups). Trivial changes get a one-line entry.
 4. Refresh the dashboard (§1) and **Current focus** (§2). Add or clear blockers (§8).
 5. If you resolved an `[Unverified]` claim: record it in `docs/SPIKE_RESULTS.md` and update the marker in the affected docs.
-6. Run `npm run roadmap:check` (once it exists, item F-11). Before then, do the same checks by hand.
+6. Run `npm run roadmap:check` (item F-11 — it exists; `npm run hooks:install` puts it in front of every local commit).
 
 Rules inside the rule:
 - **No evidence, no `[x]`.** Evidence is a test name, command output, file path, or SPIKE_RESULTS entry.
@@ -49,7 +49,8 @@ Use the package manager indicated by the lockfile (default `npm`).
 | `npm run test:e2e` | Playwright + axe |
 | `npm run golden` | Golden-set accuracy report |
 | `npm run spike` | Day 1 spike script |
-| `npm run roadmap:check` | Verifies ROADMAP rules (add `-- --write` to refresh the dashboard) |
+| `npm run roadmap:check` | Verifies ROADMAP rules (add `-- --write` to refresh the dashboard, `-- --staged` from the hook, `-- --range=<git range>` in CI) |
+| `npm run hooks:install` | Points git at `.githooks/pre-commit` so the roadmap gate runs before every local commit. It changes git config, so a human runs it |
 
 Run `lint`, `typecheck`, `test` and `roadmap:check` before every commit. If a command does not exist yet, check `ROADMAP.md` for the item that creates it.
 

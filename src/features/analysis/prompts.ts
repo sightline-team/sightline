@@ -37,20 +37,12 @@ Reply with JSON only, matching exactly:
  "actions": [{"text": string, "deadline": string?, "sourceQuote": string}],
  "warnings": [{"kind": "medical" | "legal" | "financial" | "unreadable" | "urgency", "text": string}]}`;
 
-export const QA_SYSTEM_PROMPT = `Answer only from the document transcript you are given. If the answer is not in it, say so.
-Every sourceQuote must be a literal excerpt of the transcript.
-Reply with JSON only, matching exactly:
-{"answer": string, "notInDocument": boolean, "sourceQuote": string?}`;
-
-export function qaUserPrompt(transcript: string, question: string): string {
-  return `Transcript:\n"""\n${transcript}\n"""\n\nQuestion: ${question}`;
-}
-
 /**
  * Step 2's user message: the transcript **only** (ARCH §9). The fenced form is what makes
  * "the document is data, not instructions" testable — a prompt written inside the document
  * arrives as quoted text, and `tests/unit/pipeline.test.ts` asserts it is never assembled
- * into a system message.
+ * into a system message. The Q&A prompt left this file with P-06: it is the qa feature's
+ * request, so it lives in `features/qa/prompts.ts`.
  */
 export function structureUserPrompt(transcript: string): string {
   return `Transcript:\n"""\n${transcript}\n"""`;

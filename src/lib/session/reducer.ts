@@ -99,7 +99,17 @@ export function sessionReducer(state: Session, action: SessionAction): Session {
       return { ...state, analysis: action.analysis, status: 'ready', error: undefined };
 
     case 'question_answered':
-      return { ...state, qa: [...state.qa, action.entry] };
+      // An answer also clears a failure left by an earlier question. The error box describes the
+      // last step the user took, so keeping "there is nothing to show" on screen above an answer
+      // that is right below it contradicts the page (AGENTS.md §8: no silent transitions). The
+      // status is derived from what the session actually holds, not asserted: the app is showing
+      // results exactly when there is an analysis to show. Sequencing stays with the pipeline.
+      return {
+        ...state,
+        qa: [...state.qa, action.entry],
+        status: state.analysis === undefined ? 'idle' : 'ready',
+        error: undefined,
+      };
 
     case 'trust_recorded':
       return { ...state, trust: [...state.trust, action.record] };

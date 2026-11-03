@@ -1,0 +1,80 @@
+# F-12 — CI workflow: lint, typecheck, test, roadmap:check.
+#
+# The four commands AGENTS.md §3 requires before every commit, in one place, on the default
+# branch and on every pull request. Nothing here is a new rule: `roadmap:check` is the same gate
+# the pre-commit hook runs (F-11), against the commits a push added.
+#
+# Deliberately absent, with the reason recorded rather than hidden:
+#  · Playwright (A-02, Gate 5). It needs `npx playwright install` and a dev server answering as
+#    `localhost`; blocker B-08 says a runner that resolves `localhost` to `::1` while Next binds
+#    `0.0.0.0` reproduces the dead-hydration failure from 2026-11-03. That belongs in its own
+#    commit with the host string pinned, not smuggled in here.
+#  · `npm run golden` and `npm run spike`: both need a NEAR AI key (blocker B-05), so they cannot
+#    be green on a secret-free CI runner and are not pretended to be.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # roadmap:check walks the commits this push added, so the runner needs their history.
+          # A depth of 0 (full history) is the only value that cannot silently miss a commit.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install (lockfile only — a drifted dependency is a red build, not a surprise)
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test (unit, verification, relay)
+        run: npm test
+
+      - name: Roadmap gate (F-11)
+        env:
+          # Each value below comes from the event payload, so it is treated as data, never as
+          # shell: it reaches the command line only after being proven to be 40 hex characters.
+          BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+        run: |
+          is_sha() {
+            [ "${#1}" -eq 40 ] || return 1
+            case "$1" in *[!0-9a-f]*) return 1;; *) return 0;; esac
+          }
+          # A payload SHA counts only if this checkout actually has the commit. That rejects the
+          # all-zeros `before` GitHub sends for a branch that did not exist, which would otherwise
+          # read as a valid range naming nothing.
+          is_commit() { is_sha "$1" && git cat-file -e "$1^{commit}" 2>/dev/null; }
+          if is_commit "$BASE"; then
+            # A pull request: the commits this branch adds to its base.
+            RANGE="$BASE..HEAD"
+          elif is_commit "$BEFORE" && is_commit "$AFTER"; then
+            # A push: exactly the commits the push moved the branch over.
+            RANGE="$BEFORE..$AFTER"
+          else
+            # A new branch, a force-push, or anything the payload does not describe honestly:
+            # check the whole reachable history rather than a range that might name nothing.
+            RANGE="HEAD"
+          fi
+          echo "roadmap:check --range=$RANGE"
+          npx tsx scripts/roadmap-check.ts --range="$RANGE"

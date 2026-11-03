@@ -13,6 +13,9 @@ coverage/
 # Local agent/human scratch files that must never be committed
 CLAUDE.local.md
 *.local.md
+# CLI session data for this workspace: not project output, and rule 7 (nothing document-derived
+# is persisted) is easier to honour when the directory holding it cannot be staged by accident.
+.qoder/
 
 # Test output
 test-results/

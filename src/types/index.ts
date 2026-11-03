@@ -182,6 +182,7 @@ export type ErrorCode =
   | 'relay_disabled'
   | 'unsupported_language'
   | 'no_fixture_for_input'
+  | 'no_fixture_for_question'
   | 'unknown';
 
 /**

@@ -1,0 +1,16 @@
+#!/bin/sh
+# F-11: the ROADMAP rule as a machine check, run before every commit (AGENTS.md §2).
+#
+# Installed by `npm run hooks:install`, which points git at this directory
+# (`git config core.hooksPath .githooks`). The command that installs it also removes it, so this
+# file is deliberately harmless if you never install it — it is not a second source of truth, it
+# is the same script CI runs, in `--staged` mode.
+#
+# It checks two things and nothing else, because a pre-commit hook that takes a minute gets
+# bypassed: (1) this commit stages ROADMAP.md, and (2) the roadmap's own ledger rules hold.
+# `lint`, `typecheck` and `test` are the developer's job (AGENTS.md §3) and the full set runs in
+# CI (F-12), where a red result cannot be ignored.
+set -e
+
+cd "$(git rev-parse --show-toplevel)"
+exec npx tsx scripts/roadmap-check.ts --staged

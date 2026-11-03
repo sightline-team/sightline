@@ -5,6 +5,10 @@ import { z } from 'zod';
  * (AGENTS.md §7): every field that reaches the UI or a `TrustRecord` passes through
  * here first.
  *
+ * Two schemas have left this file because the feature that sends the prompt owns it: the
+ * answer shape is in `features/qa/schemas.ts` (P-06) and the completion envelope, which is a
+ * transport contract rather than model-authored content, is in `lib/near-ai/envelope.ts`.
+ *
  * Unknown keys are **stripped, not rejected** (zod's default). A model that adds a
  * helpful extra field must not cost the user the whole transcript — the hard failure
  * path is P-08 (one repair retry, then show the transcript only), and it should trigger
@@ -77,32 +81,5 @@ export const analysisSchema = z.object({
     .default([]),
 });
 
-export const qaSchema = z.object({
-  answer: z.string().min(1),
-  notInDocument: z.boolean(),
-  sourceQuote: z.string().optional(),
-});
-
-/**
- * The completion envelope (item **P-03**, shape from `docs/SPIKE_RESULTS.md` §1 and §2).
- *
- * This is the **transport** contract, not model-authored content, so it is validated before
- * the bytes are hashed and before `choices[0].message.content` is parsed as JSON. Only the
- * fields Sightline acts on are required: `id` is the key ADR-19 fetches the signature with,
- * `model` is what the receipt names, and `content` is the only thing that reaches the user.
- *
- * `finish_reason` is deliberately not parsed here — P-08 owns truncation, and reading a
- * field without acting on it is how a bug hides.
- */
-export const completionEnvelopeSchema = z.object({
-  id: z.string().min(1),
-  model: z.string().min(1).optional(),
-  choices: z
-    .array(z.object({ message: z.object({ content: z.string() }) }))
-    .min(1, 'a completion with no choices has nothing to show the user'),
-});
-
 export type TranscribeOutput = z.infer<typeof transcribeSchema>;
 export type AnalysisOutput = z.infer<typeof analysisSchema>;
-export type QaOutput = z.infer<typeof qaSchema>;
-export type CompletionEnvelope = z.infer<typeof completionEnvelopeSchema>;

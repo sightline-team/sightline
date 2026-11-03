@@ -17,6 +17,10 @@ import type { FixtureCase } from '@/lib/fixtures/replay';
  *  - Meadow Walk is a medication letter, so the safety notices (P-07) have something to fire
  *    on in a demo with no real prescription in it.
  *
+ * Each case also carries prepared answers (P-06): the wording a demo visitor can ask, one
+ * honest "not in the document" reply per letter, and one authored near-miss quote in the bill so
+ * the flagged state is shown for answers as well as for facts.
+ *
  * Every other quote is a literal excerpt, checked by the test that runs the real pipeline
  * against the real replay client.
  */
@@ -78,6 +82,28 @@ export const FIXTURE_CASES: FixtureCase[] = [
       ],
       warnings: [{ kind: 'financial', text: 'This letter asks for money by a stated date.' }],
     },
+    qa: [
+      { question: 'How much do I have to pay?', answer: 'You have to pay 840 pounds.', notInDocument: false, sourceQuote: 'Amount due: £840' },
+      {
+        question: 'Who do I call if I cannot pay by the deadline?',
+        answer: 'Telephone 0300 123 0000 and ask for the payments team.',
+        notInDocument: false,
+        sourceQuote: 'telephone 0300 123 0000 and ask for the payments team.',
+      },
+      {
+        question: 'What is the invoice reference?',
+        answer: 'The invoice reference is NC-2026-0441.',
+        notInDocument: false,
+        // Authored near-miss, the same way the Riverside analysis carries one: the letter says
+        // "Invoice NC-2026-0441", so grounding must flag this and the UI must say so (rule 8).
+        sourceQuote: 'Invoice number NC-2026-0441',
+      },
+      {
+        question: 'Does it offer a payment plan?',
+        answer: 'Nothing in the letter offers a payment plan. It gives one phone number to call if the deadline is a problem.',
+        notInDocument: true,
+      },
+    ],
   },
   {
     name: 'riverside-statement',
@@ -115,6 +141,25 @@ export const FIXTURE_CASES: FixtureCase[] = [
       ],
       warnings: [{ kind: 'financial', text: 'A direct debit of 62 pounds 10 pence leaves the account on 5 March 2026.' }],
     },
+    qa: [
+      {
+        question: 'What balance do I have?',
+        answer: 'You have 1,204 pounds 55 pence in credit.',
+        notInDocument: false,
+        sourceQuote: 'Closing balance: £1,204.55 in credit',
+      },
+      {
+        question: 'When does the direct debit leave the account?',
+        answer: 'The Grid Energy direct debit of 62 pounds 10 pence leaves on 5 March 2026.',
+        notInDocument: false,
+        sourceQuote: 'Direct debit: Grid Energy, £62.10 on 5 March 2026',
+      },
+      {
+        question: 'Is there an address to write to?',
+        answer: 'This statement gives a phone number and no postal address.',
+        notInDocument: true,
+      },
+    ],
   },
   {
     name: 'meadow-walk-letter',
@@ -151,5 +196,24 @@ export const FIXTURE_CASES: FixtureCase[] = [
         { kind: 'urgency', text: 'The letter gives a number to call straight away if things get worse.' },
       ],
     },
+    qa: [
+      {
+        question: 'What medicine is this letter about?',
+        answer: 'Sertraline 50 mg tablets.',
+        notInDocument: false,
+        sourceQuote: 'Medicine: sertraline 50 mg tablets',
+      },
+      {
+        question: 'When is the clinic appointment?',
+        answer: 'Tuesday 17 March 2026 at 10:15, in Room 4.',
+        notInDocument: false,
+        sourceQuote: 'Clinic: Tuesday 17 March 2026 at 10:15, Room 4',
+      },
+      {
+        question: 'Is a repeat prescription enclosed?',
+        answer: 'The letter describes the medicine and how to take it. It does not enclose a prescription.',
+        notInDocument: true,
+      },
+    ],
   },
 ];

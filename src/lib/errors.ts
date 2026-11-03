@@ -106,6 +106,16 @@ const ERRORS: Record<ErrorCode, ErrorSpec> = {
     userMessage: 'These are demo answers from demo documents. Your own text has no demo answer, so there is nothing to show for it.',
     retryable: false,
   },
+  /**
+   * Mode F only (item P-06). A demo letter answers the questions written for it and nothing
+   * else, so an unprepared wording gets this rather than an invented reply. Separate from
+   * `no_fixture_for_input` because the document *was* recognised — it is the question that has
+   * no answer here, and conflating the two would tell a user their own letter had been refused.
+   */
+  no_fixture_for_question: {
+    userMessage: 'Demo letters answer the questions written for them. That question has no prepared answer, so there is nothing to show.',
+    retryable: false,
+  },
   unknown: {
     userMessage: 'Something went wrong. Try again.',
     retryable: true,
