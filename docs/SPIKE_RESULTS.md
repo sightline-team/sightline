@@ -531,6 +531,110 @@ whole and it still exits 1, because two of its three replies were thrown away.
   16,384 is enough for a *dense* five-page transcript on Qwen (the sample here spent 56.5% of it), Mode
   B's relay for any of it (**B-12**), and any of this on a document that is not a bill (**S-03**).
 
+### [Measured] 2026-11-04 — S-14: the Q&A step answers on *both* models, and the structure step's reason for choosing one does not carry over
+
+**Twelve exchanges, four runs, `npm run spike` direct mode, all synthetic.** S-14's Done-when asks for
+three things and this delivers all three: (a) the **Q&A** step put to the service on each planned model
+over a real transcript, (b) the **structure** step re-measured on both models at the corrected 16,384
+budget, (c) `STEP_PLANS.qa` confirmed or changed. `scripts/spike.ts` gains `stageQa`, which sends the body
+`readCompletion` builds for `purpose: 'qa'` (`QA_SYSTEM_PROMPT` + `qaUserPrompt(transcript, question)`,
+`max_tokens: 16384`, no `stream`) over the same five-page bill `--stage=document` structures (5,689 chars),
+asks three questions — two the document answers, one it does not — and judges the reply with the app's own
+`qaSchema` and `quoteFound`.
+
+**The Q&A step.** Every row is an `ask`; no model needed a repair, because nothing was unreadable.
+
+| model | question | time | prompt tok | completion (reasoning) | budget used | cost | `qaSchema` |
+|---|---|---|---|---|---|---|---|
+| `z-ai/glm-5.3-flash` | amount and date | 3.43 s | 2,361 | 185 (127) | 1.1% | $0.00028138 | **ACCEPTED** · answer 44 ch · quote 60 ch grounds |
+| `z-ai/glm-5.3-flash` | contact number | 1.88 s | 2,360 | 136 (65) | 0.8% | $0.00025680 | **ACCEPTED** · answer 84 ch · quote 78 ch grounds |
+| `z-ai/glm-5.3-flash` | *not* in the document | 2.42 s | 2,361 | 138 (86) | 0.8% | $0.00025788 | **ACCEPTED** · answer 103 ch · `notInDocument: true` · quote 38 ch |
+| `Qwen/Qwen3.8-27B` | amount and date | 15.57 s | 2,888 | 313 (244) | 1.9% | $0.00053807 | **ACCEPTED** · answer 44 ch · quote 60 ch grounds |
+| `Qwen/Qwen3.8-27B` | contact number | 2.83 s | 2,887 | 168 (102) | 1.0% | $0.00034228 | **ACCEPTED** · answer 13 ch · quote 78 ch grounds |
+| `Qwen/Qwen3.8-27B` | *not* in the document | 14.63 s | 2,888 | 178 (133) | 1.1% | $0.00035582 | **ACCEPTED** · answer 105 ch · `notInDocument: true` · quote **absent** |
+
+**The structure step, both models, at the budget the app now sends.** Every row is an `ask` except the two
+glm rows marked repair.
+
+| model | page | attempt | time | prompt tok | completion (reasoning) | budget used | cost | `analysisSchema` |
+|---|---|---|---|---|---|---|---|---|
+| `z-ai/glm-5.3-flash` | 1 page | ask | 81.4 s | 803 | 5,779 (3,837) | 35.3% | $0.00295374 | **REJECTED** — ``` fence, first char `` ` `` |
+| `z-ai/glm-5.3-flash` | 1 page | repair | 28.3 s | 842 | 2,403 (840) | 14.7% | $0.00126886 | **ACCEPTED** · facts 32/32 grounded |
+| `z-ai/glm-5.3-flash` | 5 pages | ask | 23.7 s | 2,554 | 1,628 (967) | 9.9% | $0.00101832 | **REJECTED** — ``` fence |
+| `z-ai/glm-5.3-flash` | 5 pages | repair | 136.8 s | 2,593 | **8,872** (8,193) | 54.2% | $0.00464344 | **ACCEPTED** · facts 7/7 grounded |
+| `Qwen/Qwen3.8-27B` | 1 page | ask | **226.6 s** | 961 | 8,037 (5,397) | 49.1% | $0.01088839 | **ACCEPTED** first try · facts 33/33 |
+| `Qwen/Qwen3.8-27B` | 5 pages | ask | 118.6 s | 3,089 | 3,199 (2,591) | 19.5% | $0.00444221 | **ACCEPTED** first try · facts 5/5 |
+
+- **The Q&A step is readable on both models, so the reason ADR-24 gave for putting it on Qwen is gone.**
+  ADR-24 chose Qwen for `qa` *by inference* — "Qwen is the only model that has answered a strict-JSON
+  over-the-transcript request here" — and §4 has now sent the Q&A request itself: **3 of 3 on glm, 3 of 3
+  on Qwen, zero code fences, zero repairs.** The fence habit that decided the structure row is therefore a
+  property of **the nested structure contract**, not of the model; a flat three-key contract does not
+  trigger it. What still separates the two here is the two numbers ADR-24 could not see: **$0.000258 –
+  $0.000281 a question and 8 s for three on glm**, against **$0.000342 – $0.000538 and 33 s on Qwen**,
+  including one **15.6 s** answer. A person asks several questions in a session and waits on each one with
+  nothing else on screen, so that tail is the number that matters for a step the batch steps can absorb.
+  **`STEP_PLANS.qa.model` moves to `z-ai/glm-5.3-flash` (ADR-26)**, held by
+  `tests/unit/model-allowlist.test.ts`. `planModelIds()` is unchanged — the structure step still needs
+  Qwen, so a deployment still has to allowlist both ids.
+- **ADR-25's fix is confirmed against the live service, which is the first time a fix here has been.** The
+  block above this one is titled "the answers it throws away are ours to fix" because **six of six** replies
+  that reached a JSON object died on `"deadline": null`. In this run **both** of glm's repairs and all four
+  of Qwen's asks were **accepted**, and the accepted answers grounded fully (32/32, 7/7, 33/33, 5/5). The
+  defect was ours, the fix was ours, and the re-measurement says it worked.
+- **The 16,384 budget correction is now justified by a number that would have failed under the old one.**
+  glm's five-page repair spent **8,872 completion tokens — 680 more than ADR-24's first proposed 8,192**.
+  Under that cap the request would have ended `finish_reason: length`, `readCompletion` would have reported
+  `output_truncated` and spent no repair, and the person would have been shown the transcript-only screen
+  for a document the model had read correctly. Qwen's one-page ask independently reached **8,037 (98.1% of
+  8,192)**, matching the 98.2% the previous run found. No truncation occurred in any of the twelve
+  exchanges at 16,384; the largest was 54.2% of it.
+- **`analyse` stays on Qwen, but for a corrected reason.** The previous block's trade was "**$0.005719 and
+  ≈147 s** with glm answering step 2" against Qwen's $0.011225 — glm looked like half the price. That
+  figure assumed one exchange; measured properly with the retry the app actually spends, a five-page
+  document costs **$0.009296 / ≈247 s** on Qwen and **$0.009497 / ≈266 s** on glm (5 × 970,800 nano of
+  transcription + the structure step, repair included). **The two models are now within 2% of each other on
+  money and 7% on time**, so the price argument for glm is dead and what is left is that **Qwen got it right
+  first time in 2 of 2 and glm needed its one rescue in 2 of 2** — a step that depends on the repair retry
+  to work at all is a step with one bullet left. Qwen keeps the row.
+- **The number of facts a document yields is not stable, and nothing in the app would notice.** One page
+  (1,321 chars) produced **32** facts on glm and **33** on Qwen; five pages (5,689 chars — the same bill
+  continued) produced **7** and **5**. Both models return **more facts for a shorter document**, by 4–5×,
+  and every one of them quotes the transcript back, so `quoteFound` passes them all and no guard fires.
+  A plausible reading is the models enumerating line items when the transcript is short and summarising
+  when it is long. What the results screen does with a 33-fact list is an accessibility and copy question
+  (**P-16**), and whether the *content* of those facts is right is **S-03** — this run measures shape and
+  consistency with our transcript, never correctness against the page (AGENTS.md §4 rule 8).
+- **Both models take the "not in this document" branch, in two different shapes that land the same screen.**
+  On the question the bill does not answer, Qwen omitted `sourceQuote` and glm wrote a 38-character one
+  alongside `notInDocument: true`. `groundAnswer` returns before it reads a quote on that branch
+  (`features/qa/ask.ts:106`), so the person gets the same "the document does not answer this" either way —
+  the shape differs and the outcome does not. Recorded because it is the second time this service has
+  answered an optional-string field as though absent and present were interchangeable (**ADR-25**).
+- **Signatures: 12 of 12.** Every exchange carries `signature_kind: provider_tee`, `signing_algo ed25519`,
+  verified against `model_attestations[0]` over the exact bytes sent and received, and **none** verified
+  against the gateway key (ADR-19, ADR-22). The attestation report was re-fetched per model (3.6–6.5 s for
+  a 303,590-byte report), so each answer is checked against the key of the enclave that answered it.
+  Signature fetches took 241–1,073 ms.
+- **What a question costs, which is the figure the Ask panel and any rate limit are sized against.**
+  **$0.000258–$0.000281** on the model the plan now uses, 1.88–3.43 s each. Ten follow-up questions on one
+  document are **≈$0.0027** — the reading path's $0.0095 still dominates the bill, but on the *waiting*
+  path a question is 15× quicker than a structure step, and that is the latency a person experiences as
+  the app being responsive.
+- **How the first of these runs came to be a structure-step run, stated because the evidence trail should
+  say so.** The run launched as `--stage=qa` on 2026-11-04 at 09:08 UTC printed `== document —` and ran
+  `stageDocument`: `main()`'s dispatch ended in a bare `else`, so a stage added to `Stage` fell through into
+  the previous stage's function while still binding the report to the wrong model. The log was kept and is
+  the **glm half of the structure table above** — it is a genuine measurement of what it ran, just not of
+  what it was asked for. The fall-through is closed: `COMPLETION_STAGES` in `scripts/spike.ts` is a
+  `Record` from stage to `{plan, run}`, so a missing key is a type error and no stage can reach another
+  stage's code. The Q&A rows above are from the re-runs after that fix.
+- **Still not measured:** whether any of these answers is **correct** against the page (**S-03**, needs the
+  expected-facts file), `notInDocument` truthfulness (a model can be wrong to say "not here"), the Q&A step
+  on a transcript from a *photograph* rather than a synthetic bill, Mode B's relay for any of it (**B-12**),
+  and 16,384 against a genuinely dense five-page photo transcript — the synthetic bill here spent 54.2% of
+  it at worst.
+
 ## 5. Response signatures — [Verified], and they are not what our docs assumed
 
 

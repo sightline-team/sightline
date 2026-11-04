@@ -218,23 +218,41 @@ function refuse(reason: AllowlistDecision['reason']): AllowlistDecision {
  * tokens (1,008 of them reasoning) — 18% of it.
  *
  * The text steps needed measuring before a number could be written here, and the first number this
- * file proposed was wrong. It was 8,192, reasoned from "the largest structure completion in §4 was
- * 4,480". Re-running the same stage with the budget sent (**§4, 2026-11-04, the ADR-24 run**) had
- * `Qwen/Qwen3.8-27B` answer a *one-page* transcript with **8,047 completion tokens, 5,469 of them
- * reasoning — 98.2% of 8,192** — finishing on `stop`, one thought short of the cap. A budget that a
- * sample reaches by accident is a trap: at 8,192 the next such answer arrives as `output_truncated`
- * and the person is shown the transcript-only screen for a document the model had read. **16,384** is
- * 2× the largest text-step answer observed on either planned model (Qwen 8,047; glm 7,571), inside
- * both ceilings (Qwen 65,536 output; glm 1,048,576), and its cost is stated here so nobody is
- * surprised by a bill: output bills at 1,350 nano-USD per token on Qwen against 40 for input, so a
- * text step that *filled* 16,384 costs **$0.0221184**. The measured text steps in §4 cost $0.000669 –
- * $0.010902 and none was truncated.
+ * 2026-11-04**, §4) had `Qwen/Qwen3.8-27B` answer a *one-page* transcript with **8,047 completion
+ * tokens, 5,469 of them reasoning — 98.2% of 8,192** — finishing on `stop`, one thought short of the cap.
+ * A budget that a sample reaches by accident is a trap: at 8,192 the next such answer arrives as
+ * `output_truncated` and the person is shown the transcript-only screen for a document the model had
+ * read. S-14's re-run made that concrete rather than hypothetical: with the page model answering the
+ * structure step, its five-page repair spent **8,872** completion tokens — **680 more than the cap ADR-24
+ * first proposed** — so at 8,192 that answer would have been cut off and thrown away.
  *
- * ### What is *not* decided here
+ * **16,384** is ~1.8× the largest text-step answer now observed on either planned model (glm 8,872;
+ * Qwen 8,047), inside both ceilings (Qwen 65,536 output; glm 1,048,576), and its cost is stated here so
+ * nobody is surprised by a bill: output bills at 1,350 nano-USD per token on Qwen against 40 for input,
+ * so a text step that *filled* 16,384 costs **$0.0221184**. The structure calls measured in §4 cost
+ * $0.000669 – $0.010888 each and none was truncated.
  *
- * **`qa` is inferred, not measured.** A question is the same class of request as step 2 — strict JSON
- * over the transcript, no image — and Qwen is the only model that has answered one of those, but §4
- * has no Q&A exchange in it. Item **S-14** sends it, and this row changes if the answer says otherwise.
+ * ### Q&A: measured, and it moved off Qwen
+ *
+ * This row used to be **inferred** — "Qwen is the only model that has answered a strict-JSON-over-the-
+ * transcript request here", from the structure step. S-14 sent the Q&A request itself to both models
+ * (§4, 2026-11-04) and the inference did not survive: **`z-ai/glm-5.3-flash` answered 3 of 3 and
+ * `Qwen/Qwen3.8-27B` answered 3 of 3, with no code fence and no repair retry on either.** The fence habit
+ * that put Qwen on the text steps is *contract-specific*, not a general property of the model — it appears
+ * on the nested structure shape and not on this flat three-key one.
+ *
+ * With shape no longer separating them, the row is decided on what was measured: per question glm cost
+ * **$0.000258–$0.000281** against Qwen's **$0.000342–$0.000538**, and the three questions took **8 s** on
+ * glm against **33 s** on Qwen, including one **15.6 s** answer. A person asks several questions in a
+ * session and waits for each one with nothing else on screen, so the tail latency is the number that
+ * matters here in a way it does not for a batch step. `qa` therefore runs on the page model (**ADR-26**).
+ * Its budget stays at 16,384: measured usage was **0.8–1.9%** of it, a ceiling costs nothing when it is
+ * not reached, and lowering it would only add a truncation failure mode.
+ *
+ * What S-14 did *not* measure is whether either model's answer is **correct** — see **S-03**, and note
+ * that a `notInDocument: true` reply is the model's own claim about the document, which this run could
+ * only check for the shape, not for truth.
+ *
  * It is *not* a fallback: glm stays the page model either way, and `z-ai/glm-5.3-flash` remains
  * `STEP_PLANS.transcribe`'s fallback (S-02) — nothing in this table re-decides S-13(b).
  * And there is **no automatic cross-model fallback**: `readCompletion` spends exactly one repair retry
@@ -249,7 +267,7 @@ export interface StepPlan {
 export const STEP_PLANS = {
   transcribe: { model: 'z-ai/glm-5.3-flash', maxTokens: 8_192 },
   analyse: { model: 'Qwen/Qwen3.8-27B', maxTokens: 16_384 },
-  qa: { model: 'Qwen/Qwen3.8-27B', maxTokens: 16_384 },
+  qa: { model: 'z-ai/glm-5.3-flash', maxTokens: 16_384 },
 } as const satisfies Record<CallPurpose, StepPlan>;
 
 /**

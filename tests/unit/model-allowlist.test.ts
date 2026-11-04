@@ -243,6 +243,19 @@ describe('the per-step plan — which model answers which call (ADR-24)', () => 
     expect(STEP_PLANS.analyse.model).toBe('Qwen/Qwen3.8-27B');
   });
 
+  it('answers Q&A on the page model, because the step was measured there and not inferred (S-14, ADR-26)', () => {
+    // This row used to be Qwen *by inference from the structure step* — "the only model that answers
+    // strict JSON over a transcript". SPIKE §4's S-14 run sent the Q&A request itself and the inference
+    // fell: **both** models answered 3 of 3 in a readable shape, no fence, no repair. So the fence
+    // habit is a property of the nested structure contract, not of the model, and the row is decided on
+    // the numbers that do still separate them — $0.000258–$0.000281 a question and 8 s for three on glm,
+    // against $0.000342–$0.000538 and 33 s on Qwen (one single answer took 15.6 s).
+    expect(STEP_PLANS.qa.model).toBe('z-ai/glm-5.3-flash');
+    expect(STEP_PLANS.qa.model).toBe(STEP_PLANS.transcribe.model);
+    // The set a deployment must allowlist is unchanged by this: the structure step still needs Qwen.
+    expect(planModelIds().sort()).toEqual(['Qwen/Qwen3.8-27B', 'z-ai/glm-5.3-flash']);
+  });
+
   it('names only models rule 3 accepts, each with the shape SPIKE §4 measured', () => {
     // glm from the live catalog row above; Qwen from §4's table (attested, verifiable, vllm, NEAR-side,
     // ready, image-capable) — built with this file's synthetic helper rather than as an invented

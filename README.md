@@ -124,11 +124,14 @@ required there and are stated now so they cannot be quietly dropped later:
 ## Cost per document
 
 Measured per exchange (`docs/SPIKE_RESULTS.md` §4, 2026-11-04): **$0.00097 and 25.8 s for one page** of
-transcription, and one structure step over a five-page transcript **$0.0012–$0.0064** depending on which
-model the plan (`STEP_PLANS`, ADR-24) puts on it — so **a five-page photograph is ≈$0.006–$0.011 and
-147–236 s of model time**, and a pasted document is the structure step alone. Fetching an attestation
-report or a signature is free and non-billable. What dominates all of it is **reasoning tokens**, not the
-answer: the measured page spent 1,008 of its 1,492 completion tokens thinking. These are synthetic-document
+transcription; one structure step over a five-page transcript **$0.0044 (Qwen, answered first time) or
+$0.0046 plus a wasted $0.0010 ask (glm, which needs its repair retry)**; and a follow-up question
+**$0.00026–$0.00028 and 1.9–3.4 s** each on the model the plan (`STEP_PLANS`, **ADR-24** as amended by
+**ADR-26**) puts on that step. So **a five-page photograph is ≈$0.0093–$0.0095 and 247–266 s of model
+time**, ten questions on it add **≈$0.0027**, and a pasted document is the structure step alone. Fetching
+an attestation report or a signature is free and non-billable. What dominates all of it is **reasoning
+tokens**, not the answer: the measured page spent 1,008 of its 1,492 completion tokens thinking, and glm's
+five-page repair thought 8,193 times before writing 679 tokens of answer. These are synthetic-document
 figures at one length each; the spread across real documents is **S-03**, which is an accuracy run and not
 a cost run, and no per-page figure is published here that has not been sent to the service.
 

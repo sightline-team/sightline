@@ -33,7 +33,8 @@ export interface AskDeps {
   session: Session;
   /**
    * The allowlisted, TEE-hosted model the run settled on. Never a user-typed string.
-   * `STEP_PLANS.qa.model` for a live run, once **S-14** has put this request to the service.
+   * `STEP_PLANS.qa.model` for a live run — **measured** there by **S-14** (SPIKE §4), which found both
+   * planned models answering this request readably and picked the cheaper, faster one (ADR-26).
    */
   model: string;
   transport: NearClient;

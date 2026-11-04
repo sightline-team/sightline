@@ -37,26 +37,15 @@ import { transcribeSchema } from '@/features/capture/schemas';
 import { TRANSCRIBE_MAX_TOKENS } from '@/features/capture/transcribe';
 import { STRUCTURE_SYSTEM_PROMPT, structureUserPrompt } from '@/features/analysis/prompts';
 import { analysisSchema } from '@/features/analysis/schemas';
-import { groundFacts } from '@/features/analysis/grounding';
-import { isAllowed, isNearUpstreamHost, modelCatalogRowSchema, STEP_PLANS, toModelMetadata, type ModelCatalogRow } from '@/lib/near-ai/models';
+import { groundFacts, quoteFound } from '@/features/analysis/grounding';
+import { QA_SYSTEM_PROMPT, qaUserPrompt } from '@/features/qa/prompts';
+import { qaSchema } from '@/features/qa/schemas';
+import { isAllowed, isNearUpstreamHost, modelCatalogRowSchema, STEP_PLANS, toModelMetadata, type ModelCatalogRow, type StepPlan } from '@/lib/near-ai/models';
 import { checkSignature, fetchSignature, signatureRecordSchema, type SignatureRecord } from '@/lib/near-ai/signatures';
 import type { CheckResult } from '@/types';
 
 const DIRECT_BASE_URL = 'https://cloud-api.near.ai/v1';
 const SRC = path.join(__dirname, '..', 'src');
-
-/**
- * The model the spike measures against unless `--model=` overrides it.
- *
-/**
- * The page model — `STEP_PLANS.transcribe` (ADR-24), and the model every probe uses.
- * Not the one `docs/ARCHITECTURE.md` §2's facts table named. Measured 2026-11-03:
- * `Qwen/Qwen3-VL-30B-A3B-Instruct`
- * accepts a connection and then never answers (45 s and 150 s, text and image alike) despite
- * `isReady: true`, while `z-ai/glm-5.3-flash` answers an image request in under 2 s. See
- * `docs/SPIKE_RESULTS.md` §4.
- */
-const DEFAULT_MODEL = STEP_PLANS.transcribe.model;
 
 /** No document text here: this prompt exists to make one cheap, checkable round trip. */
 const PROBE_PROMPT = 'Reply with exactly: OK';
@@ -79,8 +68,8 @@ const STAGES: Stage[] = ['catalog', 'attestation', 'complete'];
  * script, and the ones that only need re-measuring when a price or a prompt changes. Ask for either
  * with `--stage=image`, `--stage=document`, or `--stage=all`.
  */
-const EXPLICIT_STAGES: Stage[] = ['image', 'document'];
-type Stage = 'catalog' | 'attestation' | 'complete' | 'image' | 'document';
+const EXPLICIT_STAGES: Stage[] = ['image', 'document', 'qa'];
+type Stage = 'catalog' | 'attestation' | 'complete' | 'image' | 'document' | 'qa';
 
 function arg(name: string): string | undefined {
   const hit = process.argv.slice(2).find((a) => a.startsWith(`--${name}=`));
@@ -999,7 +988,190 @@ async function stageDocument(near: NearClient, model: string, attested: Attested
   }
 }
 
+/**
+ * S-14: **the Q&A step's shape, put to the live service for the first time.** `ask.ts` has shipped since
+ * P-06 asking a question of a transcript, and `STEP_PLANS.qa` was inherited from the step it *resembles*
+ * rather than measured (§4's own entry for the ADR-24 run says so). The risk is not hypothetical: the
+ * structure step asked this same service for JSON and got a ``` fence or plain prose in six of six
+ * replies on the page model.
+ *
+ * The body is exactly what `readCompletion` builds for `purpose: 'qa'` — `QA_SYSTEM_PROMPT` plus
+ * `qaUserPrompt(transcript, question)`, `max_tokens: STEP_PLANS.qa.maxTokens`, **no `stream`** (ADR-22).
+ * The transcript is `--stage=document`'s five-page bill, so the question is asked against text the photo
+ * path really hands over.
+ *
+ * Three questions, chosen to cover the branches `groundAnswer` in `ask.ts` can take: two the document
+ * answers and whose quote should ground, and one it does not answer at all — which is the branch where
+ * `sourceQuote` is absent, the exact field **ADR-25** was written for.
+ *
+ * The verdict printed is the app's own, in the app's order: envelope, refusal, truncation, `qaSchema`, then
+ * `quoteFound` against the same transcript. Answer text is never printed (AGENTS.md §4 rule 7) — only its
+ * length and the booleans, which is enough to say whether a person would have been given an answer.
+ */
+async function stageQa(near: NearClient, model: string, attested: Attested): Promise<void> {
+  console.log(`== qa — S-14: the Q&A step's shape over a real transcript, on ${model}`);
+  if (attested.keyOrAddress === undefined) {
+    console.log('  SKIPPED: no attested key from the attestation stage, so the receipt half of this');
+    console.log('  exchange could not be checked. Rule 6 — no pass by absence.');
+    process.exitCode = 1;
+    return;
+  }
+
+  const price = await priceOf(near, model);
+  if (price.status === 'priced') console.log(`  priced from GET /v1/model/{model_name}: ${price.perIn}/${price.perOut} nano-USD per in/out token`);
+  else console.log(`  price: ${price.status === 'no_price' ? 'the catalog row carried no per-token price, so no figure is claimed' : 'GET /v1/model/{model_name} did not parse as a catalog row'}`);
+
+  const transcript = syntheticTranscript(5);
+  console.log(`  transcript: ${transcript.length} chars — the same five-page bill --stage=document structures`);
+
+  const runs = [
+    { label: 'answerable (amount and date)', question: 'How much do I have to pay, and by when?' },
+    { label: 'answerable (a contact number)', question: 'What number should I call if something here is wrong?' },
+    { label: 'not in the document', question: 'Is there a late-payment fee if I miss the deadline?' },
+  ];
+
+  async function exchange(label: string, userText: string, which: 'ask' | 'repair') {
+    const body = {
+      model,
+      messages: [
+        { role: 'system', content: QA_SYSTEM_PROMPT },
+        { role: 'user', content: userText },
+      ],
+      max_tokens: STEP_PLANS.qa.maxTokens,
+    };
+    console.log(`    ${which}: body ${bytes(JSON.stringify(body))} bytes · max_tokens ${STEP_PLANS.qa.maxTokens}`);
+
+    let response;
+    try {
+      response = await timed(() => near.post('chat/completions', body, { purpose: 'qa' }));
+    } catch (error) {
+      console.log(`      rejected — ${error instanceof NearError ? `${error.name} code ${error.error.code} at HTTP ${error.status ?? '?'}` : 'a non-NearError escaped'}`);
+      return { read: false, outcome: 'transport' as const, nano: 0, ms: 0 };
+    }
+
+    const rawJson = response.value.json as { id?: unknown; model?: unknown; usage?: unknown; choices?: { message?: Record<string, unknown>; finish_reason?: unknown }[] };
+    const usageParse = usageSchema.safeParse(rawJson.usage ?? {});
+    const usage = usageParse.success ? usageParse.data : {};
+    console.log(`      HTTP ${response.value.status} in ${response.ms} ms · body ${bytes(response.value.sentBody ?? '')} bytes · reply ${bytes(response.value.rawText)} bytes`);
+    const completionTokens = usage.completion_tokens ?? 0;
+    console.log(`      usage: prompt ${usage.prompt_tokens ?? '(absent)'} · completion ${completionTokens || '(absent)'} of which reasoning ${usage.completion_tokens_details?.reasoning_tokens ?? '(absent)'} · budget used ${(100 * completionTokens / STEP_PLANS.qa.maxTokens).toFixed(1)}% of ${STEP_PLANS.qa.maxTokens}`);
+    if (price.status === 'priced') console.log(`      ${costLine(`the ${which} exchange`, usage, price)}`);
+    const nano = price.status === 'priced' ? (usage.prompt_tokens ?? 0) * price.perIn + (usage.completion_tokens ?? 0) * price.perOut : 0;
+
+    const envelope = completionEnvelopeSchema.extend({ usage: usageSchema.optional() }).safeParse(response.value.json);
+    if (!envelope.success) {
+      console.log(`      FAIL  completionEnvelopeSchema rejected it — in the app this is \`invalid_model_output\`: ${envelope.error.issues.slice(0, 4).map((i) => `${i.path.join('.')}: ${i.message}`).join(' · ')}`);
+      return { read: false, outcome: 'envelope' as const, nano, ms: response.ms };
+    }
+    const text = contentOf(envelope.data);
+    const finishReason = rawJson.choices?.[0]?.finish_reason ?? '(absent)';
+    console.log(`      finish_reason: ${String(finishReason)} · content ${text.length} chars (never printed)`);
+
+    // The app's order, so a stage that says "readable" means the same thing `readCompletion` does.
+    if (refusalOf(envelope.data) !== undefined) {
+      console.log('      the message carries a refusal — the app halts with `model_refused` and does not repair');
+      return { read: false, outcome: 'refused' as const, nano, ms: response.ms };
+    }
+    if (truncated(envelope.data)) {
+      console.log(`      finish_reason: length at a ${completionTokens}-token completion — the app reports \`output_truncated\` and spends no repair`);
+      return { read: false, outcome: 'truncated' as const, nano, ms: response.ms };
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = undefined;
+    }
+    const contract = qaSchema.safeParse(parsed);
+    if (!contract.success) {
+      console.log(`      qaSchema REJECTED — ${contract.error.issues.slice(0, 6).map((i) => `${i.path.join('.')}: ${i.message}`).join(' · ')}`);
+      if (parsed === undefined) {
+        const head = text.trimStart().slice(0, 1);
+        console.log(`      why: ${text.length === 0 ? 'the message content was empty' : `content begins with "${head}" and ${text.includes('```') ? 'carries a ``` fence' : 'carries no fence'} — the app's plain JSON.parse is what rejected it`}`);
+      }
+      return { read: false, outcome: 'unreadable' as const, nano, ms: response.ms };
+    }
+
+    // Which of `groundAnswer`'s three branches a person would have been shown. This is the app's own
+    // `quoteFound`, run against the transcript the question was asked with.
+    const out = contract.data;
+    const quote = out.sourceQuote;
+    const branch = out.notInDocument
+      ? 'the document does not answer this'
+      : quote === undefined
+        ? 'answered, NO sourceQuote → quoteFound false, panel flags it'
+        : quoteFound(transcript, quote)
+          ? 'answered, quote grounds against the transcript'
+          : 'answered, quote NOT in the transcript → flagged';
+    console.log(`      qaSchema ACCEPTED · answer ${out.answer.length} chars · notInDocument ${out.notInDocument} · sourceQuote ${quote === undefined ? 'absent' : `${quote.length} chars`} · ${branch}`);
+    if (out.notInDocument && label.startsWith('answerable')) {
+      // A true flag on a question this document answers is a finding about the step, not about the
+      // document — so say which of the two the branch is, without printing the answer.
+      console.log('      NOTE: this synthetic bill does state an amount, a date and a phone number, so `notInDocument: true` here means the step declined a question the transcript answers.');
+    }
+
+    const servedModel = envelope.data.model ?? model;
+    const { value: record, ms: sigMs } = await timed(() => fetchSignature(near, envelope.data.id, { model: servedModel, algo: 'ed25519' }));
+    console.log(`      signature in ${sigMs} ms · kind ${record.signature_kind ?? '(absent)'} · signing_algo ${record.signing_algo}`);
+    for (const candidate of new Set([servedModel, model])) {
+      checkAgainstAttestedKeys(record, { requestBytes: response.value.sentBody ?? '', responseBytes: response.value.rawText, modelId: candidate }, attested);
+    }
+    return { read: true, outcome: 'read' as const, nano, ms: response.ms };
+  }
+
+  let readable = 0;
+  let totalNano = 0;
+  let totalMs = 0;
+  for (const run of runs) {
+    console.log(`  ${run.label}: "${run.question}"`);
+    const first = await exchange(run.label, qaUserPrompt(transcript, run.question), 'ask');
+    let final = first;
+    totalNano += first.nano;
+    totalMs += first.ms;
+
+    // Exactly one repair, only for the failure `readCompletion` repairs — the same terms `ask.ts` runs on.
+    if (first.outcome === 'unreadable') {
+      console.log('    the app spends its one repair retry here, so the stage sends it:');
+      final = await exchange(run.label, `${qaUserPrompt(transcript, run.question)}\n\n${REPAIR_NOTE}`, 'repair');
+      totalNano += final.nano;
+      totalMs += final.ms;
+    }
+    if (final.read) readable += 1;
+    // Sticky on purpose, as in --stage=document: an answer the app throws away is a failure to report.
+    if (!final.read) process.exitCode = 1;
+    if (first.outcome === 'unreadable' && final.read) {
+      console.log(`    the repair retry is what made this answer readable · both attempts cost ${first.nano + final.nano} nano-USD · ${(first.ms + final.ms) / 1000} s`);
+    }
+  }
+
+  console.log(`  the Q&A step on ${model}: ${readable} of ${runs.length} questions answered in a shape the app can read${price.status === 'priced' ? ` · ${totalNano} nano-USD = $${(totalNano / 1e9).toFixed(6)} across ${Math.round(totalMs / 1000)} s` : ''}`);
+  console.log('  what a question costs is not what a document costs: a person can ask several, so this figure is the one the Ask panel\'s budget and any rate limit are sized against.');
+}
+
 // ------------------------------------------------------------------------------------ runner
+
+/**
+ * Every stage that makes a completion: which **ADR-24** plan row answers it, and which function runs it.
+ *
+ * A table rather than an `if`/`else` chain because the chain mis-measured a run on 2026-11-04: a stage
+ * added to `Stage` falls through the last `else` and silently runs *another* step's code against another
+ * model's attestation report, and the output still reads like the stage that was asked for. `--stage=qa`
+ * did exactly that before this existed, and printed a structure-step run under a Q&A heading.
+ * TypeScript will not let a key go missing here, and no stage can reach the wrong function.
+ *
+ * `complete` rides the page model because it is the probe prompt, not a document step; `catalog` and
+ * `attestation` make no completion, so they are not keys.
+ */
+const COMPLETION_STAGES: Record<Exclude<Stage, 'catalog' | 'attestation'>, {
+  plan: StepPlan;
+  run: (near: NearClient, model: string, attested: Attested) => Promise<void>;
+}> = {
+  complete: { plan: STEP_PLANS.transcribe, run: stageComplete },
+  image: { plan: STEP_PLANS.transcribe, run: stageImage },
+  document: { plan: STEP_PLANS.analyse, run: stageDocument },
+  qa: { plan: STEP_PLANS.qa, run: stageQa },
+};
 
 async function main(): Promise<void> {
   if (API_KEY === '') {
@@ -1013,28 +1185,29 @@ async function main(): Promise<void> {
   console.log(`sightline spike · mode direct · ${DIRECT_BASE_URL} · stages ${stages.join(', ')} · ${forced === undefined ? 'one model per step, from ADR-24\'s plan' : `every stage forced to ${forced}`}`);
 
   // **ADR-24**: each stage asks with the model its own step is measured to answer, because §4 found the
-  // page model replying to the structure step in a readable shape 0 of 6 times. `--model=` still
-  // overrides it, and it should: the point of forcing is to re-run the other half of that comparison.
-  const stageModel = (stage: Stage): string => forced ?? (stage === 'document' ? STEP_PLANS.analyse.model : DEFAULT_MODEL);
-
+  // page model replying to the structure step in a readable shape 0 of 6 times — and §4's S-14 run found
+  // it answering the *Q&A* step 3 of 3, which is why the rows are per step and not one choice per run.
+  // `--model=` still overrides it, and it should: the point of forcing is to re-run the other half of
+  // that comparison, which is exactly how both halves of S-14's table were measured.
   let attested: Attested = { ok: false };
   let attestedFor = '';
   for (const stage of stages) {
-    const model = stageModel(stage);
     if (stage === 'catalog') {
       await stageCatalog();
       continue;
     }
+    // `attestation` has no row of its own — it asks for the report the next stage will check against, so
+    // it rides the page model's row unless `--model=` says otherwise.
+    const entry = stage === 'attestation' ? undefined : COMPLETION_STAGES[stage];
+    const model = forced ?? (entry?.plan ?? STEP_PLANS.transcribe).model;
     // The report has to belong to the model that answers. A completion checked against another model's
     // attested key fails for the wrong reason, and rule 6 will not count that as a measurement.
     if (attested.keyOrAddress === undefined || attestedFor !== model) {
       attested = await stageAttestation(near, model);
       attestedFor = model;
     }
-    if (stage === 'attestation') continue;
-    if (stage === 'complete') await stageComplete(near, model, attested);
-    else if (stage === 'image') await stageImage(near, model, attested);
-    else await stageDocument(near, model, attested);
+    if (entry === undefined) continue;
+    await entry.run(near, model, attested);
   }
   console.log(`done · exit ${process.exitCode ?? 0}`);
 }
