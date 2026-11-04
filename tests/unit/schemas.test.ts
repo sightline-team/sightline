@@ -100,6 +100,45 @@ describe('analysisSchema', () => {
   });
 });
 
+/**
+ * The `string?` fields, measured rather than argued about. Every reply that reached a JSON object in
+ * `npm run spike -- --stage=document` on 2026-11-04 — six attempts, both planned models, first
+ * requests and repair retries — answered a deadline-less action with `"deadline": null`. The prompt
+ * says "Omit fields that are absent" and a model that omits one by writing `null` was being told its
+ * whole answer was unreadable, which is how a correctly-read document reached the transcript-only
+ * screen. These cases are the regression: `null` is absent, and only `null` is.
+ */
+describe('an optional string answered as null is absent, not invalid', () => {
+  it('accepts a deadline-less action written as null, and keeps it absent', () => {
+    const parsed = analysisSchema.safeParse({
+      ...valid,
+      actions: [{ text: 'Pay the balance', deadline: null, sourceQuote: 'Amount due: £840' }],
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.actions[0]?.deadline).toBeUndefined();
+  });
+
+  it('accepts a missing sender written as null', () => {
+    const parsed = analysisSchema.parse({ ...valid, sender: null });
+    expect(parsed.sender).toBeUndefined();
+  });
+
+  it('still refuses a deadline that is present but not a usable string', () => {
+    expect(analysisSchema.safeParse({ ...valid, actions: [{ text: 'a', deadline: 42, sourceQuote: 'q' }] }).success).toBe(false);
+    expect(analysisSchema.safeParse({ ...valid, actions: [{ text: 'a', deadline: '', sourceQuote: 'q' }] }).success).toBe(false);
+  });
+
+  it('reads a null sourceQuote on an honest Q&A answer as "there is nothing to quote"', () => {
+    const parsed = qaSchema.parse({ answer: 'The letter does not say.', notInDocument: true, sourceQuote: null });
+    expect(parsed.sourceQuote).toBeUndefined();
+  });
+
+  it('reads a null pageLabel as a page with no label on it', () => {
+    const parsed = transcribeSchema.parse({ text: 'Invoice 4471', pageLabel: null });
+    expect(parsed.pageLabel).toBeUndefined();
+  });
+});
+
 describe('fields that must not survive', () => {
   it('strips a model-reported confidence instead of showing it (ADR-11)', () => {
     const parsed = analysisSchema.parse({ ...valid, confidence: 0.98 });

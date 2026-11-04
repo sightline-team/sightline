@@ -29,7 +29,8 @@ import { buildSync } from 'esbuild';
 import path from 'node:path';
 import { attestationReportSchema, bindReport, newNonce } from '@/lib/near-ai/attestation';
 import { createNearClient, NearError, type CallPurpose, type NearClient } from '@/lib/near-ai/client';
-import { completionEnvelopeSchema, contentOf } from '@/lib/near-ai/envelope';
+import { completionEnvelopeSchema, contentOf, refusalOf, truncated } from '@/lib/near-ai/envelope';
+import { REPAIR_NOTE } from '@/lib/near-ai/completion';
 import { DEFAULT_MAX_EDGE, MAX_PAGE_BYTES, targetSize } from '@/lib/image/prepare';
 import { TRANSCRIBE_SYSTEM_PROMPT, TRANSCRIBE_USER_PROMPT } from '@/features/capture/prompts';
 import { transcribeSchema } from '@/features/capture/schemas';
@@ -37,7 +38,7 @@ import { TRANSCRIBE_MAX_TOKENS } from '@/features/capture/transcribe';
 import { STRUCTURE_SYSTEM_PROMPT, structureUserPrompt } from '@/features/analysis/prompts';
 import { analysisSchema } from '@/features/analysis/schemas';
 import { groundFacts } from '@/features/analysis/grounding';
-import { isAllowed, isNearUpstreamHost, modelCatalogRowSchema, toModelMetadata, type ModelCatalogRow } from '@/lib/near-ai/models';
+import { isAllowed, isNearUpstreamHost, modelCatalogRowSchema, STEP_PLANS, toModelMetadata, type ModelCatalogRow } from '@/lib/near-ai/models';
 import { checkSignature, fetchSignature, signatureRecordSchema, type SignatureRecord } from '@/lib/near-ai/signatures';
 import type { CheckResult } from '@/types';
 
@@ -47,13 +48,15 @@ const SRC = path.join(__dirname, '..', 'src');
 /**
  * The model the spike measures against unless `--model=` overrides it.
  *
+/**
+ * The page model — `STEP_PLANS.transcribe` (ADR-24), and the model every probe uses.
  * Not the one `docs/ARCHITECTURE.md` §2's facts table named. Measured 2026-11-03:
  * `Qwen/Qwen3-VL-30B-A3B-Instruct`
  * accepts a connection and then never answers (45 s and 150 s, text and image alike) despite
  * `isReady: true`, while `z-ai/glm-5.3-flash` answers an image request in under 2 s. See
  * `docs/SPIKE_RESULTS.md` §4.
  */
-const DEFAULT_MODEL = 'z-ai/glm-5.3-flash';
+const DEFAULT_MODEL = STEP_PLANS.transcribe.model;
 
 /** No document text here: this prompt exists to make one cheap, checkable round trip. */
 const PROBE_PROMPT = 'Reply with exactly: OK';
@@ -832,17 +835,25 @@ function kindsUsed(parsed: unknown): string {
 }
 
 /**
- * S-09's last number: **the structure step priced over a document, not a probe prompt.** Every
- * figure before this one came from `PROBE_PROMPT` or a one-line page count, which says nothing
- * about what the app's second request costs on the transcript the first request produced.
+ * S-09's last number, and ADR-24's check: **the structure step priced over a document, on the model
+ * the plan assigns it, with the budget the app sends.** Every figure before the 2026-11-04 run came
+ * from `PROBE_PROMPT` or a one-line page count, which says nothing about what the app's second
+ * request costs on the transcript the first request produced.
  *
  * The body is exactly what `readCompletion` builds for `purpose: 'analyse'` — `STRUCTURE_SYSTEM_PROMPT`
- * plus `structureUserPrompt(transcript)`, **no `max_tokens`** (ADR-23 budgets a *page*; the text path
- * sends none, so it takes the service default) and **no `stream`** (ADR-22). If either of those two
- * absences were wrong for a document-length request, this is where it shows.
+ * plus `structureUserPrompt(transcript)`, `max_tokens: STEP_PLANS.analyse.maxTokens` (**ADR-24**: the
+ * text path used to send no budget at all, which caps nothing) and **no `stream`** (ADR-22). If any of
+ * those were wrong for a document-length request, this is where it shows.
  *
- * The reply is also put through `analysisSchema` and `groundFacts`, which is the app's own check
- * rather than a new one: how many of the facts the model returned quote the transcript back. That is
+ * When a reply cannot be read the stage makes **the app's own single repair retry** — the same system
+ * prompt, the user text with `REPAIR_NOTE` joined, the same budget — because that is what the person
+ * gets, and because the note now names a ``` fence (§4 found two of them) nobody had ever retried.
+ * A truncation or a refusal is not retried, per the same rule (`completion.ts`'s "what the retry is
+ * not used for"). Both attempts are priced and their signatures checked; the exit code follows the
+ * *second* one, so a model whose answers the app cannot read still fails the stage.
+ *
+ * The reply is put through `analysisSchema` and `groundFacts`, which is the app's own check rather
+ * than a new one: how many of the facts the model returned quote the transcript back. That is
  * **consistency with our transcript, not correctness against the page** (AGENTS.md §4 rule 8) — a
  * misread number that is quoted faithfully still grounds, so the line this prints is a lead for S-03,
  * not S-03's result.
@@ -866,44 +877,59 @@ async function stageDocument(near: NearClient, model: string, attested: Attested
   ];
   let fivePage: { nano: number; ms: number } | undefined;
 
-  for (const run of runs) {
+  /**
+   * One send of the app's analyse body, and the app's verdict on the answer: read, or which of the
+   * four ways it was not. Returns the cost so the caller can add up what a person actually pays when
+   * the retry is spent.
+   */
+  async function exchange(userText: string, transcript: string, which: 'ask' | 'repair') {
     const body = {
       model,
       messages: [
         { role: 'system', content: STRUCTURE_SYSTEM_PROMPT },
-        { role: 'user', content: structureUserPrompt(run.transcript) },
+        { role: 'user', content: userText },
       ],
+      max_tokens: STEP_PLANS.analyse.maxTokens,
     };
-    console.log(`  ${run.label} (${run.transcript.length} chars of transcript):`);
+    console.log(`    ${which}: body ${bytes(JSON.stringify(body))} bytes · max_tokens ${STEP_PLANS.analyse.maxTokens}`);
 
     let response;
     try {
       response = await timed(() => near.post('chat/completions', body, { purpose: 'analyse' }));
     } catch (error) {
-      console.log(`    rejected — ${error instanceof NearError ? `${error.name} code ${error.error.code} at HTTP ${error.status ?? '?'}` : 'a non-NearError escaped'}`);
-      process.exitCode = 1;
-      continue;
+      console.log(`      rejected — ${error instanceof NearError ? `${error.name} code ${error.error.code} at HTTP ${error.status ?? '?'}` : 'a non-NearError escaped'}`);
+      return { read: false, outcome: 'transport' as const, nano: 0, ms: 0 };
     }
 
     const rawJson = response.value.json as { id?: unknown; model?: unknown; usage?: unknown; choices?: { message?: Record<string, unknown>; finish_reason?: unknown }[] };
     const usageParse = usageSchema.safeParse(rawJson.usage ?? {});
     const usage = usageParse.success ? usageParse.data : {};
-    console.log(`    HTTP ${response.value.status} in ${response.ms} ms · body ${bytes(response.value.sentBody ?? '')} bytes · reply ${bytes(response.value.rawText)} bytes`);
-    console.log(`    usage: prompt ${usage.prompt_tokens ?? '(absent)'} · completion ${usage.completion_tokens ?? '(absent)'} of which reasoning ${usage.completion_tokens_details?.reasoning_tokens ?? '(absent)'}`);
-    if (price.status === 'priced') console.log(costLine(`the ${run.label} structure step`, usage, price));
-    if (price.status === 'priced' && run.label === 'five pages') {
-      fivePage = { nano: (usage.prompt_tokens ?? 0) * price.perIn + (usage.completion_tokens ?? 0) * price.perOut, ms: response.ms };
-    }
+    console.log(`      HTTP ${response.value.status} in ${response.ms} ms · body ${bytes(response.value.sentBody ?? '')} bytes · reply ${bytes(response.value.rawText)} bytes`);
+    const completionTokens = usage.completion_tokens ?? 0;
+    console.log(`      usage: prompt ${usage.prompt_tokens ?? '(absent)'} · completion ${usage.completion_tokens ?? '(absent)'} of which reasoning ${usage.completion_tokens_details?.reasoning_tokens ?? '(absent)'} · budget used ${(100 * completionTokens / STEP_PLANS.analyse.maxTokens).toFixed(1)}% of ${STEP_PLANS.analyse.maxTokens}`);
+    if (price.status === 'priced') console.log(`      ${costLine(`the ${which} exchange`, usage, price)}`);
+    const nano = price.status === 'priced' ? (usage.prompt_tokens ?? 0) * price.perIn + (usage.completion_tokens ?? 0) * price.perOut : 0;
 
     const envelope = completionEnvelopeSchema.extend({ usage: usageSchema.optional() }).safeParse(response.value.json);
     if (!envelope.success) {
-      console.log(`    FAIL  completionEnvelopeSchema rejected it — in the app this is \`invalid_model_output\`: ${envelope.error.issues.slice(0, 4).map((i) => `${i.path.join('.')}: ${i.message}`).join(' · ')}`);
-      process.exitCode = 1;
-      continue;
+      console.log(`      FAIL  completionEnvelopeSchema rejected it — in the app this is \`invalid_model_output\`: ${envelope.error.issues.slice(0, 4).map((i) => `${i.path.join('.')}: ${i.message}`).join(' · ')}`);
+      return { read: false, outcome: 'envelope' as const, nano, ms: response.ms };
     }
     const text = contentOf(envelope.data);
     const finishReason = rawJson.choices?.[0]?.finish_reason ?? '(absent)';
-    console.log(`    finish_reason: ${String(finishReason)} · content ${text.length} chars (never printed)`);
+    console.log(`      finish_reason: ${String(finishReason)} · content ${text.length} chars (never printed)`);
+
+    // The two checks the app makes before it reads anything, using the app's own predicates and in its
+    // order: a refusal and a truncation both stop the run rather than buy a repair (`completion.ts`),
+    // and a truncation on a *text* request is now reachable because this request carries a budget.
+    if (refusalOf(envelope.data) !== undefined) {
+      console.log('      the message carries a refusal — the app halts with `model_refused` and does not repair');
+      return { read: false, outcome: 'refused' as const, nano, ms: response.ms };
+    }
+    if (truncated(envelope.data)) {
+      console.log(`      finish_reason: length at a ${completionTokens}-token completion — the budget is the finding here, not the model: the app reports \`output_truncated\` and spends no repair`);
+      return { read: false, outcome: 'truncated' as const, nano, ms: response.ms };
+    }
 
     let parsed: unknown;
     try {
@@ -913,37 +939,60 @@ async function stageDocument(near: NearClient, model: string, attested: Attested
     }
     const contract = analysisSchema.safeParse(parsed);
     if (!contract.success) {
-      console.log(`    analysisSchema REJECTED — ${contract.error.issues.slice(0, 6).map((i) => `${i.path.join('.')}: ${i.message}`).join(' · ')}. In the app that is one repair retry and then the transcript-only screen.`);
-      console.log(`    the "kind" values it used instead: ${kindsUsed(parsed)}`);
+      console.log(`      analysisSchema REJECTED — ${contract.error.issues.slice(0, 6).map((i) => `${i.path.join('.')}: ${i.message}`).join(' · ')}`);
+      console.log(`      the "kind" values it used instead: ${kindsUsed(parsed)}`);
       if (parsed === undefined) {
         // *Why* it is not JSON, in shape only: one character and one boolean. The app parses with a
         // plain `JSON.parse(contentOf(...))`, so a code fence or a lead-in sentence is a failure here
         // exactly as it is there — and "not JSON" without the reason is not an actionable finding.
         const head = text.trimStart().slice(0, 1);
-        console.log(`    why: ${text.length === 0 ? 'the message content was empty' : `content begins with "${head}" and ${text.includes('```') ? 'carries a ``` fence' : 'carries no fence'} — the app's plain JSON.parse is what rejected it`}`);
+        console.log(`      why: ${text.length === 0 ? 'the message content was empty' : `content begins with "${head}" and ${text.includes('```') ? 'carries a ``` fence' : 'carries no fence'} — the app's plain JSON.parse is what rejected it`}`);
       }
-      process.exitCode = 1;
-    } else {
-      const out = contract.data;
-      const facts = groundFacts(run.transcript, out.facts);
-      const actions = groundFacts(run.transcript, out.actions);
-      console.log(`    analysisSchema ACCEPTED · docType ${out.docType} (this document is a bill, so ${out.docType === 'bill' ? 'match' : 'MISS'}) · summary ${out.summary.length} chars · facts ${facts.filter((f) => f.quoteFound).length}/${facts.length} quote the transcript back · actions ${actions.filter((a) => a.quoteFound).length}/${actions.length} · warnings ${out.warnings.length}`);
-      console.log('    grounding here means "consistent with our transcript", never "correct against the page" (rule 8). Counting misreads is S-03, against an expected-facts file.');
+      return { read: false, outcome: 'unreadable' as const, nano, ms: response.ms };
     }
+    const out = contract.data;
+    const facts = groundFacts(transcript, out.facts);
+    const actions = groundFacts(transcript, out.actions);
+    console.log(`      analysisSchema ACCEPTED · docType ${out.docType} (this document is a bill, so ${out.docType === 'bill' ? 'match' : 'MISS'}) · summary ${out.summary.length} chars · facts ${facts.filter((f) => f.quoteFound).length}/${facts.length} quote the transcript back · actions ${actions.filter((a) => a.quoteFound).length}/${actions.length} · warnings ${out.warnings.length}`);
+    console.log('      grounding here means "consistent with our transcript", never "correct against the page" (rule 8). Counting misreads is S-03, against an expected-facts file.');
 
     const servedModel = envelope.data.model ?? model;
     const { value: record, ms: sigMs } = await timed(() => fetchSignature(near, envelope.data.id, { model: servedModel, algo: 'ed25519' }));
-    console.log(`    signature in ${sigMs} ms · kind ${record.signature_kind ?? '(absent)'} · signing_algo ${record.signing_algo}`);
+    console.log(`      signature in ${sigMs} ms · kind ${record.signature_kind ?? '(absent)'} · signing_algo ${record.signing_algo}`);
     for (const candidate of new Set([servedModel, model])) {
       checkAgainstAttestedKeys(record, { requestBytes: response.value.sentBody ?? '', responseBytes: response.value.rawText, modelId: candidate }, attested);
     }
+    return { read: true, outcome: 'read' as const, nano, ms: response.ms };
+  }
+
+  for (const run of runs) {
+    console.log(`  ${run.label} (${run.transcript.length} chars of transcript):`);
+    const first = await exchange(structureUserPrompt(run.transcript), run.transcript, 'ask');
+    let final = first;
+
+    // Exactly one repair, and only for the failure the app repairs — the same two conditions
+    // `readCompletion` runs on, so this stage measures the person's experience rather than a guess.
+    if (first.outcome === 'unreadable') {
+      console.log('    the app spends its one repair retry here, so the stage sends it:');
+      final = await exchange(`${structureUserPrompt(run.transcript)}\n\n${REPAIR_NOTE}`, run.transcript, 'repair');
+    }
+
+    // Sticky on purpose: the stage's exit code answers "was every reply readable", not "did the last
+    // one work". A run that exits 0 while an answer was thrown away would be reporting a lie (the
+    // 2026-11-04 ADR-24 run exits 1 with one accepted five-page answer for exactly this reason).
+    if (!final.read) process.exitCode = 1;
+    if (first.outcome === 'unreadable' && final.read) {
+      console.log(`    the repair retry is what made this answer readable · both attempts cost ${first.nano + final.nano} nano-USD · ${(first.ms + final.ms) / 1000} s`);
+    }
+    if (run.label === 'five pages') fivePage = { nano: final.nano, ms: final.ms };
   }
 
   if (price.status === 'priced' && fivePage !== undefined) {
     const transcriptionNano = MEASURED_PAGE_NANO_USD * 5;
     const totalNano = transcriptionNano + fivePage.nano;
     const totalMs = MEASURED_PAGE_MS * 5 + fivePage.ms;
-    console.log(`  a five-page document, put together: 5 × ${MEASURED_PAGE_NANO_USD} nano of transcription (§4, 2026-11-04) + ${fivePage.nano} of this structure step = ${totalNano} nano-USD = $${(totalNano / 1e9).toFixed(6)}`);
+    console.log(`  a five-page document, put together as ADR-24 runs it: 5 × ${MEASURED_PAGE_NANO_USD} nano of transcription on ${STEP_PLANS.transcribe.model} (§4, 2026-11-04) + ${fivePage.nano} of this structure step on ${model} = ${totalNano} nano-USD = $${(totalNano / 1e9).toFixed(6)}`);
+    console.log(`  (the structure figure is the attempt the answer arrived on; if a repair was spent, the line above it names what both attempts cost together.)`);
     console.log(`  and ${Math.round(totalMs / 1000)} s of model time — ${Math.round((MEASURED_PAGE_MS * 5) / 1000)} s of it transcription. That is what §12's progress cadence and any per-page timeout have to be sized for, not the 1.83 s a one-line probe took.`);
   } else {
     console.log('  per document not stated: this run has no price, or the five-page exchange did not answer. A number carried from an earlier run would be a written figure, not a measured one.');
@@ -959,20 +1008,33 @@ async function main(): Promise<void> {
     process.exit(3);
   }
   const near = client();
-  const model = arg('model') ?? DEFAULT_MODEL;
+  const forced = arg('model');
   const stages = selectedStages();
-  console.log(`sightline spike · mode direct · ${DIRECT_BASE_URL} · model ${model} · stages ${stages.join(', ')}`);
+  console.log(`sightline spike · mode direct · ${DIRECT_BASE_URL} · stages ${stages.join(', ')} · ${forced === undefined ? 'one model per step, from ADR-24\'s plan' : `every stage forced to ${forced}`}`);
+
+  // **ADR-24**: each stage asks with the model its own step is measured to answer, because §4 found the
+  // page model replying to the structure step in a readable shape 0 of 6 times. `--model=` still
+  // overrides it, and it should: the point of forcing is to re-run the other half of that comparison.
+  const stageModel = (stage: Stage): string => forced ?? (stage === 'document' ? STEP_PLANS.analyse.model : DEFAULT_MODEL);
 
   let attested: Attested = { ok: false };
+  let attestedFor = '';
   for (const stage of stages) {
-    if (stage === 'catalog') await stageCatalog();
-    if (stage === 'attestation') attested = await stageAttestation(near, model);
-    if (stage === 'complete' || stage === 'image' || stage === 'document') {
-      if (attested.keyOrAddress === undefined) attested = await stageAttestation(near, model);
-      if (stage === 'complete') await stageComplete(near, model, attested);
-      else if (stage === 'image') await stageImage(near, model, attested);
-      else await stageDocument(near, model, attested);
+    const model = stageModel(stage);
+    if (stage === 'catalog') {
+      await stageCatalog();
+      continue;
     }
+    // The report has to belong to the model that answers. A completion checked against another model's
+    // attested key fails for the wrong reason, and rule 6 will not count that as a measurement.
+    if (attested.keyOrAddress === undefined || attestedFor !== model) {
+      attested = await stageAttestation(near, model);
+      attestedFor = model;
+    }
+    if (stage === 'attestation') continue;
+    if (stage === 'complete') await stageComplete(near, model, attested);
+    else if (stage === 'image') await stageImage(near, model, attested);
+    else await stageDocument(near, model, attested);
   }
   console.log(`done · exit ${process.exitCode ?? 0}`);
 }

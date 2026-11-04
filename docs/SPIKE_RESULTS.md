@@ -465,6 +465,72 @@ first time this repo's second request has ever been put to the live service.
   Mode B's relay for any of it (**B-12**), and whether any of this holds on a document that is not a
   bill (S-03's set is where that gets counted).
 
+### [Measured] 2026-11-04 — ADR-24's plan put to the service, and the answers it throws away are ours to fix
+
+The block above ended with two things undecided. Both are decided now, and the run that decided them
+is this one: `npm run spike -- --stage=document` with **`max_tokens` on the text body** (so §13's
+truncation case is reachable and priced on this path) and **the app's one repair retry made for real**
+(the stage now re-sends exactly what `readCompletion` would send on an unreadable reply — the fenced
+`REPAIR_NOTE` appended to the *user* text, system prompt byte-identical). Seven exchanges, one model per
+plan row: three on `Qwen/Qwen3.8-27B` (`STEP_PLANS.analyse.model`, the default this stage now runs) and
+four on `z-ai/glm-5.3-flash` (`--model=` forced, to ask whether the retry rescues the model §4 measured
+at 0 of 6). Both runs exit 1, which is the stage's rule: **any** unreadable reply makes it non-zero, so
+the exit code below is not a claim that nothing was read — the Qwen run's five-page answer was accepted
+whole and it still exits 1, because two of its three replies were thrown away.
+
+| model | request | exchange | time | prompt tok | completion (reasoning) | % of 8,192 | cost | `analysisSchema` |
+|---|---|---|---|---|---|---|---|---|
+| `z-ai/glm-5.3-flash` | ask | 1 page | 18.9 s | 803 | 1,210 (619) | 14.8% | $0.00066924 | **REJECTED** — ``` fence |
+| `z-ai/glm-5.3-flash` | repair | 1 page | 68.5 s | 842 | 4,325 (2,376) | 52.8% | $0.00222986 | **REJECTED** — `actions[1].deadline` |
+| `z-ai/glm-5.3-flash` | ask | 5 pages | 26.7 s | 2,554 | 1,915 (1,182) | 23.4% | $0.00116182 | **REJECTED** — ``` fence |
+| `z-ai/glm-5.3-flash` | repair | 5 pages | 18.0 s | 2,593 | 1,316 (812) | 16.1% | $0.00086544 | **REJECTED** — `actions[1].deadline` |
+| `Qwen/Qwen3.8-27B` | ask | 1 page | 129.5 s | 961 | **8,047 (5,469)** | **98.2%** | $0.01090189 | **REJECTED** — `actions[1].deadline` |
+| `Qwen/Qwen3.8-27B` | repair | 1 page | 128.2 s | 1,001 | 6,320 (3,846) | 77.1% | $0.00857204 | **REJECTED** — `actions[1].deadline` |
+| `Qwen/Qwen3.8-27B` | ask | 5 pages | 106.9 s | 3,089 | 4,628 (3,941) | 56.5% | $0.00637136 | **ACCEPTED** · facts 5/5, actions 2/2, warnings 2 |
+
+- **Six of the seven replies were rejected for one field, and the field is ours, not the models'.**
+  Every attempt that reached a JSON object — four of four on glm's repairs, three of three on Qwen's
+  asks and repairs that parsed — said `"deadline": null` for an action with no deadline, and
+  `analysisSchema` had `deadline: z.string().optional()`, which accepts a missing key and rejects
+  `null`. The prompt says "Omit fields that are absent"; six replies that obeyed it in the models'
+  usual way were each worth a repair retry and then the transcript-only screen (**P-08** → **P-11**),
+  for a document both models had read correctly. **Fixed in this commit**: `null` on an optional
+  string now reads as absent in `analysisSchema` (`sender`, `actions[].deadline`), `qaSchema`
+  (`sourceQuote`) and `transcribeSchema` (`pageLabel`) — the three other `string?` fields this service
+  is asked to fill, so the habit does not have to be measured three more times to be handled once. A
+  `null` is the only extra value accepted: `42` and `""` are still rejected, and nothing about
+  grounding, `quoteFound` or the confidence ban changes. Held by `tests/unit/schemas.test.ts` (5 cases)
+  and by a pipeline test that runs the whole step on the measured reply shape.
+- **The fence-aware repair note works, and that was the open question about ADR-24's fence decision.**
+  glm fenced both first requests and produced a real object on both retries — so leaving a fence to the
+  retry rather than stripping it is not a theory any more: it cost 18–68 s and $0.0009–$0.0022, and it
+  got the JSON. Qwen fenced nothing in seven attempts across both days (glm: 4 of 10).
+- **The number ADR-24 first wrote for the text budget was too small, and this run is why it changed.**
+  It argued for 8,192 from "the largest structure completion so far was 4,480" — a one-sample inference.
+  Qwen then answered a **one-page** transcript with **8,047 completion tokens, 5,469 of them reasoning,
+  98.2% of that budget**, finishing on `stop` rather than `length` by the width of 145 tokens. A cap
+  that a routine reply reaches is a trap: the next one arrives as `output_truncated` and the person
+  loses a reading they were given. The text steps (`analyse`, `qa`) now send **16,384** — twice the
+  largest text-step answer observed on either planned model, inside both ceilings (Qwen 65,536 output,
+  glm 1,048,576), and a worst case of **$0.0221184** of output at 1,350 nano-USD a token. The page
+  budget stays ADR-23's 8,192; its one measured completion used 18% of it. **No truncation occurred in
+  any of these seven exchanges**, at either budget.
+- **What the plan costs, end to end, with a real accepted answer.** A five-page photo document is 5 ×
+  970,800 nano of transcription on the page model + one structure step: **$0.011225 and ≈236 s** as
+  ADR-24 runs it (Qwen answers step 2), against **$0.005719 and ≈147 s** if glm answers it *and* the
+  retry is spent. That supersedes the "$0.0107 / ≈197 s" line above as the current figure; the honest
+  form is a range, **≈$0.006–$0.011 per five-page document and 147–236 s**, because the second step's
+  price is now a model choice rather than a constant. For a blind user the 89 s difference matters more
+  than the 55 cents will, which is the argument for revisiting the choice with a bigger sample — and
+  **S-14** is that revisit, with the Q&A step measured in the same run.
+- **Signatures hold on all seven,** `provider_tee` verified against `model_attestations[0]` over the
+  exact bytes, none verifying against the gateway key (ADR-19, ADR-22). The accepted answer's signature
+  fetch took 324 ms. The attestation report was re-fetched per model — the Qwen run binds to Qwen's
+  attested key, not to the page model's (`scripts/spike.ts`, `stageModel`).
+- **Still not measured:** the Q&A step's shape and its budget on a real transcript (**S-14**), whether
+  16,384 is enough for a *dense* five-page transcript on Qwen (the sample here spent 56.5% of it), Mode
+  B's relay for any of it (**B-12**), and any of this on a document that is not a bill (**S-03**).
+
 ## 5. Response signatures — [Verified], and they are not what our docs assumed
 
 

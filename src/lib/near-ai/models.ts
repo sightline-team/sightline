@@ -1,8 +1,11 @@
 import { z } from 'zod';
 import { notBuilt } from '@/lib/not_built';
+import type { CallPurpose } from '@/lib/near-ai/client';
 
 /**
- * Model discovery and the TEE allowlist (item **F-04**).
+ * Model discovery and the TEE allowlist (item **F-04**), plus the per-step model and reply budget
+ * (**ADR-24**, `STEP_PLANS` below) — both live here because both are answers to "which model, for
+ * what", and the allowlist check is the one that decides whether an answer is allowed at all.
  *
  * Rewritten after `docs/SPIKE_RESULTS.md` §4 / ADR-18: the flags that decide
  * whether a model has a TEE guarantee are **not** on `GET /v1/models`. They live
@@ -174,6 +177,89 @@ export function isAllowed(metadata: ModelMetadata | undefined, configAllowlist: 
 
 function refuse(reason: AllowlistDecision['reason']): AllowlistDecision {
   return { allowed: false, reason };
+}
+
+/**
+ * What each step of a run asks the service: **which model answers it, and how many tokens that
+ * answer may spend** (**ADR-24**). One table rather than three call sites, because the two facts
+ * belong together — a budget is only safe relative to the model spending it, and the measured
+ * evidence for both columns is the same ten exchanges (`docs/SPIKE_RESULTS.md` §4).
+ *
+ * ### Why the steps do not share a model
+ *
+ * `z-ai/glm-5.3-flash` is the page model: it answered C-03's transcription request in **25.77 s** for
+ * **$0.00097080**, and `transcribeSchema` accepted the reply (§4). The same model answered this
+ * repo's *structure* request in a shape the app could read **0 of 6 times** — twice with a `kind`
+ * outside `factKindSchema` (our prompt's fault, fixed on P-01), twice as content that is not JSON at
+ * all, twice as valid JSON inside a ``` fence — while `Qwen/Qwen3.8-27B` answered **4 of 4** in the
+ * exact shape with every fact quoting the transcript back. A model that follows one contract need
+ * not follow another, so "the chosen model" is per-request and this table is where that is written
+ * down instead of assumed.
+ *
+ * Re-measured after P-01, with the budget sent (§4, the ADR-24 run): glm was again **0 of 4** readable
+ * — both first requests fenced, both repair retries real objects ruined by one `"deadline": null` —
+ * while Qwen was **1 of 3**, its five-page answer accepted whole (`analysisSchema` pass, 5/5 facts
+ * quoting the transcript, `provider_tee` signature verified) and its two one-page answers rejected for
+ * that same null. Two things follow, and neither changes the model choice. The null was *our* bug, not
+ * the models': `analysisSchema` rejected a `string?` answered as `null` on six attempts out of six
+ * that reached an object, and it is closed here (a `null` optional now reads as absent). And the
+ * split holds on the evidence that set it: Qwen fenced **0 of 7** structure replies across both days,
+ * glm **4 of 10**. An accepted Qwen step costs 5–16× what a glm step costs and 2–6× what it takes, so
+ * the split is not free — **S-14** puts both models and the Q&A step through the same exchanges again
+ * before this row is treated as settled.
+ *
+ * ### Why the budgets are 8,192 for the page and 16,384 for the text steps
+ *
+ * The same measured failure ADR-23 records for pages applies to text: a reasoning model that spends
+ * its whole budget before answering returns **`content: null`** (§1, P-13), so a budget has to cover
+ * the thinking *and* the answer — it is a correctness number, not a cost knob.
+ *
+ * The page budget is ADR-23's **8,192** and is unchanged: the one measured page completion was 1,492
+ * tokens (1,008 of them reasoning) — 18% of it.
+ *
+ * The text steps needed measuring before a number could be written here, and the first number this
+ * file proposed was wrong. It was 8,192, reasoned from "the largest structure completion in §4 was
+ * 4,480". Re-running the same stage with the budget sent (**§4, 2026-11-04, the ADR-24 run**) had
+ * `Qwen/Qwen3.8-27B` answer a *one-page* transcript with **8,047 completion tokens, 5,469 of them
+ * reasoning — 98.2% of 8,192** — finishing on `stop`, one thought short of the cap. A budget that a
+ * sample reaches by accident is a trap: at 8,192 the next such answer arrives as `output_truncated`
+ * and the person is shown the transcript-only screen for a document the model had read. **16,384** is
+ * 2× the largest text-step answer observed on either planned model (Qwen 8,047; glm 7,571), inside
+ * both ceilings (Qwen 65,536 output; glm 1,048,576), and its cost is stated here so nobody is
+ * surprised by a bill: output bills at 1,350 nano-USD per token on Qwen against 40 for input, so a
+ * text step that *filled* 16,384 costs **$0.0221184**. The measured text steps in §4 cost $0.000669 –
+ * $0.010902 and none was truncated.
+ *
+ * ### What is *not* decided here
+ *
+ * **`qa` is inferred, not measured.** A question is the same class of request as step 2 — strict JSON
+ * over the transcript, no image — and Qwen is the only model that has answered one of those, but §4
+ * has no Q&A exchange in it. Item **S-14** sends it, and this row changes if the answer says otherwise.
+ * It is *not* a fallback: glm stays the page model either way, and `z-ai/glm-5.3-flash` remains
+ * `STEP_PLANS.transcribe`'s fallback (S-02) — nothing in this table re-decides S-13(b).
+ * And there is **no automatic cross-model fallback**: `readCompletion` spends exactly one repair retry
+ * on the *same* model (ADR-23, §13), because the alternative would re-ask a document on the model that
+ * §4 measured as unable to read its shape — paying twice to reach the same transcript-only screen.
+ */
+export interface StepPlan {
+  readonly model: string;
+  readonly maxTokens: number;
+}
+
+export const STEP_PLANS = {
+  transcribe: { model: 'z-ai/glm-5.3-flash', maxTokens: 8_192 },
+  analyse: { model: 'Qwen/Qwen3.8-27B', maxTokens: 16_384 },
+  qa: { model: 'Qwen/Qwen3.8-27B', maxTokens: 16_384 },
+} as const satisfies Record<CallPurpose, StepPlan>;
+
+/**
+ * Every model id a deployment must allowlist for a run to be *completable*: a step whose model is not
+ * in `ALLOWED_MODELS` refuses inside `isAllowed` (rule 3), so the paste-text flow would work and the
+ * photo flow would not, and nothing would say which. `tests/unit/model-allowlist.test.ts` holds these
+ * ids against the live catalog rows, so a plan can never name a model rule 3 would refuse.
+ */
+export function planModelIds(): string[] {
+  return [...new Set(Object.values(STEP_PLANS).map((plan) => plan.model))];
 }
 
 /**

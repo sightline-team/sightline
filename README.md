@@ -123,11 +123,14 @@ required there and are stated now so they cannot be quietly dropped later:
 
 ## Cost per document
 
-Measured per exchange on 2026-11-03 (`docs/SPIKE_RESULTS.md` §4): **$0.0000204** for one probe completion on
-  `z-ai/glm-5.3-flash`, **$0.0000422** on the fallback, and fetching an attestation report or a signature is free
-  and non-billable. **Per document is still unknown** — that number needs the golden set run at real page counts
-  (S-03 → S-09), and what dominates it is reasoning tokens rather than the answer. No per-page estimate is
-  published here until it has been measured.
+Measured per exchange (`docs/SPIKE_RESULTS.md` §4, 2026-11-04): **$0.00097 and 25.8 s for one page** of
+transcription, and one structure step over a five-page transcript **$0.0012–$0.0064** depending on which
+model the plan (`STEP_PLANS`, ADR-24) puts on it — so **a five-page photograph is ≈$0.006–$0.011 and
+147–236 s of model time**, and a pasted document is the structure step alone. Fetching an attestation
+report or a signature is free and non-billable. What dominates all of it is **reasoning tokens**, not the
+answer: the measured page spent 1,008 of its 1,492 completion tokens thinking. These are synthetic-document
+figures at one length each; the spread across real documents is **S-03**, which is an accuracy run and not
+a cost run, and no per-page figure is published here that has not been sent to the service.
 
 ## Accessibility
 

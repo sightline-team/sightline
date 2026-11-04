@@ -9,6 +9,7 @@ import {
 } from '@/lib/near-ai/verification';
 import { NearError, type NearClient, type NearResponse } from '@/lib/near-ai/client';
 import { REPAIR_NOTE } from '@/lib/near-ai/completion';
+import { STEP_PLANS } from '@/lib/near-ai/models';
 import { appError } from '@/lib/errors';
 import { QA_SYSTEM_PROMPT } from '@/features/qa/prompts';
 import { claimCopy } from '@/features/trust/claims';
@@ -248,6 +249,15 @@ describe('the request is the transcript and the question, and the document stays
     expect(system!.content).toBe(QA_SYSTEM_PROMPT);
     expect(user!.content).toBe(`Transcript:\n"""\n${TRANSCRIPT}\n"""\n\nQuestion: ${QUESTION}`);
     expect((h.posts[0]!.body as { model: string }).model).toBe(MODEL);
+  });
+
+  it('sends a reply budget, because the text path caps nothing without one (ADR-24)', async () => {
+    const h = harness();
+    await answered(h);
+    const body = h.posts[0]!.body as Record<string, unknown>;
+    // The same three keys as a page and a structure call: no `stream` (ADR-22), no sampling fields.
+    expect(Object.keys(body).sort()).toEqual(['max_tokens', 'messages', 'model']);
+    expect(body.max_tokens).toBe(STEP_PLANS.qa.maxTokens);
   });
 
   it('keeps an instruction written in the document inside the fenced user message', async () => {

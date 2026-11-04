@@ -57,9 +57,15 @@ import type { AppError, Mode, TrustPurpose, TrustRecord } from '@/types';
  * nothing had been checked.
  */
 
-/** The instruction the single repair retry adds. Byte-stable, and the same words for both calls. */
+/**
+ * The instruction the single repair retry adds. Byte-stable, and the same words for both calls.
+ *
+ * It names the **code fence** as well as the prose, because `docs/SPIKE_RESULTS.md` §4 found a model
+ * answering twice with valid JSON wrapped in ``` — which has no sentence before it or after it, so the
+ * old wording did not describe the failure being repaired. A plain `JSON.parse` rejects it either way.
+ */
 export const REPAIR_NOTE =
-  'Your previous reply could not be read as the JSON object this request asked for. Reply again with only that JSON object, with no sentence before it or after it.';
+  'Your previous reply could not be read as the JSON object this request asked for. Reply again with only that JSON object — no sentence before it or after it, and not inside a code fence.';
 
 /**
  * What a read ended as. The three not-ok kinds carry the `AppError` their own code describes,
@@ -106,11 +112,11 @@ export interface ReadCompletionDeps<T> {
    */
   request: { system: string; user: string; image?: () => Promise<string> };
   /**
-   * The reply budget, in tokens. Left unset for the two text calls, which have always taken the
-   * service's default. Set for a page, because of a measured fact (**P-13**, `docs/SPIKE_RESULTS.md`
-   * §1): a reasoning model that spends its whole budget before answering returns `content: null` —
-   * the 256-token probe spent all 256 on reasoning twice over. A budget is therefore not a cost
-   * knob but a correctness one, and ADR-23 records the number and how it was arrived at.
+   * The reply budget, in tokens. ADR-23 records why a *page* has one; ADR-24 put the same number on
+   * the two text calls, for the same measured reason — a reasoning model that spends its whole budget
+   * before answering returns `content: null` (§1, P-13), and a request with **no** budget caps nothing,
+   * so §4's largest text completion (4,480 tokens) was unpriced rather than bounded. Each call site
+   * reads its own row of `STEP_PLANS`; the number is never typed at a call.
    */
   maxTokens?: number;
   transport: NearClient;

@@ -9,6 +9,7 @@ import {
 } from '@/lib/near-ai/verification';
 import { NearError, type NearClient, type NearResponse } from '@/lib/near-ai/client';
 import { REPAIR_NOTE } from '@/lib/near-ai/completion';
+import { STEP_PLANS } from '@/lib/near-ai/models';
 import { NotBuilt } from '@/lib/not_built';
 import { appError } from '@/lib/errors';
 import { STRUCTURE_SYSTEM_PROMPT } from '@/features/analysis/prompts';
@@ -365,6 +366,31 @@ describe('the transcript is data, never instructions (AGENTS.md §11)', () => {
   });
 });
 
+describe('the reply budget the structure step sends (ADR-24)', () => {
+  it('sends exactly the plan body: model, messages, max_tokens — and nothing else', async () => {
+    const h = harness();
+
+    await expectComplete(h);
+
+    const body = h.posts[0]?.body as Record<string, unknown>;
+    // `stream` is absent by ADR-22 and no sampling field appears: a field nobody can point a
+    // SPIKE_RESULTS line at is a field nobody can explain when it misbehaves.
+    expect(Object.keys(body).sort()).toEqual(['max_tokens', 'messages', 'model']);
+    expect(body.max_tokens).toBe(STEP_PLANS.analyse.maxTokens);
+  });
+
+  it('carries the same budget into the repair retry, because it is the same request', async () => {
+    const h = harness({ contents: ['not json at all', ANALYSIS_JSON] });
+
+    await expectComplete(h);
+
+    expect(h.posts).toHaveLength(2);
+    for (const post of h.posts) {
+      expect((post.body as Record<string, unknown>).max_tokens).toBe(STEP_PLANS.analyse.maxTokens);
+    }
+  });
+});
+
 describe('Mode F: no enclave, no claims, still a working demo', () => {
   it('never calls the attestation gate or the signature verifier', async () => {
     const h = harness({ mode: 'fixtures' });
@@ -521,6 +547,25 @@ describe('the repair retry (P-08, ARCH §13 “invalid JSON → one repair retry
     expect(askedFor(/"docType": ([^,\n]*)/)).toEqual([...analysisSchema.shape.docType.options]);
     expect(askedFor(/"facts": \[\{"kind": ([^,]*)/)).toEqual([...factKindSchema.options]);
     expect(askedFor(/"warnings": \[\{"kind": ([^,]*)/)).toEqual([...analysisSchema.shape.warnings.unwrap().element.shape.kind.options]);
+  });
+
+  it('reads the reply shape the live service actually sends — a deadline-less action written as null', async () => {
+    // Measured, same as the case above. Every one of the six 2026-11-04 `--stage=document` replies
+    // that reached a JSON object answered an action with no deadline as `"deadline": null`, and
+    // `analysisSchema` rejected the entire analysis for it. In the app that is a repair retry and
+    // then the transcript-only screen, so this test is the difference between a read document and a
+    // lost one — and it runs the whole pipeline, not just the schema.
+    const withNullDeadline = JSON.stringify({
+      ...(JSON.parse(ANALYSIS_JSON) as Record<string, unknown>),
+      actions: [{ text: 'Pay the bill', deadline: null, sourceQuote: 'send it to the solicitor at once' }],
+    });
+
+    const h = harness({ content: withNullDeadline });
+
+    await expectComplete(h);
+
+    expect(h.analyses[0]?.actions[0]?.deadline).toBeUndefined();
+    expect(h.log).not.toContain('onDegraded');
   });
 
   it('spends the retry once: a second unreadable answer degrades rather than asking again', async () => {

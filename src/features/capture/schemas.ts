@@ -47,7 +47,9 @@ export const transcribeSchema = z.object({
     )
     .default([]),
   captureIssues: z.array(captureIssueSchema).default([]),
-  pageLabel: z.string().optional(),
+  // A page with no label in it is answered `"pageLabel": null` as often as it is left out — the
+  // `string?` habit `features/analysis/schemas.ts` documents from the live `--stage=document` run.
+  pageLabel: z.string().min(1).nullish().transform((s) => s ?? undefined),
 });
 
 export type TranscribeOutput = z.infer<typeof transcribeSchema>;

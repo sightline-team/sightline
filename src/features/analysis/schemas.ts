@@ -20,6 +20,19 @@ import { z } from 'zod';
  * calibrated and was cut (ADR-11).
  */
 
+/**
+ * An optional string the model may answer with `null` instead of leaving out, where `null` means
+ * the same thing as absent.
+ *
+ * Measured 2026-11-04, not feared: `npm run spike -- --stage=document` had **every** reply that
+ * reached a JSON object — on both planned models, on the first request and on the repair retry —
+ * write a deadline-less action as `"deadline": null`. Six attempts, six rejections, one reason
+ * each. The prompt says "Omit fields that are absent"; a schema that rejects the model's way of
+ * omitting one is the bug P-01 closed for `kind` wearing a different field, and it costs the
+ * person the reading of a document the app had summarised correctly.
+ */
+const optionalString = z.string().min(1).nullish().transform((s) => s ?? undefined);
+
 export const factKindSchema = z.enum([
   'date',
   'amount',
@@ -33,7 +46,7 @@ export const factKindSchema = z.enum([
 
 export const analysisSchema = z.object({
   docType: z.enum(['bill', 'bank', 'medical', 'prescription', 'legal', 'government', 'other']),
-  sender: z.string().optional(),
+  sender: optionalString,
   summary: z.string().min(1),
   facts: z
     .array(z.object({ kind: factKindSchema, label: z.string().min(1), value: z.string().min(1), sourceQuote: z.string().min(1) }))
@@ -42,7 +55,7 @@ export const analysisSchema = z.object({
     .array(
       z.object({
         text: z.string().min(1),
-        deadline: z.string().optional(),
+        deadline: optionalString,
         sourceQuote: z.string().min(1),
       }),
     )

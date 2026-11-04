@@ -5,6 +5,7 @@ import { quoteFound } from '@/features/analysis/grounding';
 import { qaSchema, type QaOutput } from '@/features/qa/schemas';
 import { QA_SYSTEM_PROMPT, qaUserPrompt } from '@/features/qa/prompts';
 import { readCompletion } from '@/lib/near-ai/completion';
+import { STEP_PLANS } from '@/lib/near-ai/models';
 import { RunHalt, type AttestationGate, type SignatureVerifier } from '@/lib/near-ai/verification';
 import type { NearClient } from '@/lib/near-ai/client';
 import type { QAEntry, Session, TrustRecord } from '@/types';
@@ -30,7 +31,10 @@ import type { QAEntry, Session, TrustRecord } from '@/types';
  */
 export interface AskDeps {
   session: Session;
-  /** The allowlisted, TEE-hosted model the run settled on. Never a user-typed string. */
+  /**
+   * The allowlisted, TEE-hosted model the run settled on. Never a user-typed string.
+   * `STEP_PLANS.qa.model` for a live run, once **S-14** has put this request to the service.
+   */
   model: string;
   transport: NearClient;
   gate: AttestationGate;
@@ -63,6 +67,9 @@ export async function askAboutDocument(deps: AskDeps): Promise<QAEntry> {
     signal: deps.signal,
     onTrustRecord: deps.onTrustRecord,
     buildRecord: buildTrustRecord,
+    // The same budget rule as the structure step (ADR-24). This call's shape has never been put to the
+    // live service — item **S-14** — so its number is inherited from the step it resembles, not measured.
+    maxTokens: STEP_PLANS.qa.maxTokens,
     request: {
       system: QA_SYSTEM_PROMPT,
       // Question *and* transcript (§9). The transcript is fenced, so an instruction written

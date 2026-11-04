@@ -15,7 +15,10 @@ import { z } from 'zod';
 export const qaSchema = z.object({
   answer: z.string().min(1),
   notInDocument: z.boolean(),
-  sourceQuote: z.string().optional(),
+  // `null` for "there is nothing to quote" is the same habit `features/analysis/schemas.ts` now
+  // documents — measured on this service's replies to a `string?` field, and this prompt writes
+  // `"sourceQuote": string?` too. Rejecting it would discard an answer the person was given.
+  sourceQuote: z.string().min(1).nullish().transform((s) => s ?? undefined),
 });
 
 export type QaOutput = z.infer<typeof qaSchema>;

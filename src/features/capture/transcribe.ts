@@ -2,6 +2,7 @@ import { buildTrustRecord } from '@/features/trust/record';
 import { TRANSCRIBE_SYSTEM_PROMPT, TRANSCRIBE_USER_PROMPT } from '@/features/capture/prompts';
 import { transcribeSchema, type TranscribeOutput } from '@/features/capture/schemas';
 import { readCompletion, type CompletionResult } from '@/lib/near-ai/completion';
+import { STEP_PLANS } from '@/lib/near-ai/models';
 import { toDataUrl } from '@/lib/image/prepare';
 import type { NearClient } from '@/lib/near-ai/client';
 import type { AttestationGate, SignatureVerifier } from '@/lib/near-ai/verification';
@@ -66,8 +67,11 @@ import type { Mode, TrustRecord } from '@/types';
  * so the measured page cost $0.00097 and a page that filled 8,192 would cost $0.0041. If a page
  * genuinely needs more than 8,192 tokens to transcribe, the honest answer is that it is not one page —
  * which is §13's "split by page, retry once", and C-11's to detect.
+ *
+ * The number itself is `ADR-24`'s per-step plan (`STEP_PLANS.transcribe`), so a page, a structure step
+ * and a question each carry their own budget from one place instead of three constants that can drift.
  */
-export const TRANSCRIBE_MAX_TOKENS = 8_192;
+export const TRANSCRIBE_MAX_TOKENS = STEP_PLANS.transcribe.maxTokens;
 
 export interface TranscribeDeps {
   /** The session's mode. Mode F has no authored page reply, and says so (F-09, S-11). */

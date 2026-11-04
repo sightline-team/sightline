@@ -3,6 +3,7 @@ import { appError } from '@/lib/errors';
 import { notBuilt } from '@/lib/not_built';
 import { buildTrustRecord } from '@/features/trust/record';
 import { readCompletion } from '@/lib/near-ai/completion';
+import { STEP_PLANS } from '@/lib/near-ai/models';
 import { RunHalt, type AttestationGate, type SignatureVerifier } from '@/lib/near-ai/verification';
 import { STRUCTURE_SYSTEM_PROMPT, structureUserPrompt } from '@/features/analysis/prompts';
 import { analysisSchema } from '@/features/analysis/schemas';
@@ -37,7 +38,14 @@ import type { Analysis, AppError, Session, Transcript, TrustRecord } from '@/typ
 
 export interface PipelineDeps {
   session: Session;
-  /** The allowlisted, TEE-hosted model chosen by F-04/C-02. Never a user-typed string. */
+  /**
+   * The allowlisted, TEE-hosted model chosen by F-04/C-02. Never a user-typed string.
+   *
+   * For a live run this is `STEP_PLANS.analyse.model`, not the model that transcribed the pages:
+   * **ADR-24** separates the two because `docs/SPIKE_RESULTS.md` §4 measured `z-ai/glm-5.3-flash`
+   * answering this request in a readable shape 0 of 6 times while `Qwen/Qwen3.8-27B` answered 4 of 4.
+   * Mode F names its own model and never reaches a service.
+   */
   model: string;
   transport: NearClient;
   gate: AttestationGate;
@@ -85,6 +93,9 @@ export async function runPipeline(deps: PipelineDeps): Promise<void> {
     signal: deps.signal,
     onTrustRecord: deps.onTrustRecord,
     buildRecord: buildTrustRecord,
+    // ADR-24: the text steps send a budget too. Without one the service default caps nothing, and a
+    // reasoning model that runs past it answers with `content: null` — P-13's misread-as-broken case.
+    maxTokens: STEP_PLANS.analyse.maxTokens,
     request: {
       system: STRUCTURE_SYSTEM_PROMPT,
       // Transcript only (§9): the structure step never sees an image, so it cannot invent a
