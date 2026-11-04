@@ -81,7 +81,7 @@ sightline/
 │  │     └─ relay/[...path]/route.ts  # Mode B: fixed host, exact-path allowlist, size cap
 │  │
 │  ├─ features/
-│  │  ├─ capture/                 # CaptureView, PageList (remove, retake last), useCapture
+│  │  ├─ capture/                 # CaptureView, PageList (remove, retake last), useCapture, prompts.ts + schemas.ts (C-03's own instruction and response contract, moved out of analysis the way P-06 moved qa's)
 │  │  ├─ paste/PasteView.tsx      # Text input, demo document buttons, error summary focus
 │  │  ├─ analysis/                # pipeline.ts, prompts.ts, schemas.ts, grounding.ts, ResultsView
 │  │  ├─ qa/                      # ask.ts (grounded Q&A), prompts.ts, schemas.ts, AskPanel.tsx

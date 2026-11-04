@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { analysisSchema, captureIssueSchema, factKindSchema, transcribeSchema } from '@/features/analysis/schemas';
+import { analysisSchema, factKindSchema } from '@/features/analysis/schemas';
+import { captureIssueSchema, transcribeSchema } from '@/features/capture/schemas';
 import { qaSchema } from '@/features/qa/schemas';
 
 /**

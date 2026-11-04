@@ -5,9 +5,11 @@ import { z } from 'zod';
  * (AGENTS.md §7): every field that reaches the UI or a `TrustRecord` passes through
  * here first.
  *
- * Two schemas have left this file because the feature that sends the prompt owns it: the
- * answer shape is in `features/qa/schemas.ts` (P-06) and the completion envelope, which is a
- * transport contract rather than model-authored content, is in `lib/near-ai/envelope.ts`.
+ * Two shapes have left this file, and a third went with them, because the feature that sends the
+ * prompt owns what it asks back: the answer shape is in `features/qa/schemas.ts` (P-06), the
+ * completion envelope — a transport contract rather than model-authored content — is in
+ * `lib/near-ai/envelope.ts`, and the transcription contract went to `features/capture/schemas.ts`
+ * with the C-03 prompt.
  *
  * Unknown keys are **stripped, not rejected** (zod's default). A model that adds a
  * helpful extra field must not cost the user the whole transcript — the hard failure
@@ -17,32 +19,6 @@ import { z } from 'zod';
  * No `confidence` field is accepted anywhere: self-reported model confidence is not
  * calibrated and was cut (ADR-11).
  */
-
-export const captureIssueSchema = z.enum([
-  'cut_off_top',
-  'cut_off_bottom',
-  'cut_off_left',
-  'cut_off_right',
-  'rotated',
-  'glare',
-  'too_small_text',
-  'blurry',
-  'not_a_document',
-  'handwriting_present',
-]);
-
-export const transcribeSchema = z.object({
-  text: z.string().min(1),
-  uncertain: z
-    .array(
-      z
-        .object({ start: z.int().min(0), end: z.int().min(0), reason: z.enum(['illegible', 'low_contrast', 'cropped']) })
-        .refine((u) => u.end > u.start, { message: 'uncertain span must run forward' }),
-    )
-    .default([]),
-  captureIssues: z.array(captureIssueSchema).default([]),
-  pageLabel: z.string().optional(),
-});
 
 export const factKindSchema = z.enum([
   'date',
@@ -81,5 +57,4 @@ export const analysisSchema = z.object({
     .default([]),
 });
 
-export type TranscribeOutput = z.infer<typeof transcribeSchema>;
 export type AnalysisOutput = z.infer<typeof analysisSchema>;
