@@ -81,7 +81,7 @@ sightline/
 │  │     └─ relay/[...path]/route.ts  # Mode B: fixed host, exact-path allowlist, size cap
 │  │
 │  ├─ features/
-│  │  ├─ capture/                 # CaptureView, PageList (remove, retake last), useCapture, prompts.ts + schemas.ts (C-03's own instruction and response contract, moved out of analysis the way P-06 moved qa's), transcribe.ts (C-03: one page, one `readCompletion` call, `max_tokens: 8192`), assemble.ts (C-11/**ADR-27**: joins pages, remaps `uncertain` spans onto their page's region, marks a page that yielded nothing)
+│  │  ├─ capture/                 # CaptureView, PageList (remove, retake last), useCapture, prompts.ts + schemas.ts (C-03's own instruction and response contract, moved out of analysis the way P-06 moved qa's), transcribe.ts (C-03: one page, one `readCompletion` call, `max_tokens: 8192`), assemble.ts (C-11/**ADR-27**: joins pages, remaps `uncertain` spans onto their page's region, marks a page that yielded nothing), page-labels.ts (C-05/**ADR-28**: reads the page numbers the model reported and warns where they disagree with each other or with how many photographs were given — never reorders, never guesses a missing label)
 │  │  ├─ paste/PasteView.tsx      # Text input, demo document buttons, error summary focus
 │  │  ├─ analysis/                # pipeline.ts, prompts.ts, schemas.ts, grounding.ts, ResultsView
 │  │  ├─ qa/                      # ask.ts (grounded Q&A), prompts.ts, schemas.ts, AskPanel.tsx
@@ -116,7 +116,7 @@ sightline/
 │  └─ types/index.ts
 │
 └─ tests/
-   ├─ unit/                       # config, server-env, session reducer, errors, nonce, grounding (incl. P-17's marker holes), schemas, assemble (C-11), near-client, pipeline, fixtures, qa, roadmap-check, forget (P-10), live-writes (P-12), safety-notices (P-07/P-11), speech (P-09), settings-writer (A-15), model-allowlist (F-04, payloads copied from live JSON); image prep still to write
+   ├─ unit/                       # config, server-env, session reducer, errors, nonce, grounding (incl. P-17's marker holes), schemas, assemble (C-11), page-labels (C-05), near-client, pipeline, fixtures, qa, roadmap-check, forget (P-10), live-writes (P-12), safety-notices (P-07/P-11), speech (P-09), settings-writer (A-15), model-allowlist (F-04, payloads copied from live JSON); image prep still to write
    ├─ verification/               # attestation.test.ts: stubs refuse + strong claim unreachable; 9 `it.todo` rows name what T-01/T-02/T-05 must still prove
    ├─ relay/                      # relay.test.ts: both API routes answer 501, name their item, forward nothing, leak no key. A-09 adds rejected path/oversize/rate limit
    ├─ stubs/server-only.ts        # no-op stand-in so unit tests can import server modules (see vitest.config.mts)

@@ -86,7 +86,13 @@ export interface Transcript {
   pageOffsets: number[];
   uncertain: UncertainSpan[];
   captureIssues: { page: number; issue: CaptureIssue }[];
-  /** e.g. "Page 2 of 3", used only to warn on gaps and duplicates — never to reorder silently. */
+  /**
+   * e.g. "Page 2 of 3", as printed on that page and copied by the model.
+   *
+   * Used only to warn on gaps and duplicates (**C-05**, `features/capture/page-labels.ts`) — never to
+   * reorder silently (PRD §4 gives no reorder UI, and **ADR-28** keeps that), and never as the number this
+   * app expected: `page` is the capture position, `label` is what the paper says.
+   */
   pageNumbersSeen?: { page: number; label: string }[];
   /**
    * The pages that yielded **no text** (item **C-11**, ADR-27), with the catalogue code for why.

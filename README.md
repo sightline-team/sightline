@@ -113,9 +113,10 @@ written as the honest version rather than the convenient one.
 ## Accuracy
 
 No accuracy number exists. The golden set is item C-09 with its cases designed in
-`public/sample-docs/README.md`. The photo path is three modules and no screen: **C-01** prepares a
-page, **C-03** transcribes one against the live service and **C-11** joins five into one transcript,
-but **C-02** — the screen that would call them — is not built, so no photographed document has ever
+`public/sample-docs/README.md`. The photo path is four modules and no screen: **C-01** prepares a
+page, **C-03** transcribes one against the live service, **C-11** joins five into one transcript and
+**C-05** warns when the page numbers printed on those pages disagree with each other or with how many
+photographs were given, but **C-02** — the screen that would call them — is not built, so no photographed document has ever
 been read inside the app. Two statements will be required there and are stated now so they cannot be
 quietly dropped later:
 
@@ -129,10 +130,13 @@ quietly dropped later:
 ## Cost per document
 
 Measured per exchange (`docs/SPIKE_RESULTS.md` §4, 2026-11-04): five pages sent as five requests cost
-**$0.004064 and 141.6 s** (18.9–31.6 s and $0.00061–$0.00091 each, all five replies accepted); one structure
+**$0.004064 and 141.6 s** on the first run and **$0.004664 and 116.7 s** on the second (ten pages billed,
+so **$0.00087 and 25.8 s a page** on average, spread $0.00061–$0.00127 each, all ten replies accepted); one structure
 step over the transcript they joined **$0.0044 and 118.6 s** (**Qwen**, answered first time), and a follow-up
 question **$0.00026–$0.00028 and 1.9–3.4 s** each on the model the plan (`STEP_PLANS`, **ADR-24** as amended
-by **ADR-26**) puts on that step. So **a five-page photograph is ≈$0.0085 and ≈260 s of model time** —
+by **ADR-26**) puts on that step. So **a five-page photograph is ≈$0.0085–$0.0091 and ≈235–260 s of model time**
+— a range across the two measured runs, not one number, and the structure-step half of the second figure is
+carried from the first (**$0.0044 / 118.6 s**) rather than measured twice — or
 **$0.0097 and ≈302 s** if the page model answered the structure step, because its fence costs a second billed
 ask — ten questions on it add **≈$0.0027**, and a pasted document is the structure step alone. Fetching
 an attestation report or a signature is free and non-billable. What dominates all of it is **reasoning

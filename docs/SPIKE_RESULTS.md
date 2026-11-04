@@ -716,6 +716,47 @@ Five pages, 211,296–212,798 bytes prepared at 1200×1600 each:
   `assembleDocument` has **no Mode F caller yet** — fixture mode has no photographed document to assemble
   until **C-02** builds the upload screen.
 
+### `--stage=pages`, second run — the page-label check on live labels (**C-05**, measured 2026-11-04 19:30 UTC)
+
+The same stage, re-run to put **C-05**'s label check against labels the service actually read. Five pages,
+five requests, all accepted, **5 of 5 signatures `provider_tee`**, no repair:
+
+| Page | HTTP | Time | Cost | Schema | Text | Reported |
+|---|---|---|---|---|---|---|
+| 1 | 200 | 16,386 ms | 806,300 nano = $0.00080630 | **accepted** | 1,165 chars | page label |
+| 2 | 200 | 18,042 ms | 830,800 nano = $0.00083080 | **accepted** | 1,167 chars | page label |
+| 3 | 200 | 18,726 ms | 837,800 nano = $0.00083780 | **accepted** | 1,167 chars | `rotated`, page label |
+| 4 | 200 | 39,852 ms | 1,265,800 nano = $0.00126580 | **accepted** | 1,221 chars | page label |
+| 5 | 200 | 23,679 ms | 922,800 nano = $0.00092280 | **accepted** | 1,223 chars | `rotated`, page label |
+
+- **Five photographs of a five-page bill, all five margins labelled: `0 finding(s)`, and that is the
+  result the check had to earn.** `5 of 5 reported label(s) read as a page number · compared against 5
+  photograph(s)`. The previous run's numbers were proved by the cut; these are proved by the check saying
+  nothing, which is the harder half — a gap-and-duplicate test that fires on a correctly photographed
+  document is worse than no test, because the person retakes pages that were fine.
+- **The hole case, live again:** page 1 re-asked at 256 tokens returned HTTP 200 with `finish_reason:
+  length` and **0 characters** for the third time (5,397 ms, $0.00035280), and assembled it is
+  `labels 4 · missing 1:output_truncated · usable true` with offsets `[0, 28, 1197, 2366, 3589]` and the
+  region cut still exact. **C-05**'s check on that transcript: `0 finding(s) · 4 of 4 … compared against
+  5 photograph(s)`. This is the case the item was written for — four labels against four answering pages
+  would read "Page 1 of 5 is missing" and tell the person to go looking for a page they photographed and
+  the service could not read. The count it compares against is `pageOffsets.length`, which ADR-27 keeps
+  honest by giving a failed page a region of its own.
+- **What is *not* measured here, stated because it is the half with the risk:** no live assembly produced a
+  non-zero finding, so every positive case — duplicate, internal gap, a number too big for the set, two
+  different counts — is held by the **23 unit tests** in `tests/unit/page-labels.test.ts` and by four
+  mutations of the module (dropping the gap-range guard fails 3 of them; making a duplicate go undetected fails
+  3; letting a bare four-digit number parse fails 1; letting a date through fails 1). A real mislabelled set of photographs is **S-03**'s run.
+- **The per-page figures now have ten samples, and they move the mean.** These five pages cost
+  **$0.00466350 in 116,685 ms**, so the two runs together average **$0.00087275 and 25,829 ms a page**
+  (spread 607,800 – 1,265,800 nano). This run's five photographs plus the structure step as the plan runs it
+  is **≈$0.00911 and ≈235 s** — using C-11's measured Qwen step ($0.00444221 / 118.6 s), which was priced over
+  a transcript 56 characters longer than this one, so the money half of that sum is a carried figure rather
+  than a second measurement. Against C-11's **$0.00850621 / ≈260 s** the honest form of the headline is a
+  **range across two measured runs, ≈$0.0085–$0.0091 and ≈235–260 s**, not one number.
+  `rotated` came off **2 of these 5 pages**, which makes it **4 of 11** measured pages: **C-04**'s nagging
+  problem is now the majority case, not a risk.
+
 
 ## 5. Response signatures — [Verified], and they are not what our docs assumed
 

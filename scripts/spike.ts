@@ -36,6 +36,7 @@ import { TRANSCRIBE_SYSTEM_PROMPT, TRANSCRIBE_USER_PROMPT } from '@/features/cap
 import { transcribeSchema, type TranscribeOutput } from '@/features/capture/schemas';
 import { TRANSCRIBE_MAX_TOKENS } from '@/features/capture/transcribe';
 import { assembleDocument, type PageOutcome } from '@/features/capture/assemble';
+import { checkPageLabels } from '@/features/capture/page-labels';
 import { unreadablePageMarker } from '@/lib/transcript/holes';
 import { STRUCTURE_SYSTEM_PROMPT, structureUserPrompt } from '@/features/analysis/prompts';
 import { analysisSchema } from '@/features/analysis/schemas';
@@ -931,6 +932,11 @@ function reportAssembly(label: string, pages: PageExchange[]): void {
     }),
   );
   console.log(`    every uncertain span lies inside the page it came from: ${transcript.uncertain.length === 0 ? 'no span to check' : spansInPage ? 'yes' : 'NO'}`);
+
+  // **C-05**'s check runs on the real assembly, but only its *counts* are printed: which page a document
+  // numbers itself is document content (AGENTS.md §4 rule 7), so the findings' numbers stay unsaid here.
+  const labels = checkPageLabels(transcript);
+  console.log(`    page-label check (C-05): ${labels.findings.length} finding(s) [${labels.findings.map((f) => f.kind).join(' ') || 'none'}] · ${labels.parsed} of ${labels.parsed + labels.unparsed} reported label(s) read as a page number · compared against ${labels.pageCount} photograph(s)`);
   if (!regionsOk || (transcript.uncertain.length > 0 && !spansInPage)) process.exitCode = 1;
 }
 
