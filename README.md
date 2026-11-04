@@ -33,7 +33,12 @@ model, and it always shows the demo-data banner — that sentence is defined in
 it disagree with the app (requirement R9, `docs/PRD.md` §7).
 
 **What that runs today:** paste text — or choose one of four synthetic demo letters — and the whole
-flow completes in the browser. A paste over **20,000 characters** is refused on the spot, in the words
+flow completes in the browser. **Photographing** is on the same screen (**C-02**): add up to five
+pictures, see each one as the app will send it, remove or retake the last, and press *Read these
+photographs* — which runs the page loop and, in this mode, stops at demo mode's own door, because
+fixture mode has no recorded reply for a photograph (**S-11**). Nothing here claims a photographed
+document has been read end to end; the screen is proved as far as the door, and the sentence you hear is
+the catalogue's. A paste over **20,000 characters** is refused on the spot, in the words
 of `paste_too_long`, before Sightline asks anything of the service: the sentence offers the smaller
 piece — one page, or the section you need answered — rather than naming the number, and the field's own
 error is where your screen reader lands (`docs/ARCHITECTURE.md` §13, **ADR-29**). The flow itself: the
@@ -92,7 +97,9 @@ the one a run is happening on. One press: empties the session (the words you gav
 every answer, the receipt), clears the text you had typed but not yet sent, stops any request still
 going — and what that request answers afterwards is thrown away, so a reading cannot reappear on a
 screen you just cleared (**P-12**, proved in a browser by pressing Forget while a completion was
-outstanding) — revokes any image preview this tab created, removes this app's own `sessionStorage`
+outstanding) — revokes any image preview this tab created (since **C-02** there is one to revoke: the page
+previews on the photograph screen, and a browser test loads a revoked URL after Forget and after removing a
+single page), removes this app's own `sessionStorage`
 keys, and stops Sightline's own read-aloud. It stays where you are; the announcement says what was
 cleared and the screen you were on changes underneath you.
 
@@ -117,11 +124,15 @@ written as the honest version rather than the convenient one.
 ## Accuracy
 
 No accuracy number exists. The golden set is item C-09 with its cases designed in
-`public/sample-docs/README.md`. The photo path is four modules and no screen: **C-01** prepares a
-page, **C-03** transcribes one against the live service, **C-11** joins five into one transcript and
+`public/sample-docs/README.md`. The photo path is now a screen as well as modules — **C-01** prepares a
+page, **C-03** transcribes one against the live service, **C-11** joins five into one transcript,
 **C-05** warns when the page numbers printed on those pages disagree with each other or with how many
-photographs were given, but **C-02** — the screen that would call them — is not built, so no photographed document has ever
-been read inside the app. Two statements will be required there and are stated now so they cannot be
+photographs were given, and **C-02** is the screen and the run that call them — but **no photographed
+document has been read end to end inside this app, so there is no photo accuracy number either.** What a
+browser does reach is the door each mode answers at: demo mode has no recorded reply for a photograph
+(**S-11**) and live modes refuse before a request exists (**B-12**). The transcription numbers that do
+exist are measured against the *spike's* synthetic page rasters, not against this app's screen
+(`docs/SPIKE_RESULTS.md` §4). Two statements will be required there and are stated now so they cannot be
 quietly dropped later:
 
 - Results include **bad photos** (glare, cut edges, small text), with the small-sample caveat.

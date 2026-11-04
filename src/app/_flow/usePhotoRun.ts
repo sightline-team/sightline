@@ -49,6 +49,12 @@ export function usePhotoRun(): () => Promise<RunOutcome> {
 
   return useCallback(
     async (): Promise<RunOutcome> => {
+      // Which input the person is using is recorded **before** anything can refuse, because the failure
+      // summary on this screen is shown by the section that owns the run (`CaptureView` when `input` is
+      // `'images'`, `PasteView` when it is `'text'`). A refusal that left the field at its previous value
+      // would put a photograph's error in the paste section and steal its focus target.
+      dispatch({ type: 'input_selected', input: 'images' });
+
       if (transportFor(session.mode) === 'network') {
         dispatch({ type: 'failed', code: LIVE_MODE_UNAVAILABLE.code });
         announce(LIVE_MODE_UNAVAILABLE.userMessage);
@@ -66,7 +72,6 @@ export function usePhotoRun(): () => Promise<RunOutcome> {
       // P-12: every write this run makes goes through the signal, not only its last one.
       const dispatchLive = liveWrites(controller.signal, dispatch);
 
-      dispatch({ type: 'input_selected', input: 'images' });
       dispatch({ type: 'analysis_started' });
 
       // Set when the reading could not be made, so the run still shows the transcript it did read

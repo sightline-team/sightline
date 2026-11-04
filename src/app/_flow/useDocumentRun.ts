@@ -42,6 +42,12 @@ export function useDocumentRun(config: PublicConfig) {
 
   return useCallback(
     async (text: string): Promise<RunOutcome> => {
+      // Which input the person is using is recorded **before** anything can refuse, for the same reason
+      // `usePhotoRun` does it: the screen's failure summary belongs to the section that owns the run, and
+      // a refusal that left `input` on `'images'` would put the paste error in the photograph section and
+      // hand its focus target to that component (A-06).
+      dispatch({ type: 'input_selected', input: 'text' });
+
       // **C-12**: the input guard comes first, in every mode, before a controller exists and before a
       // request body is assembled. A document this long is refused *for its length*, and the sentence
       // offers the smaller piece — the alternative is a request the service refuses for the same reason
@@ -64,7 +70,6 @@ export function useDocumentRun(config: PublicConfig) {
       // P-12: every write this run makes, not only its last one, goes through the signal.
       const dispatchLive = liveWrites(controller.signal, dispatch);
 
-      dispatch({ type: 'input_selected', input: 'text' });
       dispatch({ type: 'analysis_started' });
       // Mode F has no verification step to describe, so "checking the enclave" would be the lie.
       announce('Reading the demo text.');

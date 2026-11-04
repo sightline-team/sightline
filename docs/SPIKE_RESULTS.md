@@ -714,7 +714,13 @@ Five pages, 211,296–212,798 bytes prepared at 1200×1600 each:
   structure step in this run, so §4's structure table still prices a typed-in bill rather than a photographed
   one (that is C-08's end-to-end half). Accuracy against the page is untouched (**S-03**). And
   `assembleDocument` has **no Mode F caller yet** — fixture mode has no photographed document to assemble
-  until **C-02** builds the upload screen.
+  until **C-02** builds the upload screen. *(Amended the same day, 2026-11-04 21:50 UTC: **C-02**'s screen
+  is built and mounted on `/` (`tests/e2e/capture.spec.ts`, 19 tests, Chromium, no key), so the app now
+  reaches `readPages` from a browser and `assembleDocument` has a caller in code. This sentence's own point
+  stands: fixture mode still has nothing to assemble, because `transcribePage` refuses an image body
+  (`no_fixture_for_input`) until **S-11** records page replies keyed by the prepared JPEG's hash — which is
+  what the last of those 19 tests asserts, and no test in this repo claims a photographed document was read
+  end to end.)*
 
 ### `--stage=pages`, second run — the page-label check on live labels (**C-05**, measured 2026-11-04 19:30 UTC)
 

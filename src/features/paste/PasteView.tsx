@@ -83,8 +83,7 @@ function PasteForm({ config }: { config: PublicConfig }) {
         <p className="muted" id="paste-hint">
           Words copied from a screen or a PDF work best. Sightline reads up to{' '}
           {MAX_PASTE_CHARS.toLocaleString('en-GB')} characters at a time, so paste the part you need
-          answered. Reading a photo is not built in this version, so there is no camera button to look
-          for.
+          answered. To read a page from a photograph instead, use <em>Photograph a document</em> below.
         </p>
         <textarea
           id="document-text"
@@ -125,7 +124,11 @@ function PasteForm({ config }: { config: PublicConfig }) {
         </section>
       ) : null}
 
-      {session.error !== undefined ? <StatusMessage error={session.error} id="paste-error" ref={errorRef} /> : null}
+      {/* One failure, one summary, in the section that ran (session.input is set by the run before any
+          guard can refuse). The photograph section shows the same session.error only when photos ran. */}
+      {session.error !== undefined && session.input === 'text' ? (
+        <StatusMessage error={session.error} id="paste-error" ref={errorRef} />
+      ) : null}
     </>
   );
 }

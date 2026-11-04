@@ -183,6 +183,62 @@ section {
   margin: var(--space-1) 0;
 }
 
+/* The photographs a person has added (item **C-02**).
+ *
+ * The markers stay visible on purpose: `list-style: none` on a `display: grid` list is the exact
+ * combination that makes Safari VoiceOver stop announcing it as a list, and this platform has never been
+ * tested there (`tests/a11y/manual-checklist.md`). Keeping the numbers also gives a sighted helper the
+ * same "third of five" the screen reader hears.
+ */
+.page-list {
+  display: grid;
+  gap: var(--space-1);
+  padding-left: var(--space-3);
+  margin: var(--space-2) 0;
+  list-style-position: inside;
+}
+
+.page-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2);
+}
+
+.page-line {
+  margin: 0;
+  font-weight: 600;
+}
+
+/* The preview is the prepared JPEG — the bytes that will be sent — so a helper can confirm the page is
+ * legible. Small on purpose: it is a confirmation, not a document viewer. */
+.page-preview {
+  max-block-size: 6rem;
+  max-inline-size: 6rem;
+  border: 1px solid var(--border);
+}
+
+.page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.page-actions button {
+  min-block-size: var(--target);
+}
+
+/* The native file picker's own button is part of the control, so it is a 44 px target too (AGENTS.md §8)
+ * rather than the small default the browser draws. */
+input[type='file']::file-selector-button {
+  min-block-size: var(--target);
+  margin-inline-end: var(--space-2);
+}
+
 /* The read-aloud control and its "nothing is read until you press this" line (P-09). */
 .speak-control {
   display: flex;

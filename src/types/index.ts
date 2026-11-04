@@ -55,6 +55,15 @@ export interface Page {
   blob: Blob;
   width: number;
   height: number;
+  /**
+   * The object URL of `blob`, so the screen can show the person what will be read (**C-02**).
+   *
+   * It is created by `features/capture/useCapture.ts` through `SessionProvider.trackObjectUrl`, which
+   * is **P-10**'s obligation: a URL holding a page of someone's document that Forget does not revoke is
+   * a copy the app cannot point at, let alone clear. Revoked again on removal — the tracked set holding
+   * a stale string is harmless, because revoking an already-revoked URL does nothing.
+   */
+  previewUrl?: string;
 }
 
 /**
