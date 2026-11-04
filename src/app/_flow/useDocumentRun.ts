@@ -7,6 +7,7 @@ import { runPipeline } from '@/features/analysis/pipeline';
 import { RunHalt } from '@/lib/near-ai/verification';
 import { LIVE_MODE_UNAVAILABLE, refusedGate, refusedSignatureVerifier } from '@/app/_flow/refused_steps';
 import { liveWrites } from '@/app/_flow/live_writes';
+import { pasteLengthProblem } from '@/lib/session/reducer';
 import { useSessionStore } from '@/lib/session/store';
 import { useAnnouncer } from '@/lib/a11y/announcer';
 import type { PublicConfig } from '@/lib/config';
@@ -41,6 +42,17 @@ export function useDocumentRun(config: PublicConfig) {
 
   return useCallback(
     async (text: string): Promise<RunOutcome> => {
+      // **C-12**: the input guard comes first, in every mode, before a controller exists and before a
+      // request body is assembled. A document this long is refused *for its length*, and the sentence
+      // offers the smaller piece — the alternative is a request the service refuses for the same reason
+      // after billing its input (ADR-29).
+      const tooLong = pasteLengthProblem(text);
+      if (tooLong !== undefined) {
+        dispatch({ type: 'failed', code: tooLong.code });
+        announce(tooLong.userMessage);
+        return { ok: false };
+      }
+
       if (transportFor(config.mode) === 'network') {
         dispatch({ type: 'failed', code: LIVE_MODE_UNAVAILABLE.code });
         announce(LIVE_MODE_UNAVAILABLE.userMessage);

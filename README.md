@@ -33,13 +33,17 @@ model, and it always shows the demo-data banner — that sentence is defined in
 it disagree with the app (requirement R9, `docs/PRD.md` §7).
 
 **What that runs today:** paste text — or choose one of four synthetic demo letters — and the whole
-flow completes in the browser: the pipeline answers, the results view shows Summary → Key facts →
+flow completes in the browser. A paste over **20,000 characters** is refused on the spot, in the words
+of `paste_too_long`, before Sightline asks anything of the service: the sentence offers the smaller
+piece — one page, or the section you need answered — rather than naming the number, and the field's own
+error is where your screen reader lands (`docs/ARCHITECTURE.md` §13, **ADR-29**). The flow itself: the
+pipeline answers, the results view shows Summary → Key facts →
 Actions → Warnings → Full text → Ask → Verification, questions about the letter are answered from its
 text or refused by name, and the receipt lists the checks that ran and the ones that did not. The
 fourth letter exists to show the other ending: its reply is not the answer the app asked for, so the
 run makes its one repair retry and then shows the text you gave with no summary on it, which is the
 path most likely to meet a real user and the one `docs/ARCHITECTURE.md` §13 promises. Proved by
-`tests/e2e/flow.spec.ts` (84 Playwright tests) against exactly these two commands. The corpus is
+`tests/e2e/flow.spec.ts` (72 of the suite's 94 Playwright tests) against exactly these two commands. The corpus is
 **authored synthetic**, never recorded — no fixture has ever been on the wire (`fixtures/README.md`,
 item S-11) — and it is matched by content, so pasting your own document gets a refusal explaining that
 demo answers belong to demo documents, never an authored summary presented as a reading of your letter.

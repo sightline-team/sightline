@@ -49,6 +49,17 @@ const ERRORS: Record<ErrorCode, ErrorSpec> = {
     userMessage: 'Sightline can work with up to five pages at a time. Remove one, then add this again.',
     retryable: false,
   },
+  /**
+   * The paste path's own cap (item **C-12**, **ADR-29**), raised from `lib/session/reducer.ts` before
+   * a request is built. The sentence names no number, because a character count is not something a
+   * person can measure on a screen they cannot see, and it offers the action that works — paste less —
+   * rather than the reason the code stopped.
+   */
+  paste_too_long: {
+    userMessage:
+      'That text is longer than Sightline reads at one time. Copy part of the document — one page, or the section you need answered — and read that on its own.',
+    retryable: false,
+  },
   image_too_large: {
     userMessage: 'That picture was too large to work with. Try retaking it, or paste the text instead.',
     retryable: false,

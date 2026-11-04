@@ -1,6 +1,7 @@
 import { appError } from '@/lib/errors';
 import type {
   Analysis,
+  AppError,
   ErrorCode,
   ID,
   InputKind,
@@ -14,6 +15,35 @@ import type {
 
 /** Five pages is a product limit (`docs/PRD.md` §5) and a serverless size limit (PRD §12 Q1 row 5). */
 export const MAX_PAGES = 5;
+
+/**
+ * The paste path's cap (item **C-12**, **ADR-29**): the sibling `MAX_PAGES` never had. `MAX_PAGES`
+ * bounds **photographs**, and until this number existed the text a person pasted bounded nothing —
+ * ADR-24 put a ceiling on the *reply* (`max_tokens: 16384`) and left the request as the unbounded half.
+ *
+ * **20,000 characters** comes from the measured reading, not from the model's window:
+ *  - The longest document this app has ever put through the structure step is `--stage=pages`'s joined
+ *    five-page bill transcript at **6,007 characters**, which answered in **118.6 s** for **$0.0044**
+ *    (`docs/SPIKE_RESULTS.md` §4). The cap admits a paste roughly three times longer than anything that
+ *    has been measured, and stops before the wait leaves the minutes the person was told to expect
+ *    (§12's progress cadence is sized against a 26 s page and a 119 s reading, not against an hour).
+ *  - The window is not the binding reason: `Qwen/Qwen3.8-27B` reports `context_length` **262,144**
+ *    tokens (§4), and English runs roughly four characters to a token, so this cap is near **5,000**
+ *    tokens — about 2% of it. The window would accept a paste far larger than a person can wait for.
+ *  - Characters rather than tokens because a token count needs a tokenizer dependency (AGENTS.md §5
+ *    forbids adding one without a reason, and the wait-time argument above does not need one), and
+ *    because a coarse unit is the honest one for a guard whose job is bounded waiting, not exact billing.
+ */
+export const MAX_PASTE_CHARS = 20_000;
+
+/**
+ * The refusal a too-long paste gets **before** a body exists, so nothing is billed and no transport is
+ * reached (AGENTS.md §4 rule 6 is about not sending document data unverified; this is its input-side
+ * twin — not sending a request the service will refuse for its length). `undefined` means it fits.
+ */
+export function pasteLengthProblem(text: string): AppError | undefined {
+  return text.length > MAX_PASTE_CHARS ? appError('paste_too_long') : undefined;
+}
 
 export type SessionAction =
   | { type: 'input_selected'; input: InputKind }

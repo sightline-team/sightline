@@ -203,6 +203,7 @@ export type ErrorCode =
   | 'model_unavailable'
   | 'capture_issue'
   | 'too_many_pages'
+  | 'paste_too_long'
   | 'image_too_large'
   | 'not_a_document'
   | 'illegible_content'

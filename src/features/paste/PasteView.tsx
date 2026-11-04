@@ -7,6 +7,7 @@ import { demoDocuments } from '@/lib/fixtures/replay';
 import { useAnnouncer } from '@/lib/a11y/announcer';
 import { useDocumentRun } from '@/app/_flow/useDocumentRun';
 import { useSessionStore } from '@/lib/session/store';
+import { MAX_PASTE_CHARS } from '@/lib/session/reducer';
 import type { PublicConfig } from '@/lib/config';
 
 /**
@@ -80,8 +81,10 @@ function PasteForm({ config }: { config: PublicConfig }) {
       <form onSubmit={onSubmit}>
         <label htmlFor="document-text">Paste the text of your document</label>
         <p className="muted" id="paste-hint">
-          Words copied from a screen or a PDF work best. Reading a photo is not built in this
-          version, so there is no camera button to look for.
+          Words copied from a screen or a PDF work best. Sightline reads up to{' '}
+          {MAX_PASTE_CHARS.toLocaleString('en-GB')} characters at a time, so paste the part you need
+          answered. Reading a photo is not built in this version, so there is no camera button to look
+          for.
         </p>
         <textarea
           id="document-text"

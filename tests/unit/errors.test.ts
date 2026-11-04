@@ -21,6 +21,7 @@ const ALL_CODES: Record<ErrorCode, true> = {
   model_unavailable: true,
   capture_issue: true,
   too_many_pages: true,
+  paste_too_long: true,
   image_too_large: true,
   not_a_document: true,
   illegible_content: true,
@@ -73,8 +74,8 @@ const BANNED = [
 ];
 
 describe('every error code has a plain-language message', () => {
-  it('covers all 21 codes with a non-empty message and a decided retryable flag', () => {
-    expect(codes).toHaveLength(21);
+  it('covers all 22 codes with a non-empty message and a decided retryable flag', () => {
+    expect(codes).toHaveLength(22);
     for (const code of codes) {
       const err = appError(code);
       expect(err.code, code).toBe(code);

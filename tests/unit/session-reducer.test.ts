@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { initialSession, MAX_PAGES, sessionReducer, type SessionAction } from '@/lib/session/reducer';
+import { initialSession, MAX_PAGES, MAX_PASTE_CHARS, pasteLengthProblem, sessionReducer, type SessionAction } from '@/lib/session/reducer';
 import type { Analysis, Page, QAEntry, Transcript, TrustRecord } from '@/types';
 
 function page(id: string): Page {
@@ -272,5 +272,44 @@ describe('session reducer (F-07)', () => {
     const snapshot = JSON.stringify(before);
     sessionReducer(before, { type: 'page_added', page: page('p1') });
     expect(JSON.stringify(before)).toBe(snapshot);
+  });
+});
+
+/**
+ * C-12 — the paste path's cap, which is the one input bound `MAX_PAGES` never covered.
+ *
+ * The boundary is the item: a guard that fires a character early has refused a document the service
+ * would have read, and one that fires late has billed the person for a refusal.
+ */
+describe('the paste cap (C-12, ADR-29)', () => {
+  const text = (length: number) => 'a'.repeat(length);
+
+  it('names one limit, and it is the number the paste screen quotes', () => {
+    expect(MAX_PASTE_CHARS).toBe(20_000);
+    // The screen renders this string; the e2e test asserts it is on the page, so the two cannot drift.
+    expect(MAX_PASTE_CHARS.toLocaleString('en-GB')).toBe('20,000');
+  });
+
+  it('takes a document at the boundary and refuses one character over it', () => {
+    expect(pasteLengthProblem(text(MAX_PASTE_CHARS))).toBeUndefined();
+    expect(pasteLengthProblem(text(MAX_PASTE_CHARS + 1))?.code).toBe('paste_too_long');
+  });
+
+  it('counts the characters that would be sent, so trailing whitespace is not free', () => {
+    // `useDocumentRun` puts the raw text into the transcript — the trim is only the emptiness test —
+    // so measuring the untrimmed string is the only version that bounds what the service is billed for.
+    expect(pasteLengthProblem(`${text(MAX_PASTE_CHARS)}   `)?.code).toBe('paste_too_long');
+  });
+
+  it('says what to do instead, and says it without a number, a code or jargon', () => {
+    const problem = pasteLengthProblem(text(MAX_PASTE_CHARS + 1));
+    expect(problem?.userMessage).toContain('Copy part of the document');
+    expect(problem?.userMessage).not.toMatch(/\d|paste_too_long|token|character/i);
+    expect(problem?.retryable).toBe(false);
+  });
+
+  it('is a returned problem, never a throw, so the caller decides what the person hears', () => {
+    expect(() => pasteLengthProblem(text(MAX_PASTE_CHARS * 3))).not.toThrow();
+    expect(pasteLengthProblem('Invoice 42. Amount due £840.')).toBeUndefined();
   });
 });

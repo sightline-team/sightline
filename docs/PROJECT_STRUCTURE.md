@@ -61,7 +61,7 @@ sightline/
 ├─ src/
 │  ├─ app/
 │  │  ├─ layout.tsx               # <html lang>, skip link, landmarks, announcer + session store (over the nav too, so Forget reaches every route), fixtures banner
-│  │  ├─ _flow/useDocumentRun.ts  # Composition root for one run: store, announcer, router, transport, pipeline. `_` = not a route
+│  │  ├─ _flow/useDocumentRun.ts  # Composition root for one run: store, announcer, router, transport, pipeline. `_` = not a route. Its **first** statement is the paste length guard (`pasteLengthProblem`, C-12/**ADR-29**) — before the mode check, before a controller, before a body exists
 │  │  ├─ _flow/useAskAboutDocument.ts # Same shape for one question (P-06); reads the mode off the session, not the build
 │  │  ├─ _flow/useForget.ts       # Same shape for Forget (P-10): store + announcer + the read-aloud stop, and the sentence built from what was counted
 │  │  ├─ _flow/live_writes.ts     # `liveWrites(signal, dispatch)` (P-12): once a run is aborted its own callbacks write nothing into the session Forget emptied
@@ -82,7 +82,7 @@ sightline/
 │  │
 │  ├─ features/
 │  │  ├─ capture/                 # CaptureView, PageList (remove, retake last), useCapture, prompts.ts + schemas.ts (C-03's own instruction and response contract, moved out of analysis the way P-06 moved qa's), transcribe.ts (C-03: one page, one `readCompletion` call, `max_tokens: 8192`), assemble.ts (C-11/**ADR-27**: joins pages, remaps `uncertain` spans onto their page's region, marks a page that yielded nothing), page-labels.ts (C-05/**ADR-28**: reads the page numbers the model reported and warns where they disagree with each other or with how many photographs were given — never reorders, never guesses a missing label)
-│  │  ├─ paste/PasteView.tsx      # Text input, demo document buttons, error summary focus
+│  │  ├─ paste/PasteView.tsx      # Text input, demo document buttons, error summary focus. The hint states the length cap in the screen's own words and comes from `MAX_PASTE_CHARS`, so the number on the page is the number in the guard (C-12)
 │  │  ├─ analysis/                # pipeline.ts, prompts.ts, schemas.ts, grounding.ts, ResultsView
 │  │  ├─ qa/                      # ask.ts (grounded Q&A), prompts.ts, schemas.ts, AskPanel.tsx
 │  │  ├─ safety/notices.ts        # P-07: Sightline's own cautions (medicine, money, deadline, English-only), computed from the validated Analysis — never the model's warnings, never a privacy sentence. `appLimitationNotices()` is the English-only line on its own, so the transcript-only screen can say it with no Analysis (P-11)
@@ -102,13 +102,13 @@ sightline/
 │  │  │  └─ verifier/             # Ported from nearai-cloud-verifier ts/ (MIT; keep license + attribution); dcap-qvl-node for TDX quotes
 │  │  ├─ image/prepare.ts         # C-01: orientation-aware resize → JPEG re-encode (the re-encode is the EXIF/GPS strip); quality ladder, 768 KiB/page budget, injected decode/encode seam; `toDataUrl` (C-03: chunked base64 of the *prepared* bytes, fixed `image/jpeg` label)
 │  │  ├─ a11y/announcer.tsx       # Single aria-live announcer + interval progress
-│  │  ├─ session/                 # reducer.ts (state shape, page cap), store.tsx (provider + in-flight run + object-URL registry + forget()), forget.ts (P-10: the pure clear, the `sightline.` key rule)
+│  │  ├─ session/                 # reducer.ts (state shape, page cap, and the paste cap `MAX_PASTE_CHARS`/`pasteLengthProblem` — C-12, ADR-29), store.tsx (provider + in-flight run + object-URL registry + forget()), forget.ts (P-10: the pure clear, the `sightline.` key rule)
 │  │  ├─ fixtures/                # replay.ts (content-matched Mode F client, `transportFor`), cases.ts (authored synthetic demo corpus: four letters, each carrying either an `analysis` or one `unreadableReply` — the prose case is what makes the transcript-only screen reachable with no key, P-11)
 │  │  ├─ transcript/holes.ts      # P-17, ADR-27: the words for a page that yielded no text (`unreadablePageMarker`) and `groundableText()`, the same-length mask grounding searches. Shared because both the writer (`features/capture`) and the reader (`features/analysis`, `features/qa`) need one wording
 │  │  ├─ server/                  # Server-only: env.ts, allowlist.ts, rateLimit.ts (all `import 'server-only'`)
 │  │  ├─ config.ts                # Env validation (zod); mode selection
 │  │  ├─ settings.ts              # `sightline.settings` in localStorage, and the only code that reads or writes it: validated read of `speechRate`/`highContrast` (both defaulted), the re-validating read-modify-write, `applyHighContrast`, `describeRate`, and the external store the controls subscribe to (P-09 read, A-15 both). Non-sensitive only — never a key, never document data
-│  │  ├─ errors.ts                # AppError → plain-language messages
+│  │  ├─ errors.ts                # AppError → plain-language messages (one entry per `ErrorCode`; `tests/unit/errors.test.ts` fails if any code lacks a row — C-12 added `paste_too_long`, so the catalogue now holds 22) (one row per `ErrorCode`, 22 of them; `paste_too_long` is C-12's, and a test asserts the catalogue covers every code)
 │  │  └─ not_built.ts             # `NotBuilt` + `notBuilt(item, what)`: every scaffold stub throws this, naming its ROADMAP item
 │                                 # A stub that returned a plausible fake would let a pipeline 'work' on nothing
 │  │
@@ -122,6 +122,7 @@ sightline/
    ├─ stubs/server-only.ts        # no-op stand-in so unit tests can import server modules (see vitest.config.mts)
    ├─ e2e/shell.spec.ts           # Playwright + axe on the four shell routes, skip link/tab order, one live region, zoomable viewport, off-origin request assertion
    ├─ e2e/flow.spec.ts            # The whole Mode F flow with no key: demo document → fixed section order → flagged fact → questions and answers → receipt; the transcript-only screen reached by the reply that is not JSON (P-11); Forget pressed while a completion is owed, both clicks in one task (P-12); refusals; focus; read-aloud and the settings that change it, with the speech engine replaced by a recorder; axe with content, on the degraded screen, and in both themes
+   ├─ e2e/paste-cap.spec.ts       # C-12 from the screen: the hint states the cap, an over-cap paste is refused for its length with focus on the error and no transcript written (`/read` still says nothing was read), and the same paste one character under the cap reaches the pipeline — so the guard is a guard, not a blanket block
    └─ a11y/manual-checklist.md    # Screen-reader scripts and results
 ```
 
