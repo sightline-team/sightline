@@ -597,6 +597,14 @@ glm rows marked repair.
   money and 7% on time**, so the price argument for glm is dead and what is left is that **Qwen got it right
   first time in 2 of 2 and glm needed its one rescue in 2 of 2** — a step that depends on the repair retry
   to work at all is a step with one bullet left. Qwen keeps the row.
+  **(Corrected by C-11's measured pages, same day: that pair of totals counted only the attempt the
+  answer arrived on, and `5 × 970,800` was one page extrapolated. The service bills a fenced ask — it is a
+  completed HTTP 200 — so the glm column is ask $0.00101832 **plus** repair $0.00464344. On §4's own rows,
+  with C-11's five measured pages as the transcription half, the same two plans are $0.00850621 / 260.2 s on
+  Qwen against **$0.00972576 / 302.1 s** on glm: 14% dearer and 16% slower, not 2% and 7%. The price
+  argument did not die — it reversed, and it now points at Qwen, which is the row already chosen.
+  `scripts/spike.ts` counts every request a run makes for that reason, and its carried per-page figure is
+  now C-11's mean (812,800 nano / 28,320 ms) rather than one page's 970,800 / 25,770.)**
 - **The number of facts a document yields is not stable, and nothing in the app would notice.** One page
   (1,321 chars) produced **32** facts on glm and **33** on Qwen; five pages (5,689 chars — the same bill
   continued) produced **7** and **5**. Both models return **more facts for a shorter document**, by 4–5×,
@@ -618,7 +626,7 @@ glm rows marked repair.
   Signature fetches took 241–1,073 ms.
 - **What a question costs, which is the figure the Ask panel and any rate limit are sized against.**
   **$0.000258–$0.000281** on the model the plan now uses, 1.88–3.43 s each. Ten follow-up questions on one
-  document are **≈$0.0027** — the reading path's $0.0095 still dominates the bill, but on the *waiting*
+  document are **≈$0.0027** — the reading path's ≈$0.0085 (C-11's measured total, above) still dominates the bill, but on the *waiting*
   path a question is 15× quicker than a structure step, and that is the latency a person experiences as
   the app being responsive.
 - **How the first of these runs came to be a structure-step run, stated because the evidence trail should
@@ -634,6 +642,80 @@ glm rows marked repair.
   on a transcript from a *photograph* rather than a synthetic bill, Mode B's relay for any of it (**B-12**),
   and 16,384 against a genuinely dense five-page photo transcript — the synthetic bill here spent 54.2% of
   it at worst.
+
+### [Measured] 2026-11-04 — C-11: five photographs become one transcript, and the offsets hold
+
+`npm run spike -- --stage=pages` · exit **0** · `z-ai/glm-5.3-flash` at **8,192** (`STEP_PLANS.transcribe`) ·
+the page is drawn in Chromium at 3024×4032, prepared by the real `lib/image/prepare.ts` (C-01), sent as
+C-03's body **once per page**, and the five replies are handed to the app's own `assembleDocument`
+(`features/capture/assemble.ts`) — this is the first stage in this file whose subject is *our* logic rather
+than the service. Nothing document-derived is printed; lengths, offsets, counts and booleans only.
+
+Five pages, 211,296–212,798 bytes prepared at 1200×1600 each:
+
+| page | HTTP | model time | cost | `transcribeSchema` | its own text | reported |
+|---|---|---|---|---|---|---|
+| 1 | 200 | 31,562 ms | 847,300 nano = $0.00084730 | **accepted** | 1,163 chars | page label |
+| 2 | 200 | 18,929 ms | 607,800 nano = $0.00060780 | **accepted** | 1,167 chars | page label |
+| 3 | 200 | 30,164 ms | 914,300 nano = $0.00091430 | **accepted** | 1,223 chars | `rotated`, page label |
+| 4 | 200 | 30,497 ms | 904,300 nano = $0.00090430 | **accepted** | 1,223 chars | page label |
+| 5 | 200 | 30,448 ms | 790,300 nano = $0.00079030 | **accepted** | 1,223 chars | page label |
+
+**5 of 5 accepted, 0 repairs needed, 5 of 5 signatures `provider_tee`** against `model_attestations[0]`, and
+`0 uncertain spans` on every page.
+
+- **The assembly, and the proof is the cut rather than the arithmetic.** Joined text **6,007 chars**,
+  `pageOffsets [0, 1165, 2334, 3559, 4784]`, one capture issue (`rotated`, page 3), five page labels, `usable
+  true`, `unplaceable spans 0`. The stage then cut the joined string at every offset for every page's own
+  length and compared the pieces to the text each page reported: **"each page's region … is that page's own
+  text: yes."** That is the property C-11 exists for — a joiner not counted gives a short region, a joiner
+  counted twice gives an overlapping one, and both would still print a plausible total length.
+- **The hole path on a truncation the service produced, not one asserted in a test.** Page 1 was re-asked
+  with `max_tokens: 256` — the budget §1 already measured as too small for a reasoning model — and answered
+  HTTP 200 in 9,321 ms with `finish_reason: length` and **0 characters of content** (P-13's shape again,
+  $0.00035280). Assembled with ADR-27 that page becomes a marker in place: joined text **4,870 chars**,
+  offsets **[0, 28, 1197, 2422, 3647]** (`28` = `[page 1 could not be read]` + the joiner), `missing
+  1:output_truncated`, `labels 4` (page 1's own label left with its text), `usable true`, and the region cut
+  still exact for all five. The document is readable with the hole in it, and the hole is where it belongs.
+- **Per-page figures now have five samples, and they are cheaper and slower than the one-page number was.**
+  **$0.00081280 and 28.3 s per page on average**, against §4's single measured page at $0.00097080 / 25.77 s.
+  Five pages in series are **$0.00406400 and 141,600 ms** of model time, which replaces C-08's "≈2 minutes
+  and ≈$0.0049" estimate with a measurement. **Provenance, stated because the raster changed in this same
+  commit:** `drawPage` now prints `PAGE n OF N` and numbers its line items per page (five identical pages
+  would let a shifted offset pass unnoticed — the string would be found in the joined text either way), so
+  these five pages are not byte-identical to the one page §4 priced earlier. The spread here is 607,800 –
+  914,300 nano, so a single page's price was never going to be the document's.
+- **The whole-document figure moves, and this run is why.** Substituting the measured pages for §4's
+  per-page extrapolation: five photographs **$0.00406400 / 141.6 s** plus the structure step as the plan runs
+  it (**Qwen, five pages: $0.00444221 / 118.6 s**) is **$0.00850621 and ≈260 s** — against the
+  **$0.009296 / ≈247 s** the S-14 block above computed from 5 × 970,800 nano. That earlier row is kept as
+  what it was (an arithmetic extrapolation from one page) and is **superseded as the current figure**. If
+  `analyse` were on the page model instead, the same document is **$0.00972576 and ≈302 s**, because the ask
+  and its repair are both billed (23.7 s + 136.8 s) — which is the correction the S-14 block above carries:
+  its "$0.009497, within 2%" glm column counted the accepted repair only, and a fenced ask is a completed
+  request the service bills. Qwen's column needed no repair, so its figure was already the full one. A
+  follow-up question is unchanged at **$0.000258–$0.000281**, so ten of them still add ≈$0.0027.
+
+- **Every page label came off the paper, and nothing was reordered.** All five pages printed a label and all
+  five were reported (`labels 5`), which is the first live material **C-05** can compare against capture
+  position. The user message still names no page and no count, so the label cannot be our own sentence echoed
+  back (C-03's reason, unchanged).
+- **`rotated` on 1 of 5 pages**, for a page tilted 0.63°, makes it 2 of 6 measured pages and keeps **C-04**'s
+  warning live: a retake loop that fires on `rotated` nags on most hand-held photographs.
+- **What ADR-27 decided against.** Dropping a failed page quietly (the summary would describe four
+  photographs as if they were five, and the missing page is where the unusual clause tends to be), halting the
+  run on one failure (throwing away four pages and ≈113 s of the person's wait because one ≈28 s call went
+  wrong), and keeping a truncated reply's partial text (there isn't one: `content` was **0 characters** here,
+  which is the point P-13 already documented).
+- **Still not measured, and one of these is a real gap in this run's own proof:** no page reported an
+  `uncertain` span, so **the remapping and clamping path has still never processed a live span** — the 18
+  unit tests in `tests/unit/assemble.test.ts` are the only thing holding it, and S-03's deliberately bad
+  photos are the run that should produce some. The joined 6,007-character transcript was **not** sent to the
+  structure step in this run, so §4's structure table still prices a typed-in bill rather than a photographed
+  one (that is C-08's end-to-end half). Accuracy against the page is untouched (**S-03**). And
+  `assembleDocument` has **no Mode F caller yet** — fixture mode has no photographed document to assemble
+  until **C-02** builds the upload screen.
+
 
 ## 5. Response signatures — [Verified], and they are not what our docs assumed
 

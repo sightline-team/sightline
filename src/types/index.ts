@@ -80,7 +80,7 @@ export interface UncertainSpan {
 }
 
 export interface Transcript {
-  /** Verbatim; tables rendered row by row. */
+  /** Verbatim; tables rendered row by row. A photographed document may also carry C-11's markers. */
   text: string;
   /** Character offset where each page's text starts. */
   pageOffsets: number[];
@@ -88,6 +88,24 @@ export interface Transcript {
   captureIssues: { page: number; issue: CaptureIssue }[];
   /** e.g. "Page 2 of 3", used only to warn on gaps and duplicates — never to reorder silently. */
   pageNumbersSeen?: { page: number; label: string }[];
+  /**
+   * The pages that yielded **no text** (item **C-11**, ADR-27), with the catalogue code for why.
+   * `features/capture/assemble.ts` is the only writer.
+   *
+   * It is a list rather than a flag because the copy differs per page — a reply cut off by the token
+   * budget means "that photograph is too dense to be one page", a reply that never was JSON means "the
+   * service answered in a shape we could not read" — and one reason cannot be reported for five pages.
+   *
+   * Absent for a pasted document: it has no pages that could be missing.
+   */
+  missingPages?: MissingPage[];
+}
+
+/** One photographed page that contributed no text (**C-11**). Never document content. */
+export interface MissingPage {
+  /** Capture position, 0-based — the same index `pageOffsets` uses. */
+  page: number;
+  code: ErrorCode;
 }
 
 export type FactKind =

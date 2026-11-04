@@ -30,16 +30,18 @@ import path from 'node:path';
 import { attestationReportSchema, bindReport, newNonce } from '@/lib/near-ai/attestation';
 import { createNearClient, NearError, type CallPurpose, type NearClient } from '@/lib/near-ai/client';
 import { completionEnvelopeSchema, contentOf, refusalOf, truncated } from '@/lib/near-ai/envelope';
-import { REPAIR_NOTE } from '@/lib/near-ai/completion';
+import { REPAIR_NOTE, type CompletionResult } from '@/lib/near-ai/completion';
 import { DEFAULT_MAX_EDGE, MAX_PAGE_BYTES, targetSize } from '@/lib/image/prepare';
 import { TRANSCRIBE_SYSTEM_PROMPT, TRANSCRIBE_USER_PROMPT } from '@/features/capture/prompts';
-import { transcribeSchema } from '@/features/capture/schemas';
+import { transcribeSchema, type TranscribeOutput } from '@/features/capture/schemas';
 import { TRANSCRIBE_MAX_TOKENS } from '@/features/capture/transcribe';
+import { assembleDocument, unreadablePageMarker, type PageOutcome } from '@/features/capture/assemble';
 import { STRUCTURE_SYSTEM_PROMPT, structureUserPrompt } from '@/features/analysis/prompts';
 import { analysisSchema } from '@/features/analysis/schemas';
 import { groundFacts, quoteFound } from '@/features/analysis/grounding';
 import { QA_SYSTEM_PROMPT, qaUserPrompt } from '@/features/qa/prompts';
 import { qaSchema } from '@/features/qa/schemas';
+import { appError } from '@/lib/errors';
 import { isAllowed, isNearUpstreamHost, modelCatalogRowSchema, STEP_PLANS, toModelMetadata, type ModelCatalogRow, type StepPlan } from '@/lib/near-ai/models';
 import { checkSignature, fetchSignature, signatureRecordSchema, type SignatureRecord } from '@/lib/near-ai/signatures';
 import type { CheckResult } from '@/types';
@@ -66,10 +68,10 @@ const STAGES: Stage[] = ['catalog', 'attestation', 'complete'];
  * drawn and prepared by the real `lib/image/prepare.ts` (C-01), which needs a browser. `document` is
  * not in it because it sends a whole synthetic document twice — the most expensive exchanges in this
  * script, and the ones that only need re-measuring when a price or a prompt changes. Ask for either
- * with `--stage=image`, `--stage=document`, or `--stage=all`.
+ * with `--stage=image`, `--stage=pages`, `--stage=document`, or `--stage=all`.
  */
-const EXPLICIT_STAGES: Stage[] = ['image', 'document', 'qa'];
-type Stage = 'catalog' | 'attestation' | 'complete' | 'image' | 'document' | 'qa';
+const EXPLICIT_STAGES: Stage[] = ['image', 'pages', 'document', 'qa'];
+type Stage = 'catalog' | 'attestation' | 'complete' | 'image' | 'pages' | 'document' | 'qa';
 
 function arg(name: string): string | undefined {
   const hit = process.argv.slice(2).find((a) => a.startsWith(`--${name}=`));
@@ -313,6 +315,11 @@ function costLine(label: string, usage: Usage, price: { perIn: number; perOut: n
   return `  cost of ${label}: ${nano} nano-USD = $${(nano / 1e9).toFixed(8)} at ${price.perIn}/${price.perOut} nano per in/out token`;
 }
 
+/** What an exchange cost, or 0 when the catalog gave no price to compute from. */
+function nanoOf(usage: Usage, price: Price): number {
+  return price.status === 'priced' ? (usage.prompt_tokens ?? 0) * price.perIn + (usage.completion_tokens ?? 0) * price.perOut : 0;
+}
+
 async function stageComplete(near: NearClient, model: string, attested: Attested): Promise<void> {
   console.log(`== complete — POST /v1/chat/completions then GET /v1/signature/{id}`);
   if (attested.keyOrAddress === undefined) {
@@ -505,8 +512,8 @@ interface ProbeResult {
 }
 
 /** Draws the page, then prepares it with C-01's real module inside the browser. */
-async function drawPage(page: Page): Promise<PageSample> {
-  return page.evaluate(async ({ w, h }) => {
+async function drawPage(page: Page, label?: { pageNumber: number; totalPages: number }): Promise<PageSample> {
+  return page.evaluate(async ({ w, h, label }) => {
     const toB64 = async (blob: Blob): Promise<string> => {
       const view = new Uint8Array(await blob.arrayBuffer());
       let bin = '';
@@ -537,10 +544,16 @@ async function drawPage(page: Page): Promise<PageSample> {
     ctx.fillText('SYNTHETIC INVOICE - NOT A REAL DOCUMENT', left, y);
     y += lineH * 3.2;
     ctx.font = `${Math.round(lineH * 1.5)}px sans-serif`;
-    ctx.fillText('Northgate Example Trust   Reference NC-0000-SYN', left, y);
+    // Each page carries its own printed label and its own line numbers, because C-11's whole question is
+    // whether an offset still points at the page it came from. Five identical pages would let a shifted
+    // offset look correct: the string would be found in the joined transcript either way.
+    const tag = label === undefined ? '' : `   PAGE ${label.pageNumber} OF ${label.totalPages}`;
+    ctx.fillText(`Northgate Example Trust   Reference NC-0000-SYN${tag}`, left, y);
     y += lineH * 2.4;
+    const first = label === undefined ? 1 : (label.pageNumber - 1) * 28 + 1;
     for (let i = 0; i < 28; i++) {
-      ctx.fillText(`Line ${(i + 1).toString().padStart(2, '0')}  example service ${(i % 4) + 1}  GBP 00${(i % 9) + 1}.00`, left, y);
+      const n = first + i;
+      ctx.fillText(`Line ${n.toString().padStart(3, '0')}  example service ${(n % 4) + 1}  GBP ${String(100 + ((n * 7) % 900))}.${String((n * 13) % 100).padStart(2, '0')}`, left, y);
       y += lineH * 2.15;
     }
     ctx.restore();
@@ -566,7 +579,7 @@ async function drawPage(page: Page): Promise<PageSample> {
       preparedHeight: prepared.height,
       prepareMs: Math.round(performance.now() - at),
     };
-  }, { w: PAGE_INPUT.width, h: PAGE_INPUT.height });
+  }, { w: PAGE_INPUT.width, h: PAGE_INPUT.height, label });
 }
 
 /**
@@ -770,15 +783,230 @@ async function stageImage(near: NearClient, model: string, attested: Attested): 
   }
 }
 
+// ------------------------------------------------------------------------------- pages (C-11's assembly)
+
+/**
+ * Five prepared pages become one transcript, and the offsets are checked against the pages they came
+ * from (item **C-11**, **ADR-27**).
+ *
+ * This is the only stage in this file that runs *our* logic on live replies rather than measuring the
+ * service: `assembleDocument` is imported from `features/capture/`, so the join, the offset arithmetic
+ * and the hole marker are the ones the app will ship. The request shape is C-03's, unchanged, once per
+ * page — the thing being measured is what happens after five of them come back.
+ *
+ * Two assemblies are printed from the same exchanges. The first is the document a person would get if
+ * every page answered. The second re-asks one page with `max_tokens: 256`, the budget §1 measured as
+ * small enough to truncate a reasoning model, so ADR-27's hole path is exercised against a **real**
+ * truncation rather than only a unit-test fixture. Nothing is invented to be a failure: a page is made
+ * to fail by asking it with a budget known to be too small, which is the same thing the service does to
+ * a dense page on its own.
+ */
+const PAGE_SET = 5;
+
+/** C-03's body for one prepared page, as `readCompletion` builds it (ADR-22: no `stream` key). */
+function transcribeBodyFor(model: string, preparedDataUrl: string, maxTokens: number): Record<string, unknown> {
+  return {
+    model,
+    messages: [
+      { role: 'system', content: TRANSCRIBE_SYSTEM_PROMPT },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: TRANSCRIBE_USER_PROMPT },
+          { type: 'image_url', image_url: { url: preparedDataUrl } },
+        ],
+      },
+    ],
+    max_tokens: maxTokens,
+  };
+}
+
+/**
+ * What one page's exchange produced: the app's own outcome, plus the lengths needed to check the
+ * assembly without ever printing what was read (AGENTS.md §4 rule 7).
+ */
+interface PageExchange {
+  outcome: CompletionResult<TranscribeOutput>;
+  usage: Usage;
+  chatId: string;
+  servedModel: string;
+  requestBytes: string;
+  responseBytes: string;
+  ms: number;
+}
+
+async function transcribeOnePage(
+  near: NearClient,
+  model: string,
+  price: Price,
+  label: string,
+  dataUrl: string,
+  maxTokens: number,
+): Promise<PageExchange | undefined> {
+  const body = transcribeBodyFor(model, dataUrl, maxTokens);
+  const request = await timed(() => near.post('chat/completions', body, { purpose: 'transcribe' })).catch((error: unknown) => {
+    console.log(`  ${label}: rejected — ${error instanceof NearError ? `${error.name} code ${error.error.code} at HTTP ${error.status ?? '?'}` : 'a non-NearError escaped'}`);
+    process.exitCode = 1;
+    return undefined;
+  });
+  if (request === undefined) return undefined;
+  const { value: response, ms } = request;
+  console.log(`  ${label}: HTTP ${response.status} in ${ms} ms · reply ${bytes(response.rawText)} bytes · body ${String(maxTokens)} token budget`);
+
+  const envelope = completionEnvelopeSchema.safeParse(response.json);
+  if (!envelope.success) {
+    console.log(`  ${label}: completionEnvelopeSchema rejected it — the app would call this \`invalid_model_output\``);
+    process.exitCode = 1;
+    return undefined;
+  }
+  const e = envelope.data;
+  const usageParse = usageSchema.safeParse((response.json as { usage?: unknown }).usage ?? {});
+  const usage = usageParse.success ? usageParse.data : {};
+  const servedModel = typeof e.model === 'string' ? e.model : model;
+  const base = {
+    chatId: e.id,
+    servedModel,
+    requestBytes: response.sentBody ?? '',
+    responseBytes: response.rawText,
+    usage,
+    ms,
+  };
+
+  if (price.status === 'priced') console.log(`    ${costLine(label, usage, price)}`);
+
+  if (refusalOf(e) !== undefined) {
+    console.log(`    refusal · counted as a page that yielded nothing`);
+    return { ...base, outcome: { kind: 'refused', error: appError('model_refused') } };
+  }
+  if (truncated(e)) {
+    const content = contentOf(e);
+    console.log(`    TRUNCATED at ${String(maxTokens)} tokens — content ${content.length} chars (never printed). ADR-27: this page becomes a hole in the reading, not a shorter page.`);
+    return { ...base, outcome: { kind: 'truncated', error: appError('output_truncated') } };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(contentOf(e));
+  } catch {
+    parsed = undefined;
+  }
+  const contract = transcribeSchema.safeParse(parsed);
+  if (!contract.success) {
+    console.log(`    transcribeSchema REJECTED — ${contract.error.issues.slice(0, 3).map((i) => `${i.path.join('.')}: ${i.message}`).join(' · ')} · the app's own repair retry would run here`);
+    process.exitCode = 1;
+    return { ...base, outcome: { kind: 'unreadable', error: appError('invalid_model_output') } };
+  }
+  console.log(`    transcribeSchema ACCEPTED · text ${contract.data.text.length} chars · uncertain ${contract.data.uncertain.length} · captureIssues ${contract.data.captureIssues.length === 0 ? '(none)' : contract.data.captureIssues.join(',')} · pageLabel ${contract.data.pageLabel === undefined ? 'absent' : 'present'}`);
+  return { ...base, outcome: { kind: 'ok', value: contract.data, model: servedModel } };
+}
+
+/** Reports one assembly's shape and whether every page's region and spans point back at that page. */
+function reportAssembly(label: string, pages: PageExchange[]): void {
+  // A refusal is not assembly's to decide (§13 halts on it), so it leaves the list before the join.
+  const answered = pages.filter((p) => p.outcome.kind !== 'refused');
+  if (answered.length !== pages.length) {
+    console.log(`    ${pages.length - answered.length} page(s) refused outright: §13 halts a run on a refusal, so they are not assembled`);
+  }
+  const outcomes = answered.map((p) => p.outcome) as PageOutcome[];
+  // What each page's region should *be*: the text it reported, or the marker ADR-27 puts where a page
+  // that reported nothing would have been. Held here to compare, never printed (rule 7).
+  const expected = outcomes.map((o, page) => (o.kind === 'ok' ? o.value.text : unreadablePageMarker(page)));
+  const { transcript, usable, unplaceableSpans } = assembleDocument(outcomes);
+
+  console.log(`  ${label}: ${outcomes.length} page(s) · joined text ${transcript.text.length} chars · offsets [${transcript.pageOffsets.join(', ')}] · uncertain ${transcript.uncertain.length} span(s) · captureIssues ${transcript.captureIssues.length} · labels ${transcript.pageNumbersSeen?.length ?? 0} · missing ${transcript.missingPages?.map((m) => `${m.page + 1}:${m.code}`).join(' ') || '(none)'} · usable ${usable} · unplaceable spans ${unplaceableSpans}`);
+
+  // The offsets are the claim, so they are checked rather than assumed: cutting the joined string at each
+  // page's offset, for that page's own length, has to give back exactly that page's text. A short region
+  // means the joiner was not counted; an overlapping one means it was counted twice.
+  const regions = transcript.pageOffsets.map((offset, i) => transcript.text.slice(offset, offset + (expected[i] ?? '').length));
+  const regionsOk = regions.length === expected.length && regions.every((region, i) => region === expected[i]);
+  console.log(`    each page's region, cut at its offset, is that page's own text: ${regionsOk ? 'yes' : 'NO'}`);
+
+  // A span may not reach outside the page it came from — the failure C-11 exists to prevent.
+  const spansInPage = transcript.uncertain.every((span) =>
+    transcript.pageOffsets.some((offset, i) => {
+      const length = (expected[i] ?? '').length;
+      return span.start >= offset && span.end <= offset + length;
+    }),
+  );
+  console.log(`    every uncertain span lies inside the page it came from: ${transcript.uncertain.length === 0 ? 'no span to check' : spansInPage ? 'yes' : 'NO'}`);
+  if (!regionsOk || (transcript.uncertain.length > 0 && !spansInPage)) process.exitCode = 1;
+}
+
+async function stagePages(near: NearClient, model: string, attested: Attested): Promise<void> {
+  console.log(`== pages — ${PAGE_SET} synthetic pages, C-03's request each, joined by the real assembleDocument (C-11, ADR-27)`);
+
+  const samples: PageSample[] = [];
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.addScriptTag({ content: PREPARE_BUNDLE });
+    await page.evaluate('globalThis.__name = (f) => f');
+    for (let n = 1; n <= PAGE_SET; n += 1) samples.push(await drawPage(page, { pageNumber: n, totalPages: PAGE_SET }));
+  } finally {
+    await browser.close();
+  }
+  console.log(`  ${samples.length} pages drawn at ${PAGE_INPUT.width}×${PAGE_INPUT.height} and prepared by C-01's real module: ${samples.map((s) => `${s.preparedBytes} bytes at ${s.preparedWidth}×${s.preparedHeight}`).join(', ')}`);
+
+  const price = await priceOf(near, model);
+  if (price.status === 'priced') console.log(`  priced from GET /v1/model/{model_name}: ${price.perIn}/${price.perOut} nano-USD per in/out token`);
+
+  const pages: PageExchange[] = [];
+  for (const [i, sample] of samples.entries()) {
+    const exchange = await transcribeOnePage(near, model, price, `page ${i + 1}`, sample.preparedDataUrl, TRANSCRIBE_MAX_TOKENS);
+    if (exchange === undefined) continue;
+    pages.push(exchange);
+  }
+
+  // Each page's signature is checked, because a five-page document is five receipts and rule 4 says each
+  // response is verified — an assembly built from unverified halves is not a verified document.
+  let verified = 0;
+  for (const p of pages) {
+    if (attested.keyOrAddress === undefined) continue;
+    const { value: record } = await timed(() => fetchSignature(near, p.chatId, { model: p.servedModel, algo: 'ed25519' }));
+    const check = checkSignature(record, { requestBytes: p.requestBytes, responseBytes: p.responseBytes, modelId: p.servedModel, attestedKeyOrAddress: attested.keyOrAddress });
+    if (check.verified && check.origin === 'provider_tee') verified += 1;
+  }
+  if (attested.keyOrAddress !== undefined) {
+    console.log(`  signatures: ${verified} of ${pages.length} pages verified as provider_tee against model_attestations[0] (ADR-19)`);
+  } else {
+    console.log('  signatures: SKIPPED, no attested key from the attestation stage (rule 6 — no pass by absence)');
+    process.exitCode = 1;
+  }
+
+  reportAssembly('assembled (all pages at the app budget)', pages);
+
+  // ADR-27's hole path, on a truncation the service actually produced rather than one asserted in a test.
+  const dense = await transcribeOnePage(near, model, price, 'page 1 re-asked at 256 tokens', samples[0]!.preparedDataUrl, 256);
+  if (dense !== undefined && dense.outcome.kind !== 'ok') {
+    // It goes back in **position 0**, because the marker names the page by its place in the document: the
+    // truncation happened to page 1's photograph, so "[page 1 could not be read]" is the true sentence.
+    reportAssembly('assembled with page 1 truncated', [dense, ...pages.slice(1)]);
+  } else if (dense !== undefined) {
+    console.log(`  the 256-token re-ask did NOT truncate, so ADR-27's hole path has no live instance from this run (the unit tests still hold it)`);
+  }
+
+  const totalNano = pages.reduce((sum, p) => sum + nanoOf(p.usage, price), 0);
+  const totalMs = pages.reduce((sum, p) => sum + p.ms, 0);
+  if (price.status === 'priced') {
+    console.log(`  ${pages.length} pages of transcription ≈ ${totalNano} nano-USD = $${(totalNano / 1e9).toFixed(8)} and ${totalMs} ms of model time, in series`);
+    console.log(`  the joined transcript is what the structure step is then billed over: its length is in the assembly line above, and the price of that step is in §4's structure table`);
+  }
+}
+
 // ------------------------------------------------------------------------------------ document (S-09)
 
 /**
  * The per-page figure from §4, carried in rather than re-billed so one `--stage=document` run can
- * state a whole document's cost. It is a *recorded measurement* (2026-11-04, `z-ai/glm-5.3-flash`),
- * not a price read from the catalog: the catalog gives the rate, this gives what a page used.
+ * state a whole document's cost. It is a *recorded measurement*, not a price read from the catalog:
+ * the catalog gives the rate, this gives what a page used. **C-11's `--stage=pages` run replaced the
+ * figures** — it is the mean of five photographed pages on the raster `drawPage` now prints ($0.00081280
+ * and 28.32 s a page, 2026-11-04), where the previous pair was one page measured on the raster before
+ * line items were numbered per page. One page's price is not a document's: the five spread from
+ * 607,800 to 914,300 nano.
  */
-const MEASURED_PAGE_NANO_USD = 970_800;
-const MEASURED_PAGE_MS = 25_770;
+const MEASURED_PAGE_NANO_USD = 812_800;
+const MEASURED_PAGE_MS = 28_320;
 
 /**
  * The page `--stage=image` draws, as text: the same synthetic invoice, so the structure step is
@@ -973,15 +1201,22 @@ async function stageDocument(near: NearClient, model: string, attested: Attested
     if (first.outcome === 'unreadable' && final.read) {
       console.log(`    the repair retry is what made this answer readable · both attempts cost ${first.nano + final.nano} nano-USD · ${(first.ms + final.ms) / 1000} s`);
     }
-    if (run.label === 'five pages') fivePage = { nano: final.nano, ms: final.ms };
+    if (run.label === 'five pages') {
+      // Every request this run made is counted, not the one that succeeded. A fenced ask is a completed
+      // HTTP 200 completion, so the service bills it and the person waits for it; counting only the
+      // accepted attempt made glm's five-page document look 13% cheaper than it was (C-11's §4 rows,
+      // corrected here: ask $0.00101832 + repair $0.00464344).
+      const billed = final === first ? first : { nano: first.nano + final.nano, ms: first.ms + final.ms };
+      fivePage = { nano: billed.nano, ms: billed.ms };
+    }
   }
 
   if (price.status === 'priced' && fivePage !== undefined) {
     const transcriptionNano = MEASURED_PAGE_NANO_USD * 5;
     const totalNano = transcriptionNano + fivePage.nano;
     const totalMs = MEASURED_PAGE_MS * 5 + fivePage.ms;
-    console.log(`  a five-page document, put together as ADR-24 runs it: 5 × ${MEASURED_PAGE_NANO_USD} nano of transcription on ${STEP_PLANS.transcribe.model} (§4, 2026-11-04) + ${fivePage.nano} of this structure step on ${model} = ${totalNano} nano-USD = $${(totalNano / 1e9).toFixed(6)}`);
-    console.log(`  (the structure figure is the attempt the answer arrived on; if a repair was spent, the line above it names what both attempts cost together.)`);
+    console.log(`  a five-page document, put together as ADR-24 runs it: 5 × ${MEASURED_PAGE_NANO_USD} nano of transcription on ${STEP_PLANS.transcribe.model} (§4, C-11's measured mean per page, carried not re-billed) + ${fivePage.nano} of this structure step on ${model} = ${totalNano} nano-USD = $${(totalNano / 1e9).toFixed(6)}`);
+    console.log('  (every request counted, including one the app had to repair — the service billed it and the person waited for it.)');
     console.log(`  and ${Math.round(totalMs / 1000)} s of model time — ${Math.round((MEASURED_PAGE_MS * 5) / 1000)} s of it transcription. That is what §12's progress cadence and any per-page timeout have to be sized for, not the 1.83 s a one-line probe took.`);
   } else {
     console.log('  per document not stated: this run has no price, or the five-page exchange did not answer. A number carried from an earlier run would be a written figure, not a measured one.');
@@ -1169,6 +1404,7 @@ const COMPLETION_STAGES: Record<Exclude<Stage, 'catalog' | 'attestation'>, {
 }> = {
   complete: { plan: STEP_PLANS.transcribe, run: stageComplete },
   image: { plan: STEP_PLANS.transcribe, run: stageImage },
+  pages: { plan: STEP_PLANS.transcribe, run: stagePages },
   document: { plan: STEP_PLANS.analyse, run: stageDocument },
   qa: { plan: STEP_PLANS.qa, run: stageQa },
 };
