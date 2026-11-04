@@ -12,6 +12,7 @@ import { REPAIR_NOTE } from '@/lib/near-ai/completion';
 import { NotBuilt } from '@/lib/not_built';
 import { appError } from '@/lib/errors';
 import { STRUCTURE_SYSTEM_PROMPT } from '@/features/analysis/prompts';
+import { analysisSchema, factKindSchema } from '@/features/analysis/schemas';
 import { claimCopy } from '@/features/trust/claims';
 import type { Analysis, AppError, CheckResult, ErrorCode, InputKind, Mode, Session, Transcript, TrustRecord } from '@/types';
 
@@ -505,6 +506,21 @@ describe('the repair retry (P-08, ARCH §13 “invalid JSON → one repair retry
     // note is ours — nothing the document supplied reaches the sentence that asks for a redo.
     expect(secondUser).toContain(INJECTION);
     expect(STRUCTURE_SYSTEM_PROMPT).not.toContain(INJECTION);
+  });
+
+  it('asks for exactly the vocabulary the schema validates', () => {
+    // Measured, not hypothetical. On 2026-11-04 `npm run spike -- --stage=document` sent a synthetic
+    // invoice through this exact body and **every** reply used "kind" values outside `factKindSchema`,
+    // because the template said `"facts": [{"kind": string, …}]`. In the app that is a repair retry and
+    // then the transcript-only screen — for a document the model had read correctly. If the prompt and
+    // the schema ever drift apart again this fails, and no other test in this file would have said so,
+    // because they all feed the schema a reply this file wrote.
+    const quoted = (source: string): string[] => [...source.matchAll(/"([^"]+)"/g)].map((m) => m[1]!);
+    const askedFor = (pattern: RegExp): string[] => quoted(STRUCTURE_SYSTEM_PROMPT.match(pattern)?.[1] ?? '');
+
+    expect(askedFor(/"docType": ([^,\n]*)/)).toEqual([...analysisSchema.shape.docType.options]);
+    expect(askedFor(/"facts": \[\{"kind": ([^,]*)/)).toEqual([...factKindSchema.options]);
+    expect(askedFor(/"warnings": \[\{"kind": ([^,]*)/)).toEqual([...analysisSchema.shape.warnings.unwrap().element.shape.kind.options]);
   });
 
   it('spends the retry once: a second unreadable answer degrades rather than asking again', async () => {

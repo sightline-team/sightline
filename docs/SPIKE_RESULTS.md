@@ -394,6 +394,77 @@ synthetic, still nobody's letter.
   verify it, which is the distinction ADR-22 keeps. Mode B's relay is still the untested half (**B-12**,
   and the fact that no live mode has ever sent a document from the app).
 
+### [Measured] 2026-11-04 — the structure step answers, and it is the step the app cannot read
+
+`npm run spike -- --stage=document` is the second half of **S-09**: everything priced so far was a
+probe prompt or a page, and a document's reading costs **two** kinds of call — one transcription per
+page and **one structure step over the assembled transcript**. The stage sends the body
+`readCompletion` builds for `purpose: 'analyse'` (`STRUCTURE_SYSTEM_PROMPT` +
+`structureUserPrompt(transcript)`, no `max_tokens`, no `stream`), over the synthetic invoice
+`--stage=image` draws, at one page (1,321 chars) and five pages (5,689 chars), against **both**
+allowlisted models. **Ten exchanges in the table: two on the chosen model before the prompt fix, eight
+after it (four per model).** The stage exits 1 while a model's replies are unusable and 0 when they are
+read — a stage that reported success on the first six of these would be reporting a lie. This is the
+first time this repo's second request has ever been put to the live service.
+
+| model | prompt | exchange | time | prompt tok | completion (reasoning) | cost | `analysisSchema` |
+|---|---|---|---|---|---|---|---|
+| `z-ai/glm-5.3-flash` | before the prompt fix | 1 page | 130.3 s | 752 | 7,571 (5,495) | $0.00384566 | **REJECTED** — `facts[].kind` |
+| `z-ai/glm-5.3-flash` | before the prompt fix | 5 pages | 122.2 s | 2,503 | 6,330 (5,418) | $0.00336524 | **REJECTED** — `facts[].kind` |
+| `z-ai/glm-5.3-flash` | after | 1 page | 56.9 s | 803 | 3,636 (1,558) | $0.00188224 | **REJECTED** — not JSON |
+| `z-ai/glm-5.3-flash` | after | 5 pages | 28.1 s | 2,554 | 1,591 (944) | $0.00099982 | **REJECTED** — not JSON |
+| `z-ai/glm-5.3-flash` | after | 1 page | 27.0 s | 803 | 1,264 (606) | $0.00069624 | **REJECTED** — ``` fence |
+| `z-ai/glm-5.3-flash` | after | 5 pages | 42.8 s | 2,554 | 2,158 (1,527) | $0.00128332 | **REJECTED** — ``` fence |
+| `Qwen/Qwen3.8-27B` | after | 1 page | 44.7 s | 961 | 2,666 (2,136) | $0.00363754 | **ACCEPTED** · facts 4/4 grounded |
+| `Qwen/Qwen3.8-27B` | after | 5 pages | 71.0 s | 3,089 | 4,052 (3,423) | $0.00559376 | **ACCEPTED** · facts 5/5 grounded |
+| `Qwen/Qwen3.8-27B` | after | 1 page | 52.7 s | 961 | 3,412 (2,805) | $0.00464464 | **ACCEPTED** · facts 5/5 grounded |
+| `Qwen/Qwen3.8-27B` | after | 5 pages | 65.1 s | 3,089 | 4,480 (3,787) | $0.00617156 | **ACCEPTED** · facts 6/6 grounded |
+
+- **The defect this found is in our prompt, not in the service: `STRUCTURE_SYSTEM_PROMPT` asked for
+  `"facts": [{"kind": string, …}]` while `factKindSchema` accepts eight fixed values.** Both
+  pre-fix replies came back as well-formed JSON whose `kind` words were none of the eight, so in
+  live mode the app would have spent its repair retry (**P-08**) and then shown the transcript-only
+  screen (**P-11**) for a document the model had read correctly — the same class of bug C-03 fixed
+  the same morning on the transcription side, and the same fix: spell the enum in the template.
+  `tests/unit/pipeline.test.ts` now holds the two vocabularies against each other, and dropping any
+  value from either side fails exactly that test.
+- **`z-ai/glm-5.3-flash` does not answer this request in a form the app can read.** Four post-fix
+  exchanges: two returned content that is not JSON at all, two returned valid JSON inside a
+  ``` fence (measured by the first character and the presence of the fence, never by printing the
+  reply — rule 7). The fence is a formatting habit, not a wrong answer, but the app parses with a
+  plain `JSON.parse`, so a habit is a failure. **Six of six structure-step exchanges on this model
+  were unusable.** Its page transcriptions are fine (§4) — a model that follows one contract need
+  not follow another.
+- **`Qwen/Qwen3.8-27B` answered four of four in the exact shape, and every fact it returned quotes
+  the transcript back** (4/4, 5/5, 5/5, 6/6, plus 2/2 actions each time) with `docType: bill` matching
+  what the synthetic document is. **Grounding here means "consistent with our transcript", never
+  "correct against the page"** (AGENTS.md §4 rule 8): counting misreads is **S-03**, against an
+  expected-facts file. What this row does establish is that the format contract is reachable, and by
+  which model.
+- **Every one of the ten carries `signature_kind: provider_tee`,** verified against
+  `model_attestations[0]`, over the exact bytes sent and received, and none verifies against the
+  gateway key — ADR-22's distinction holds for the text path as it does for the image path. The stage
+  fetches and checks the signature for every exchange that returns an envelope, whatever the schema
+  verdict (`scripts/spike.ts:934-939`), so a reply the app cannot read is still a reply the enclave
+  signed. `GET /v1/signature/{chat_id}` took 264–362 ms.
+- **The per-document figure S-09 asked for, with both halves now measured.** A five-page photo
+  document is 5 × 970,800 nano of transcription + one structure step, and the only model that answers
+  the structure step readably costs 5,593,760–6,171,560 nano, so **≈$0.0107 per five-page document**
+  (**≈$0.0021 per page**) and **≈197 s of model time** — 129 s of transcription, ~68 s of structuring.
+  A pasted document of the same length is the structure step alone: **$0.0059 and ~68 s**. The chosen
+  vision model is cheaper ($0.0011 for the same step) and unusable, which is the trade, stated.
+- **`max_tokens` on a text request is a live cost exposure, not a tuning knob.** Qwen's largest
+  structure completion here was 4,480 tokens against that model's documented 65,536 ceiling — and the
+  text path sends no budget at all, so the service default caps nothing. ADR-23's argument (a
+  reasoning model must be given room for the thinking *and* the answer, and the ceiling is what makes
+  a cost predictable) applies to this step identically. **No decision is recorded yet:** which model
+  answers which step, and what budget the text requests carry, is **ADR-24** and it is open — the
+  §10 entry for this run lists it as the follow-up, and `docs/ARCHITECTURE.md` §17 does not carry the
+  record until it is made.
+- **Still not measured:** the Q&A step's shape on a real transcript (`ask.ts`, same class of risk),
+  Mode B's relay for any of it (**B-12**), and whether any of this holds on a document that is not a
+  bill (S-03's set is where that gets counted).
+
 ## 5. Response signatures — [Verified], and they are not what our docs assumed
 
 

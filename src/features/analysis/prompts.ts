@@ -12,6 +12,15 @@
  *
  * Keep these byte-stable: the golden set and the README accuracy claim depend on the prompt that
  * produced them.
+ *
+ * One change was made on 2026-11-04 and it is the only kind this rule permits, for the same reason
+ * C-03 made its: the template asked for `"facts": [{"kind": string, …}]` while `factKindSchema`
+ * accepts eight fixed values. Measured, not feared — `npm run spike -- --stage=document` sent a
+ * synthetic invoice through this exact body and **every** reply came back with `kind` values outside
+ * the enum, so in live mode the app would have spent a repair retry and then shown the
+ * transcript-only screen for a document it had read perfectly. A prompt that invites an answer the
+ * code rejects is a bug that costs the person their reading. Every value the schema validates is now
+ * spelled out in the template. From this commit the text is fixed again.
  */
 export const STRUCTURE_SYSTEM_PROMPT = `You are structuring a transcript of a document for a person who cannot see it.
 
@@ -24,9 +33,11 @@ Say which parts are unreadable instead of filling them in.
 Reply with JSON only, matching exactly:
 {"docType": "bill" | "bank" | "medical" | "prescription" | "legal" | "government" | "other",
  "sender": string?, "summary": string,
- "facts": [{"kind": string, "label": string, "value": string, "sourceQuote": string}],
+ "facts": [{"kind": "date" | "amount" | "phone" | "reference" | "medication" | "dose" | "address" | "other", "label": string, "value": string, "sourceQuote": string}],
  "actions": [{"text": string, "deadline": string?, "sourceQuote": string}],
- "warnings": [{"kind": "medical" | "legal" | "financial" | "unreadable" | "urgency", "text": string}]}`;
+ "warnings": [{"kind": "medical" | "legal" | "financial" | "unreadable" | "urgency", "text": string}]}
+
+Use only the "kind" values written above; a fact that is none of them is "other".`;
 
 /**
  * Step 2's user message: the transcript **only** (ARCH §9). The fenced form is what makes

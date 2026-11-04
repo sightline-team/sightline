@@ -18,9 +18,10 @@
  *
  * Stages: `catalog` (S-02, S-07), `attestation` (T-01 against a real report), `complete`
  * (S-05, S-09 — one probe completion and its signature), `image` (S-09 per page — a synthetic page run
- * through C-01's real `prepareImage` in Chromium, then billed). `--stage=attestation` implies the gate
- * it needs. Default is the first three; `image` is explicit because it needs a browser, and `all` runs
- * every stage.
+ * through C-01's real `prepareImage` in Chromium, then billed), `document` (S-09 per **document** — the
+ * structure step priced over transcripts of the length the photo path produces). `--stage=attestation`
+ * implies the gate it needs. Default is the first three; `image` and `document` are explicit because the
+ * first needs a browser and the second spends real money twice; `all` runs every stage.
  */
 import { z } from 'zod';
 import { chromium, type Page } from '@playwright/test';
@@ -33,6 +34,9 @@ import { DEFAULT_MAX_EDGE, MAX_PAGE_BYTES, targetSize } from '@/lib/image/prepar
 import { TRANSCRIBE_SYSTEM_PROMPT, TRANSCRIBE_USER_PROMPT } from '@/features/capture/prompts';
 import { transcribeSchema } from '@/features/capture/schemas';
 import { TRANSCRIBE_MAX_TOKENS } from '@/features/capture/transcribe';
+import { STRUCTURE_SYSTEM_PROMPT, structureUserPrompt } from '@/features/analysis/prompts';
+import { analysisSchema } from '@/features/analysis/schemas';
+import { groundFacts } from '@/features/analysis/grounding';
 import { isAllowed, isNearUpstreamHost, modelCatalogRowSchema, toModelMetadata, type ModelCatalogRow } from '@/lib/near-ai/models';
 import { checkSignature, fetchSignature, signatureRecordSchema, type SignatureRecord } from '@/lib/near-ai/signatures';
 import type { CheckResult } from '@/types';
@@ -67,11 +71,13 @@ const API_KEY = process.env.NEAR_AI_API_KEY ?? '';
 const STAGES: Stage[] = ['catalog', 'attestation', 'complete'];
 /**
  * `image` is not in the default run because it drives Chromium as well as the network: the page is
- * drawn and prepared by the real `lib/image/prepare.ts` (C-01), which needs a browser. Ask for it
- * with `--stage=image`.
+ * drawn and prepared by the real `lib/image/prepare.ts` (C-01), which needs a browser. `document` is
+ * not in it because it sends a whole synthetic document twice — the most expensive exchanges in this
+ * script, and the ones that only need re-measuring when a price or a prompt changes. Ask for either
+ * with `--stage=image`, `--stage=document`, or `--stage=all`.
  */
-const EXPLICIT_STAGES: Stage[] = ['image'];
-type Stage = 'catalog' | 'attestation' | 'complete' | 'image';
+const EXPLICIT_STAGES: Stage[] = ['image', 'document'];
+type Stage = 'catalog' | 'attestation' | 'complete' | 'image' | 'document';
 
 function arg(name: string): string | undefined {
   const hit = process.argv.slice(2).find((a) => a.startsWith(`--${name}=`));
@@ -772,6 +778,178 @@ async function stageImage(near: NearClient, model: string, attested: Attested): 
   }
 }
 
+// ------------------------------------------------------------------------------------ document (S-09)
+
+/**
+ * The per-page figure from §4, carried in rather than re-billed so one `--stage=document` run can
+ * state a whole document's cost. It is a *recorded measurement* (2026-11-04, `z-ai/glm-5.3-flash`),
+ * not a price read from the catalog: the catalog gives the rate, this gives what a page used.
+ */
+const MEASURED_PAGE_NANO_USD = 970_800;
+const MEASURED_PAGE_MS = 25_770;
+
+/**
+ * The page `--stage=image` draws, as text: the same synthetic invoice, so the structure step is
+ * priced over a transcript of the length the photo path actually hands it. `pages` × 28 line items
+ * numbered continuously, which makes a five-page document read as one long bill rather than the
+ * same bill five times. Synthetic throughout — AGENTS.md §5 forbids a real document here, and this
+ * one is nobody's letter.
+ */
+function syntheticTranscript(pages: number): string {
+  const items: string[] = [];
+  for (let i = 1; i <= 28 * pages; i += 1) {
+    items.push(`Line ${i.toString().padStart(3, '0')}  example service ${(i % 4) + 1}  GBP 0${(i % 9) + 1}.${(i % 100).toString().padStart(2, '0')}`);
+  }
+  return [
+    'SYNTHETIC INVOICE - NOT A REAL DOCUMENT',
+    'Northgate Example Trust   Reference NC-0000-SYN',
+    '',
+    ...items,
+    '',
+    'Total due: GBP 840.00',
+    'Please pay the total by 14 March 2026.',
+    'If anything here is wrong, call 0800 000 0000 and quote reference NC-0000-SYN.',
+  ].join('\n');
+}
+
+/**
+ * Which `kind` words a rejected reply actually used. A one-word category label from a closed list is
+ * shape, not content (AGENTS.md §4 rule 7), and this document is synthetic — and without it the
+ * finding is "the model said something we did not accept", which is not a fact anybody can act on.
+ */
+function kindsUsed(parsed: unknown): string {
+  if (typeof parsed !== 'object' || parsed === null) return '(the reply was not an object at all)';
+  const parts: string[] = [];
+  for (const key of ['facts', 'warnings'] as const) {
+    const items = (parsed as Record<string, unknown>)[key];
+    if (!Array.isArray(items)) continue;
+    const kinds = [...new Set(items.map((item) =>
+      typeof item === 'object' && item !== null ? String((item as Record<string, unknown>).kind) : '(not an object)',
+    ))];
+    parts.push(`${key}[].kind = ${kinds.join(' | ')}`);
+  }
+  return parts.length > 0 ? parts.join(' · ') : '(no facts or warnings arrays in the reply)';
+}
+
+/**
+ * S-09's last number: **the structure step priced over a document, not a probe prompt.** Every
+ * figure before this one came from `PROBE_PROMPT` or a one-line page count, which says nothing
+ * about what the app's second request costs on the transcript the first request produced.
+ *
+ * The body is exactly what `readCompletion` builds for `purpose: 'analyse'` — `STRUCTURE_SYSTEM_PROMPT`
+ * plus `structureUserPrompt(transcript)`, **no `max_tokens`** (ADR-23 budgets a *page*; the text path
+ * sends none, so it takes the service default) and **no `stream`** (ADR-22). If either of those two
+ * absences were wrong for a document-length request, this is where it shows.
+ *
+ * The reply is also put through `analysisSchema` and `groundFacts`, which is the app's own check
+ * rather than a new one: how many of the facts the model returned quote the transcript back. That is
+ * **consistency with our transcript, not correctness against the page** (AGENTS.md §4 rule 8) — a
+ * misread number that is quoted faithfully still grounds, so the line this prints is a lead for S-03,
+ * not S-03's result.
+ */
+async function stageDocument(near: NearClient, model: string, attested: Attested): Promise<void> {
+  console.log('== document — S-09: the structure step priced over transcripts of the length the app sends');
+  if (attested.keyOrAddress === undefined) {
+    console.log('  SKIPPED: no attested key from the attestation stage, so the receipt half of this');
+    console.log('  exchange could not be checked. Rule 6 — no pass by absence.');
+    process.exitCode = 1;
+    return;
+  }
+
+  const price = await priceOf(near, model);
+  if (price.status === 'priced') console.log(`  priced from GET /v1/model/{model_name}: ${price.perIn}/${price.perOut} nano-USD per in/out token`);
+  else console.log(`  price: ${price.status === 'no_price' ? 'the catalog row carried no per-token price, so no figure is claimed' : 'GET /v1/model/{model_name} did not parse as a catalog row'}`);
+
+  const runs = [
+    { label: 'one page', transcript: syntheticTranscript(1) },
+    { label: 'five pages', transcript: syntheticTranscript(5) },
+  ];
+  let fivePage: { nano: number; ms: number } | undefined;
+
+  for (const run of runs) {
+    const body = {
+      model,
+      messages: [
+        { role: 'system', content: STRUCTURE_SYSTEM_PROMPT },
+        { role: 'user', content: structureUserPrompt(run.transcript) },
+      ],
+    };
+    console.log(`  ${run.label} (${run.transcript.length} chars of transcript):`);
+
+    let response;
+    try {
+      response = await timed(() => near.post('chat/completions', body, { purpose: 'analyse' }));
+    } catch (error) {
+      console.log(`    rejected — ${error instanceof NearError ? `${error.name} code ${error.error.code} at HTTP ${error.status ?? '?'}` : 'a non-NearError escaped'}`);
+      process.exitCode = 1;
+      continue;
+    }
+
+    const rawJson = response.value.json as { id?: unknown; model?: unknown; usage?: unknown; choices?: { message?: Record<string, unknown>; finish_reason?: unknown }[] };
+    const usageParse = usageSchema.safeParse(rawJson.usage ?? {});
+    const usage = usageParse.success ? usageParse.data : {};
+    console.log(`    HTTP ${response.value.status} in ${response.ms} ms · body ${bytes(response.value.sentBody ?? '')} bytes · reply ${bytes(response.value.rawText)} bytes`);
+    console.log(`    usage: prompt ${usage.prompt_tokens ?? '(absent)'} · completion ${usage.completion_tokens ?? '(absent)'} of which reasoning ${usage.completion_tokens_details?.reasoning_tokens ?? '(absent)'}`);
+    if (price.status === 'priced') console.log(costLine(`the ${run.label} structure step`, usage, price));
+    if (price.status === 'priced' && run.label === 'five pages') {
+      fivePage = { nano: (usage.prompt_tokens ?? 0) * price.perIn + (usage.completion_tokens ?? 0) * price.perOut, ms: response.ms };
+    }
+
+    const envelope = completionEnvelopeSchema.extend({ usage: usageSchema.optional() }).safeParse(response.value.json);
+    if (!envelope.success) {
+      console.log(`    FAIL  completionEnvelopeSchema rejected it — in the app this is \`invalid_model_output\`: ${envelope.error.issues.slice(0, 4).map((i) => `${i.path.join('.')}: ${i.message}`).join(' · ')}`);
+      process.exitCode = 1;
+      continue;
+    }
+    const text = contentOf(envelope.data);
+    const finishReason = rawJson.choices?.[0]?.finish_reason ?? '(absent)';
+    console.log(`    finish_reason: ${String(finishReason)} · content ${text.length} chars (never printed)`);
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = undefined;
+    }
+    const contract = analysisSchema.safeParse(parsed);
+    if (!contract.success) {
+      console.log(`    analysisSchema REJECTED — ${contract.error.issues.slice(0, 6).map((i) => `${i.path.join('.')}: ${i.message}`).join(' · ')}. In the app that is one repair retry and then the transcript-only screen.`);
+      console.log(`    the "kind" values it used instead: ${kindsUsed(parsed)}`);
+      if (parsed === undefined) {
+        // *Why* it is not JSON, in shape only: one character and one boolean. The app parses with a
+        // plain `JSON.parse(contentOf(...))`, so a code fence or a lead-in sentence is a failure here
+        // exactly as it is there — and "not JSON" without the reason is not an actionable finding.
+        const head = text.trimStart().slice(0, 1);
+        console.log(`    why: ${text.length === 0 ? 'the message content was empty' : `content begins with "${head}" and ${text.includes('```') ? 'carries a ``` fence' : 'carries no fence'} — the app's plain JSON.parse is what rejected it`}`);
+      }
+      process.exitCode = 1;
+    } else {
+      const out = contract.data;
+      const facts = groundFacts(run.transcript, out.facts);
+      const actions = groundFacts(run.transcript, out.actions);
+      console.log(`    analysisSchema ACCEPTED · docType ${out.docType} (this document is a bill, so ${out.docType === 'bill' ? 'match' : 'MISS'}) · summary ${out.summary.length} chars · facts ${facts.filter((f) => f.quoteFound).length}/${facts.length} quote the transcript back · actions ${actions.filter((a) => a.quoteFound).length}/${actions.length} · warnings ${out.warnings.length}`);
+      console.log('    grounding here means "consistent with our transcript", never "correct against the page" (rule 8). Counting misreads is S-03, against an expected-facts file.');
+    }
+
+    const servedModel = envelope.data.model ?? model;
+    const { value: record, ms: sigMs } = await timed(() => fetchSignature(near, envelope.data.id, { model: servedModel, algo: 'ed25519' }));
+    console.log(`    signature in ${sigMs} ms · kind ${record.signature_kind ?? '(absent)'} · signing_algo ${record.signing_algo}`);
+    for (const candidate of new Set([servedModel, model])) {
+      checkAgainstAttestedKeys(record, { requestBytes: response.value.sentBody ?? '', responseBytes: response.value.rawText, modelId: candidate }, attested);
+    }
+  }
+
+  if (price.status === 'priced' && fivePage !== undefined) {
+    const transcriptionNano = MEASURED_PAGE_NANO_USD * 5;
+    const totalNano = transcriptionNano + fivePage.nano;
+    const totalMs = MEASURED_PAGE_MS * 5 + fivePage.ms;
+    console.log(`  a five-page document, put together: 5 × ${MEASURED_PAGE_NANO_USD} nano of transcription (§4, 2026-11-04) + ${fivePage.nano} of this structure step = ${totalNano} nano-USD = $${(totalNano / 1e9).toFixed(6)}`);
+    console.log(`  and ${Math.round(totalMs / 1000)} s of model time — ${Math.round((MEASURED_PAGE_MS * 5) / 1000)} s of it transcription. That is what §12's progress cadence and any per-page timeout have to be sized for, not the 1.83 s a one-line probe took.`);
+  } else {
+    console.log('  per document not stated: this run has no price, or the five-page exchange did not answer. A number carried from an earlier run would be a written figure, not a measured one.');
+  }
+}
+
 // ------------------------------------------------------------------------------------ runner
 
 async function main(): Promise<void> {
@@ -789,10 +967,11 @@ async function main(): Promise<void> {
   for (const stage of stages) {
     if (stage === 'catalog') await stageCatalog();
     if (stage === 'attestation') attested = await stageAttestation(near, model);
-    if (stage === 'complete' || stage === 'image') {
+    if (stage === 'complete' || stage === 'image' || stage === 'document') {
       if (attested.keyOrAddress === undefined) attested = await stageAttestation(near, model);
       if (stage === 'complete') await stageComplete(near, model, attested);
-      else await stageImage(near, model, attested);
+      else if (stage === 'image') await stageImage(near, model, attested);
+      else await stageDocument(near, model, attested);
     }
   }
   console.log(`done · exit ${process.exitCode ?? 0}`);
