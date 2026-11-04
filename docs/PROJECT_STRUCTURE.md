@@ -62,6 +62,7 @@ sightline/
 │  ├─ app/
 │  │  ├─ layout.tsx               # <html lang>, skip link, landmarks, announcer + session store (over the nav too, so Forget reaches every route), fixtures banner
 │  │  ├─ _flow/useDocumentRun.ts  # Composition root for one run: store, announcer, router, transport, pipeline. `_` = not a route. Its **first** statement is the paste length guard (`pasteLengthProblem`, C-12/**ADR-29**) — before the mode check, before a controller, before a body exists
+│  │  ├─ _flow/usePhotoRun.ts   # Composition root for a photographed document (**C-02**, §5.1): `readPages` → the pre-analysis notices (holes, C-05 labels, unplaceable spans, capture issues) spoken as ONE announcement → `usable` → `runPipeline` with the joined transcript. Same door-refusal, same `liveWrites`, same "a forgotten run writes nothing"
 │  │  ├─ _flow/useAskAboutDocument.ts # Same shape for one question (P-06); reads the mode off the session, not the build
 │  │  ├─ _flow/useForget.ts       # Same shape for Forget (P-10): store + announcer + the read-aloud stop, and the sentence built from what was counted
 │  │  ├─ _flow/live_writes.ts     # `liveWrites(signal, dispatch)` (P-12): once a run is aborted its own callbacks write nothing into the session Forget emptied
@@ -81,7 +82,7 @@ sightline/
 │  │     └─ relay/[...path]/route.ts  # Mode B: fixed host, exact-path allowlist, size cap
 │  │
 │  ├─ features/
-│  │  ├─ capture/                 # CaptureView, PageList (remove, retake last), useCapture, prompts.ts + schemas.ts (C-03's own instruction and response contract, moved out of analysis the way P-06 moved qa's), transcribe.ts (C-03: one page, one `readCompletion` call, `max_tokens: 8192`), assemble.ts (C-11/**ADR-27**: joins pages, remaps `uncertain` spans onto their page's region, marks a page that yielded nothing), page-labels.ts (C-05/**ADR-28**: reads the page numbers the model reported and warns where they disagree with each other or with how many photographs were given — never reorders, never guesses a missing label)
+│  │  ├─ capture/                 # CaptureView, PageList (remove, retake last), useCapture, prompts.ts + schemas.ts (C-03's own instruction and response contract, moved out of analysis the way P-06 moved qa's), transcribe.ts (C-03: one page, one `readCompletion` call, `max_tokens: 8192`), assemble.ts (C-11/**ADR-27**: joins pages, remaps `uncertain` spans onto their page's region, marks a page that yielded nothing), page-labels.ts (C-05/**ADR-28**: reads the page numbers the model reported and warns where they disagree with each other or with how many photographs were given — never reorders, never guesses a missing label), read_pages.ts (**C-02**: the page loop — one page at a time in capture order, each announced before its request exists, a refusal halting before the next page is sent, the signal checked between pages, and every outcome handed to `assembleDocument`)
 │  │  ├─ paste/PasteView.tsx      # Text input, demo document buttons, error summary focus. The hint states the length cap in the screen's own words and comes from `MAX_PASTE_CHARS`, so the number on the page is the number in the guard (C-12)
 │  │  ├─ analysis/                # pipeline.ts, prompts.ts, schemas.ts, grounding.ts, ResultsView
 │  │  ├─ qa/                      # ask.ts (grounded Q&A), prompts.ts, schemas.ts, AskPanel.tsx
@@ -104,7 +105,7 @@ sightline/
 │  │  ├─ a11y/announcer.tsx       # Single aria-live announcer + interval progress
 │  │  ├─ session/                 # reducer.ts (state shape, page cap, and the paste cap `MAX_PASTE_CHARS`/`pasteLengthProblem` — C-12, ADR-29), store.tsx (provider + in-flight run + object-URL registry + forget()), forget.ts (P-10: the pure clear, the `sightline.` key rule)
 │  │  ├─ fixtures/                # replay.ts (content-matched Mode F client, `transportFor`), cases.ts (authored synthetic demo corpus: four letters, each carrying either an `analysis` or one `unreadableReply` — the prose case is what makes the transcript-only screen reachable with no key, P-11)
-│  │  ├─ transcript/holes.ts      # P-17, ADR-27: the words for a page that yielded no text (`unreadablePageMarker`) and `groundableText()`, the same-length mask grounding searches. Shared because both the writer (`features/capture`) and the reader (`features/analysis`, `features/qa`) need one wording
+│  │  ├─ transcript/holes.ts      # P-17, ADR-27: the words for a page that yielded no text (`unreadablePageMarker`), `missingPagesAnnouncement()` — the same page numbers spoken, for the run that has a hole in it (**C-02**) — and `groundableText()`, the same-length mask grounding searches. Shared because both the writer (`features/capture`) and the reader (`features/analysis`, `features/qa`) need one wording
 │  │  ├─ server/                  # Server-only: env.ts, allowlist.ts, rateLimit.ts (all `import 'server-only'`)
 │  │  ├─ config.ts                # Env validation (zod); mode selection
 │  │  ├─ settings.ts              # `sightline.settings` in localStorage, and the only code that reads or writes it: validated read of `speechRate`/`highContrast` (both defaulted), the re-validating read-modify-write, `applyHighContrast`, `describeRate`, and the external store the controls subscribe to (P-09 read, A-15 both). Non-sensitive only — never a key, never document data
@@ -116,7 +117,7 @@ sightline/
 │  └─ types/index.ts
 │
 └─ tests/
-   ├─ unit/                       # config, server-env, session reducer, errors, nonce, grounding (incl. P-17's marker holes), schemas, assemble (C-11), page-labels (C-05), near-client, pipeline, fixtures, qa, roadmap-check, forget (P-10), live-writes (P-12), safety-notices (P-07/P-11), speech (P-09), settings-writer (A-15), model-allowlist (F-04, payloads copied from live JSON); image prep still to write
+   ├─ unit/                       # config, server-env, session reducer, errors, nonce, grounding (incl. P-17's marker holes), schemas, assemble (C-11), read-pages (C-02), page-labels (C-05), near-client, pipeline, fixtures, qa, roadmap-check, forget (P-10), live-writes (P-12), safety-notices (P-07/P-11), speech (P-09), settings-writer (A-15), model-allowlist (F-04, payloads copied from live JSON); image prep still to write
    ├─ verification/               # attestation.test.ts: stubs refuse + strong claim unreachable; 9 `it.todo` rows name what T-01/T-02/T-05 must still prove
    ├─ relay/                      # relay.test.ts: both API routes answer 501, name their item, forward nothing, leak no key. A-09 adds rejected path/oversize/rate limit
    ├─ stubs/server-only.ts        # no-op stand-in so unit tests can import server modules (see vitest.config.mts)

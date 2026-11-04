@@ -76,7 +76,10 @@ export function useDocumentRun(config: PublicConfig) {
 
       try {
         await runPipeline({
-          session: { ...session, input: 'text', transcript },
+          // C-02: the pipeline takes the transcript and the mode, not the session. The paste-shaped
+          // transcript above is the one this run built, so it is handed over rather than re-read.
+          mode: session.mode,
+          transcript,
           // Named in the receipt. It is not a TEE model and does not claim to be one.
           model: FIXTURE_MODEL,
           transport: createFixtureClient(),

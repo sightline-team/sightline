@@ -149,6 +149,37 @@ Notes:
 - If `/api/verify` is unreachable: fail closed.
 - If the attestation changes between check and use (model redeploy): re-fetch once, then fail with a clear message.
 
+**As built (C-02)** — the sequence above now has code in it, in two pieces:
+
+- `features/capture/read_pages.ts` (`readPages`) is the page loop: **one page at a time in capture
+  order**, each announced before its request exists (a page is ≈26 s, so this is §12's progress
+  cadence), and every outcome handed to C-11's `assembleDocument` when the last page has answered. It is
+  parallel-safe by rejection rather than by accident — five simultaneous requests would interleave the
+  `TrustRecord`s, hit the relay's rate limit (F-05) and leave several bodies in flight for Forget to
+  catch. Pages run in series for those three reasons, and the measured cost is the headline: **five
+  photographs are 141.6 s of page time and the reading adds 118.6 s (§4), so a five-page document is a
+  run of about four and a half minutes.**
+  A `truncated`/`unreadable` page does **not** stop the loop (ADR-27's hole in place); a `refused` page
+  halts it before the next request is built, and `deps.signal` is checked *between* pages, before the
+  next body exists, so a Forget after page 2 does not send pages 3–5.
+- `app/_flow/usePhotoRun.ts` is the composition root, the sibling of `useDocumentRun`: the same
+  door-refusal for live modes (B-12), the same `liveWrites` filtering (P-12), the same rule that a run
+  which was forgotten writes nothing. Its order is ESSENTIALS §Pipeline's: page loop → **C-05's
+  `checkPageLabels`** and C-11's `unplaceableSpans` count → the capture-issue announcement →
+  `usable` → the structure step. The cheap warnings come before the expensive call because the numbers
+  are §4's measured means — **$0.00087 a page** and **$0.0044 for the reading** (the 6,007-character
+  five-page transcript answered in 118.6 s): a duplicate photograph is worth saying out loud *before*
+  two minutes and a second bill.
+- `features/analysis/pipeline.ts` no longer derives the transcript from the session (**C-02**): it takes
+  `transcript` and `mode` as deps, because there are now two honest answers to "what is the transcript" —
+  what a person pasted, and what the joiner assembled from photographs — and the caller is the only place
+  that knows which one it has. `PipelineDeps.session` is gone with the second copy of that decision.
+- What this still cannot do: **no mode completes a photographed run today.** Mode F refuses an image
+  body (`no_fixture_for_input`, F-09 — S-11 records the page fixtures), and live modes refuse at the door
+  (B-12). So the loop is unit-tested with injected collaborators (`tests/unit/read-pages.test.ts`, 8
+  tests, two of its claims mutation-checked) and the branches after it in the hook are not reachable from
+  a browser until S-11 lands.
+
 ### 5.2 Analyse (pasted text)
 Skip capture, transcription and image prep. Run attestation check, then the structure step. This path is also the **fallback if no TEE vision model is usable**.
 
@@ -245,7 +276,7 @@ Two things that are **not** in the sentence above but are in the build: the word
 
 | Component | Responsibility |
 |---|---|
-| `capture` | File input, page list (remove, retake last) |
+| `capture` | File input, page list (remove, retake last). `transcribe.ts` = one page, one request (C-03); `assemble.ts` = the join with remapped `uncertain` spans and ADR-27's hole (C-11); `page-labels.ts` = C-05's label check; `read_pages.ts` = **C-02**'s page loop, the first caller of both and the only piece here that decides anything about order |
 | `image/prepare` | Orientation-aware resize, JPEG re-encode (which is what removes EXIF/GPS), quality ladder and per-page byte budget; decode/encode injected so the logic is unit-testable (C-01) |
 | `near-ai/client` | Typed fetch wrapper; base URL + header provider; abort; one retry on transient errors. Returns the **exact bytes sent and received** alongside the parsed JSON, because ADR-19's hashes are of the wire form, not of a re-serialisation |
 | `near-ai/models` | Candidate list + **per-model metadata call** (ADR-18: the TEE flags are not on `/v1/models`); TEE and modality filtering; exact-id allowlist |
@@ -261,7 +292,7 @@ Two things that are **not** in the sentence above but are in the build: the word
 | `a11y` | Single announcer; focus helper; interval progress announcements; optional haptic and wake-lock |
 | `session/store` | The one `SessionProvider`: the reducer behind it, the registry of in-flight `AbortController`s and object URLs, and `forget()` — which supplies `lib/session/forget.ts`'s injected collaborators from the browser and dispatches `forgotten` (**P-10**) |
 | `session/forget` | The pure half of **Forget**: `forgetSession(targets)` aborts → revokes → clears, in that order, attempts every target even when one throws, and returns a `ForgetReport` of what actually happened. Plus `sessionKeysOwnedBy`, which is the `sightline.` prefix rule that makes a stored value forgettable (**P-10**) |
-| `app/_flow` | The composition roots — the only place two features may meet (AGENTS.md §7). `useDocumentRun`: store + announcer + router + transport + pipeline for one run; `useAskAboutDocument`: the same for a question; `useForget`: P-10's press; `ReadAloud` + `spoken_answer.ts`: the text the voice reads (P-09); `SettingsControls` + `HighContrastTheme` + `useStoredSettings`: A-15's two controls; `live_writes.ts`: the dispatch a cancelled run writes through (P-12); `refused_steps.ts`: what a live mode says it did not do. `_` is Next's "not a route" prefix. Live modes refuse here until T-01/T-02 exist |
+| `app/_flow` | The composition roots — the only place two features may meet (AGENTS.md §7). `useDocumentRun`: store + announcer + router + transport + pipeline for one pasted run; `usePhotoRun`: the same for a photographed one, with §5.1's order (**C-02**); `useAskAboutDocument`: the same for a question; `useForget`: P-10's press; `ReadAloud` + `spoken_answer.ts`: the text the voice reads (P-09); `SettingsControls` + `HighContrastTheme` + `useStoredSettings`: A-15's two controls; `live_writes.ts`: the dispatch a cancelled run writes through (P-12); `refused_steps.ts`: what a live mode says it did not do. `_` is Next's "not a route" prefix. Live modes refuse here until T-01/T-02 exist |
 | `fixtures` | Mode F replay. `cases.ts` holds the authored synthetic corpus — `FixtureCase{name,title,text,qa}` plus exactly one reply per case, either `analysis` or `unreadableReply` (the prose case is how **P-11** reaches the transcript-only screen with no key) — and `replay.ts` answers a request **only** when the document in it is one of those, byte for byte; every attestation and signature call is refused, because there is no enclave to describe. `fixtures/{responses,attestation}/` stay empty until S-11 records real payloads |
 
 ## 7. Data models
@@ -701,6 +732,8 @@ plain-language message and one `retryable` decision, checked by `tests/unit/erro
 | Many `[illegible]` spans | Surface the count; recommend retake |
 | `finish_reason: length` | Image path: **the page becomes a hole in the reading** (`[page n could not be read]` at its own offset, `missingPages` carries the code) — **ADR-27**. A page *is* the unit the app sends, so there is nothing left to split at this layer; splitting a too-dense photograph into two is C-04's retake decision, not a joiner's. Text path: `output_truncated`, then transcript-only — a pasted document is one block with nothing to split (ADR-24) |
 | Model refusal / safety response | Show it plainly; offer paste-text path |
+| A page refused mid-document | **Halt the loop before the next page is sent** (`read_pages.ts`, C-02): the service declined *this* document, so the remaining photographs have nothing to join into. `PageOutcome` cannot hold a refusal, which is what makes the second copy of this decision impossible downstream |
+| Every page failed (`usable: false`) | Stop with `illegible_content` and **no structure call** (C-02): the transcript would be nothing but Sightline's own hole markers, and a model billed to read that would answer with a summary of our sentence. A *partial* failure is not this row — that is ADR-27's hole, and the run carries on |
 | Invalid JSON | One repair retry, then show transcript only. A ``` fence is *this* row, not a parse to fix: the app never edits the answer it was signed for (ADR-19, ADR-24). A `null` on a field the prompt marked optional is **not** this row — it is the omission, read as one (ADR-25) |
 | Network loss or app backgrounded | Abort cleanly, keep session in memory, allow retry |
 | Rate limit (Mode B) | Plain message; suggest Mode A or try later |

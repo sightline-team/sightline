@@ -33,11 +33,12 @@
  * believe it) need it, and AGENTS.md §7 keeps features from importing each other.
  */
 
+import type { MissingPage } from '@/types';
+
 /** The words shown where a photographed page contributed nothing. `page` is 0-based, like every other page index in the app. */
 export function unreadablePageMarker(page: number): string {
   return `[page ${page + 1} could not be read]`;
 }
-
 /** The marker carries a page number, so what grounding must find is this shape rather than one string. */
 const MARKER_PATTERN = /\[page \d+ could not be read\]/g;
 
@@ -47,4 +48,32 @@ export const GROUNDING_MASK = '\uFFFC';
 /** The text grounding is allowed to match against: the reading, with Sightline's own sentences masked out. */
 export function groundableText(text: string): string {
   return text.replace(MARKER_PATTERN, (marker) => GROUNDING_MASK.repeat(marker.length));
+}
+
+/**
+ * What the run says out loud when the document it joined has holes in it (item **C-02**).
+ *
+ * ADR-27 put the marker in the transcript so the *structure step* would see the gap; this is the other
+ * half of that decision, because a person who cannot see the text never sees the bracket either. Saying
+ * nothing would let a two-of-five-page reading arrive as though it described five photographs.
+ *
+ * Three things the sentence is held to:
+ *  - it names **capture positions**, the same numbers `unreadablePageMarker()` prints and the numbers
+ *    `PageList` puts beside each photograph — never a number read off the paper (**ADR-28**: the two
+ *    disagree more often than they agree, and a hole's own label went missing with its text);
+ *  - it claims nothing about the *document* being incomplete ("Sightline read the others" is about the
+ *    photographs in hand, which is the only set this app has evidence for);
+ *  - it says the hole is **marked rather than filled**, which is §4 rule 10 stated as what happened
+ *    rather than as a promise.
+ *
+ * At most three are named and the rest are counted, the same shape `page-labels.ts` gives its summary:
+ * a list of five is not something a listener can hold. **C-06** owns this sentence's final plain-language
+ * review.
+ */
+export function missingPagesAnnouncement(missing: readonly MissingPage[]): string {
+  if (missing.length === 0) return '';
+  const named = missing.slice(0, 3).map((page) => `Page ${page.page + 1}`);
+  const extra = missing.length - named.length;
+  const label = extra > 0 ? `${named.join(', ')} and ${extra} more page${extra === 1 ? '' : 's'}` : named.join(' and ');
+  return `${label} could not be read, so the text has those places marked instead of guessed. Sightline read the others.`;
 }

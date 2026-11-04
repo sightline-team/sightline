@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { assembleDocument, PAGE_JOINER, type PageOutcome } from '@/features/capture/assemble';
-import { unreadablePageMarker } from '@/lib/transcript/holes';
+import { missingPagesAnnouncement, unreadablePageMarker } from '@/lib/transcript/holes';
 import { appError } from '@/lib/errors';
 import type { TranscribeOutput } from '@/features/capture/schemas';
 import type { Transcript } from '@/types';
@@ -167,5 +167,47 @@ describe('assembleDocument — a page that yielded nothing (ADR-27)', () => {
     expect(usable).toBe(false);
     expect(transcript.text).toBe('');
     expect(transcript.pageOffsets).toEqual([]);
+  });
+});
+
+/**
+ * What the run says out loud about a hole (item **C-02**). The input is a real `assembleDocument`
+ * result rather than a hand-built `missingPages` list, so the numbers the person hears are the ones the
+ * joiner actually records — and they are the numbers in the marker the transcript carries.
+ */
+describe('missingPagesAnnouncement — the hole is spoken as well as marked (ADR-27, C-02)', () => {
+  it('names the page the marker names, in the words the transcript already shows', () => {
+    const { transcript } = assemble(ok(page('page one')), truncated, ok(page('page three')));
+    const announcement = missingPagesAnnouncement(transcript.missingPages ?? []);
+
+    expect(announcement).toBe(
+      'Page 2 could not be read, so the text has those places marked instead of guessed. Sightline read the others.',
+    );
+    expect(transcript.text).toContain('[page 2 could not be read]');
+  });
+
+  it('says nothing when there is nothing missing, which is the paste shape too', () => {
+    const { transcript } = assemble(ok(page('a')), ok(page('b')));
+    expect(missingPagesAnnouncement(transcript.missingPages ?? [])).toBe('');
+    expect(missingPagesAnnouncement([])).toBe('');
+  });
+
+  it('joins two holes with “and”, keeping both page numbers', () => {
+    const { transcript } = assemble(ok(page('a')), truncated, ok(page('c')), unreadable);
+    expect(missingPagesAnnouncement(transcript.missingPages ?? [])).toContain('Page 2 and Page 4 could not be read');
+  });
+
+  it('names three and counts the rest, because a list is not something a listener can hold', () => {
+    const { transcript } = assemble(truncated, truncated, truncated, ok(page('d')), truncated);
+    expect(missingPagesAnnouncement(transcript.missingPages ?? [])).toContain('Page 1, Page 2, Page 3 and 1 more page could not be read');
+  });
+
+  it('reports on the photographs it was given and never on the document they came from', () => {
+    // ADR-28's direction, applied to this sentence: five photographs are the only set with evidence
+    // behind them, so "your document is incomplete" is a claim this run cannot make.
+    const { transcript } = assemble(truncated, ok(page('b')));
+    const announcement = missingPagesAnnouncement(transcript.missingPages ?? []);
+    expect(announcement).not.toMatch(/document/i);
+    expect(announcement).not.toMatch(/missing page/i);
   });
 });

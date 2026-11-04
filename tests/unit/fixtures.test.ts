@@ -40,15 +40,18 @@ const VERIFIER_MUST_NOT_RUN: SignatureVerifier = () => {
   throw new Error('Mode F must not verify a signature: fixture data is not signed by anything.');
 };
 
+function fixtureTranscript(text: string): Transcript {
+  return { text, pageOffsets: [0], uncertain: [], captureIssues: [] };
+}
+
 function fixtureSession(text: string): Session {
-  const transcript: Transcript = { text, pageOffsets: [0], uncertain: [], captureIssues: [] };
   return {
     id: 'sess-fixture',
     createdAt: 1_760_000_000_000,
     mode: 'fixtures',
     input: 'text',
     pages: [],
-    transcript,
+    transcript: fixtureTranscript(text),
     qa: [],
     trust: [],
     status: 'idle',
@@ -62,7 +65,8 @@ function runFixtureFlow(text: string) {
   const degradations: AppError[] = [];
   return {
     promise: runPipeline({
-      session: fixtureSession(text),
+      mode: 'fixtures',
+      transcript: fixtureTranscript(text),
       model: 'fixtures/demo-model',
       transport: createFixtureClient(),
       gate: GATE_MUST_NOT_RUN,
@@ -332,7 +336,8 @@ describe('the unreadable demo reply degrades a real fixture run (P-11)', () => {
     // transcript-only screen would be an empty screen wearing the name.
     const seen: Transcript[] = [];
     await runPipeline({
-      session: fixtureSession(ferney.text),
+      mode: 'fixtures',
+      transcript: fixtureTranscript(ferney.text),
       model: FIXTURE_MODEL,
       transport: createFixtureClient(),
       gate: GATE_MUST_NOT_RUN,

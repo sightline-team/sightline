@@ -1,6 +1,5 @@
 import type { NearClient } from '@/lib/near-ai/client';
 import { appError } from '@/lib/errors';
-import { notBuilt } from '@/lib/not_built';
 import { buildTrustRecord } from '@/features/trust/record';
 import { readCompletion } from '@/lib/near-ai/completion';
 import { STEP_PLANS } from '@/lib/near-ai/models';
@@ -8,7 +7,7 @@ import { RunHalt, type AttestationGate, type SignatureVerifier } from '@/lib/nea
 import { STRUCTURE_SYSTEM_PROMPT, structureUserPrompt } from '@/features/analysis/prompts';
 import { analysisSchema } from '@/features/analysis/schemas';
 import { groundFacts } from '@/features/analysis/grounding';
-import type { Analysis, AppError, Session, Transcript, TrustRecord } from '@/types';
+import type { Analysis, AppError, Mode, Transcript, TrustRecord } from '@/types';
 
 /**
  * The two-step pipeline (item **P-03**, flow `docs/ARCHITECTURE.md` §5).
@@ -18,9 +17,12 @@ import type { Analysis, AppError, Session, Transcript, TrustRecord } from '@/typ
  * the quotes → ready. Nothing document-derived is sent before the required checks pass
  * (AGENTS.md §4 rule 6), and every step appends a `TrustRecord`.
  *
- * This file implements the **text path** (§5.2): the transcript is what the user pasted,
- * so capture, image prep and transcription are skipped and the structure step is the only
- * call. The image path is C-05 and refuses here rather than pretending.
+ * This file is the **structure step** and only that — the fifth call in the order above, the one
+ * that turns a transcript into a summary. It takes the transcript from its caller (**C-02**): on the
+ * text path (§5.2) that is what the person pasted, on the photo path (§5.1) it is the document
+ * `features/capture/assemble.ts` joined from the pages. Which of the two it receives is not decided
+ * here — capture, image prep and the per-page transcription belong to the caller (`app/_flow/`), and
+ * they have all run before this function is reached.
  *
  * The call itself — gate, body, signature, receipt, one repair retry — is `readCompletion`
  * (**P-08**), shared with question answering so the two runs cannot drift apart on the order.
@@ -32,12 +34,29 @@ import type { Analysis, AppError, Session, Transcript, TrustRecord } from '@/typ
  *
  * Still deliberately *not* here: the attestation and signature checks themselves (**T-01/T-02/
  * T-03**), injected as `gate` and `verifySignature` so the ordering is testable without a live
- * enclave (B-05), page-splitting a truncated *photo* run (**C-03/C-05** — there is one page on
- * this path and nothing to split), and `numbersRechecked` (**T-11**, conditional on C-10).
+ * enclave (B-05), the page loop and the join (**C-03/C-05/C-11** — `features/capture/`), and
+ * `numbersRechecked` (**T-11**, conditional on C-10).
  */
 
 export interface PipelineDeps {
-  session: Session;
+  /**
+   * Not the whole session: the only thing the structure step asks the session for is this, and a
+   * session also carries a `transcript`, which would be a second, possibly stale answer to the
+   * question the field below already answers (**C-02**).
+   */
+  mode: Mode;
+  /**
+   * The exact words this reading is about to make a summary of.
+   *
+   * Passed in rather than read off the session (**C-02**), because there are now two honest answers to
+   * "what is the transcript": the text a person pasted, and the document `features/capture/assemble.ts`
+   * joined from several photographs (**C-11**, **ADR-27**) — offsets, `uncertain` spans and hole markers
+   * included. Both belong to the *caller*, which is the only place that knows which one it has, and the
+   * one object passed here is the object the UI shows, the object the quotes are grounded against and the
+   * object inside the hashed request body. A pipeline that re-derived it would be a second copy of that
+   * decision, and the second copy is what drifts.
+   */
+  transcript: Transcript;
   /**
    * The allowlisted, TEE-hosted model chosen by F-04/C-02. Never a user-typed string.
    *
@@ -59,33 +78,18 @@ export interface PipelineDeps {
 }
 
 export async function runPipeline(deps: PipelineDeps): Promise<void> {
-  if (deps.session.input !== 'text') {
-    // The photo path needs image prep (C-01), one request per page (C-03/C-05) and a vision
-    // model that has not been shown to exist (S-02). Faking it here would put a transcript on
-    // the screen that nobody transcribed.
-    return notBuilt('C-05', 'The image transcription path') as never;
-  }
-
-  const pasted = deps.session.transcript;
-  if (pasted === undefined || pasted.text.trim().length === 0) {
-    // P-05 must not allow an empty submit; this is the fail-closed backstop, not the message.
+  const transcript = deps.transcript;
+  if (transcript.text.trim().length === 0) {
+    // P-05 must not allow an empty submit, and `assembleDocument` says `usable: false` before a photo
+    // run reaches here; this is the fail-closed backstop, not the message.
     throw new RunHalt(appError('unknown'));
   }
 
-  // Normalised once, here: the transcript the UI shows, the one the quotes are grounded
-  // against, and the one that ends up inside the hashed request body must be one object.
-  const transcript: Transcript = {
-    text: pasted.text,
-    pageOffsets: [0],
-    uncertain: pasted.uncertain,
-    captureIssues: pasted.captureIssues,
-    ...(pasted.pageNumbersSeen === undefined ? {} : { pageNumbersSeen: pasted.pageNumbersSeen }),
-  };
   deps.onTranscript(transcript);
 
   const reading = await readCompletion({
     purpose: 'analyse',
-    mode: deps.session.mode,
+    mode: deps.mode,
     model: deps.model,
     transport: deps.transport,
     gate: deps.gate,

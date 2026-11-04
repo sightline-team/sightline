@@ -10,12 +10,12 @@ import {
 import { NearError, type NearClient, type NearResponse } from '@/lib/near-ai/client';
 import { REPAIR_NOTE } from '@/lib/near-ai/completion';
 import { STEP_PLANS } from '@/lib/near-ai/models';
-import { NotBuilt } from '@/lib/not_built';
+import { assembleDocument, type PageOutcome } from '@/features/capture/assemble';
 import { appError } from '@/lib/errors';
 import { STRUCTURE_SYSTEM_PROMPT } from '@/features/analysis/prompts';
 import { analysisSchema, factKindSchema } from '@/features/analysis/schemas';
 import { claimCopy } from '@/features/trust/claims';
-import type { Analysis, AppError, CheckResult, ErrorCode, InputKind, Mode, Session, Transcript, TrustRecord } from '@/types';
+import type { Analysis, AppError, CheckResult, ErrorCode, Mode, Transcript, TrustRecord } from '@/types';
 
 /**
  * Pipeline tests (item **P-03**).
@@ -84,25 +84,23 @@ function envelopeJson(content: string, extra: EnvelopeExtras = {}): Record<strin
   return { id: 'chat-77', model: MODEL, choices: [choice] };
 }
 
-function session(mode: Mode, input: InputKind, text: string): Session {
-  const transcript: Transcript = { text, pageOffsets: [0], uncertain: [], captureIssues: [] };
-  return {
-    id: 'sess-1',
-    createdAt: 1_760_000_000_000,
-    mode,
-    input,
-    pages: [],
-    transcript,
-    qa: [],
-    trust: [],
-    status: 'idle',
-  };
+/**
+ * The transcript the paste path gives the pipeline (**C-02**): one page, so offset 0, with nothing
+ * uncertain and no capture issue reported. A photo run passes a different object — see the
+ * assembled-transcript test in the `input guards` describe below.
+ */
+function transcriptOf(text: string): Transcript {
+  return { text, pageOffsets: [0], uncertain: [], captureIssues: [] };
 }
 
 interface Options {
   mode?: Mode;
-  input?: InputKind;
   transcriptText?: string;
+  /**
+   * Replaces the whole transcript, so a test can hand the pipeline exactly what
+   * `features/capture/assemble.ts` would have produced. `transcriptText` is ignored when set.
+   */
+  transcript?: Transcript;
   gate?: GateOutcome;
   signature?: SignatureOutcome;
   content?: string;
@@ -168,7 +166,8 @@ function harness(opts: Options = {}) {
   };
 
   const deps: PipelineDeps = {
-    session: session(mode, opts.input ?? 'text', opts.transcriptText ?? DOC),
+    mode,
+    transcript: opts.transcript ?? transcriptOf(opts.transcriptText ?? DOC),
     model: MODEL,
     transport,
     gate,
@@ -685,21 +684,43 @@ describe('truncation and refusal (P-08, ARCH §13)', () => {
 });
 
 describe('input guards', () => {
-  it('refuses the photo path instead of inventing a transcript (C-05)', async () => {
-    const h = harness({ input: 'images' });
+  it('runs the structure step over a transcript assembled from several photographs (C-02)', async () => {
+    // C-11's joiner, called for real rather than re-typed: two readable pages and one hole. The point
+    // of the test is the *handover* — the object `assembleDocument` returns is the object that reaches
+    // the model, the grounding and the screen, with its remapped offsets and its marker intact.
+    const page = (text: string, uncertain: { start: number; end: number; reason: 'illegible' }[] = []): PageOutcome => ({
+      kind: 'ok',
+      model: 'tee-vision',
+      value: { text, uncertain, captureIssues: [], pageLabel: undefined },
+    });
+    const assembled = assembleDocument([
+      page('Northgate Care NHS Trust\nAmount due: £840'),
+      { kind: 'truncated', error: appError('output_truncated') },
+      page('Bank details are 60-11-22 33445566', [{ start: 17, end: 25, reason: 'illegible' }]),
+    ]);
+    const h = harness({ transcript: assembled.transcript });
 
-    let caught: unknown;
-    try {
-      await runPipeline(h.deps);
-    } catch (cause) {
-      caught = cause;
-    }
+    await expectComplete(h);
 
-    // A refusal, not a halt: a halt has a user-facing message, and "we cannot transcribe
-    // photos" is not something to put on screen in this build.
-    expect(caught).toBeInstanceOf(NotBuilt);
-    expect((caught as NotBuilt).item).toBe('C-05');
-    expect(h.log).toEqual([]);
+    // The exact object, not a copy of it: no re-derivation in the pipeline (C-02's dep comment).
+    expect(h.transcripts).toHaveLength(1);
+    expect(h.transcripts[0]).toBe(assembled.transcript);
+
+    const body = h.posts[0]?.body;
+    if (typeof body !== 'object' || body === null || !('messages' in body)) throw new Error('no messages in the request body');
+    const { messages } = body as { messages: { role: string; content: string }[] };
+    const user = messages.find((m) => m.role === 'user');
+    if (user === undefined) throw new Error('missing a user message');
+
+    // Page 2's words are absent (ADR-27: a truncated page contributes no text) and its marker is
+    // present, so the model is told in the transcript's own text that a page is missing.
+    expect(user.content).toContain('Northgate Care NHS Trust');
+    expect(user.content).toContain('60-11-22 33445566');
+    expect(user.content).toContain('[page 2 could not be read]');
+    // The page-2 span was remapped by C-11 into the joined string; the pipeline must not shift it
+    // again, and it cannot — it never reads the array. What grounds a quote is the joined text.
+    expect(assembled.transcript.uncertain[0]).toEqual({ start: 88, end: 96, reason: 'illegible' });
+    expect(assembled.transcript.text.slice(assembled.transcript.uncertain[0]!.start, assembled.transcript.uncertain[0]!.end)).toBe('60-11-22');
   });
 
   it('refuses an empty transcript before running any check', async () => {
