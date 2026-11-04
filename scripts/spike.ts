@@ -17,18 +17,25 @@
  *    came from a private fetch double in this file would say nothing about the path users take.
  *
  * Stages: `catalog` (S-02, S-07), `attestation` (T-01 against a real report), `complete`
- * (S-05, S-09 — one probe completion and its signature). `--stage=attestation` implies the gate it
- * needs. Default is all three.
+ * (S-05, S-09 — one probe completion and its signature), `image` (S-09 per page — a synthetic page run
+ * through C-01's real `prepareImage` in Chromium, then billed). `--stage=attestation` implies the gate
+ * it needs. Default is the first three; `image` is explicit because it needs a browser, and `all` runs
+ * every stage.
  */
 import { z } from 'zod';
+import { chromium, type Page } from '@playwright/test';
+import { buildSync } from 'esbuild';
+import path from 'node:path';
 import { attestationReportSchema, bindReport, newNonce } from '@/lib/near-ai/attestation';
 import { createNearClient, NearError, type NearClient } from '@/lib/near-ai/client';
 import { completionEnvelopeSchema } from '@/lib/near-ai/envelope';
+import { DEFAULT_MAX_EDGE, MAX_PAGE_BYTES, targetSize } from '@/lib/image/prepare';
 import { isAllowed, isNearUpstreamHost, modelCatalogRowSchema, toModelMetadata, type ModelCatalogRow } from '@/lib/near-ai/models';
 import { checkSignature, fetchSignature, signatureRecordSchema, type SignatureRecord } from '@/lib/near-ai/signatures';
 import type { CheckResult } from '@/types';
 
 const DIRECT_BASE_URL = 'https://cloud-api.near.ai/v1';
+const SRC = path.join(__dirname, '..', 'src');
 
 /**
  * The model the spike measures against unless `--model=` overrides it.
@@ -53,8 +60,15 @@ const PROBE_MAX_TOKENS = 640;
 
 const API_KEY = process.env.NEAR_AI_API_KEY ?? '';
 
-type Stage = 'catalog' | 'attestation' | 'complete';
+/** The default run: everything that needs only a key. */
 const STAGES: Stage[] = ['catalog', 'attestation', 'complete'];
+/**
+ * `image` is not in the default run because it drives Chromium as well as the network: the page is
+ * drawn and prepared by the real `lib/image/prepare.ts` (C-01), which needs a browser. Ask for it
+ * with `--stage=image`.
+ */
+const EXPLICIT_STAGES: Stage[] = ['image'];
+type Stage = 'catalog' | 'attestation' | 'complete' | 'image';
 
 function arg(name: string): string | undefined {
   const hit = process.argv.slice(2).find((a) => a.startsWith(`--${name}=`));
@@ -63,11 +77,13 @@ function arg(name: string): string | undefined {
 
 function selectedStages(): Stage[] {
   const requested = arg('stage');
-  if (requested === undefined || requested === 'all') return STAGES;
+  if (requested === undefined) return STAGES;
+  if (requested === 'all') return [...STAGES, ...EXPLICIT_STAGES];
+  const known = [...STAGES, ...EXPLICIT_STAGES];
   const picked = requested.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
-  const unknown = picked.filter((s) => !STAGES.includes(s as Stage));
+  const unknown = picked.filter((s) => !known.includes(s as Stage));
   if (unknown.length > 0) {
-    console.error(`Unknown stage(s): ${unknown.join(', ')}. Known: ${STAGES.join(', ')}, all.`);
+    console.error(`Unknown stage(s): ${unknown.join(', ')}. Known: ${known.join(', ')}, all.`);
     process.exit(2);
   }
   return picked as Stage[];
@@ -277,6 +293,25 @@ const usageSchema = z.object({
   completion_tokens_details: z.object({ reasoning_tokens: z.number().optional() }).nullable().optional(),
 });
 
+type Usage = z.infer<typeof usageSchema>;
+
+/** The per-token prices, read from the endpoint the app's F-04 filter uses rather than retyped here. */
+type Price = { status: 'priced'; perIn: number; perOut: number } | { status: 'no_price' } | { status: 'unparsed' };
+
+async function priceOf(near: NearClient, model: string): Promise<Price> {
+  const priced = modelCatalogRowSchema.safeParse((await near.get('model/{model_name}', { modelName: model })).json);
+  if (!priced.success) return { status: 'unparsed' };
+  const perIn = priced.data.inputCostPerToken?.amount;
+  const perOut = priced.data.outputCostPerToken?.amount;
+  if (perIn === undefined || perOut === undefined) return { status: 'no_price' };
+  return { status: 'priced', perIn, perOut };
+}
+
+function costLine(label: string, usage: Usage, price: { perIn: number; perOut: number }): string {
+  const nano = (usage.prompt_tokens ?? 0) * price.perIn + (usage.completion_tokens ?? 0) * price.perOut;
+  return `  cost of ${label}: ${nano} nano-USD = $${(nano / 1e9).toFixed(8)} at ${price.perIn}/${price.perOut} nano per in/out token`;
+}
+
 async function stageComplete(near: NearClient, model: string, attested: Attested): Promise<void> {
   console.log(`== complete — POST /v1/chat/completions then GET /v1/signature/{id}`);
   if (attested.keyOrAddress === undefined) {
@@ -312,19 +347,9 @@ async function stageComplete(near: NearClient, model: string, attested: Attested
 
   // S-09: the price comes from `GET /v1/model/{model_name}`, which also proves that endpoint returns
   // the same row shape the bulk list does — the assumption ADR-18 rests on.
-  const priced = modelCatalogRowSchema.safeParse((await near.get('model/{model_name}', { modelName: model })).json);
-  if (priced.success) {
-    const perIn = priced.data.inputCostPerToken?.amount;
-    const perOut = priced.data.outputCostPerToken?.amount;
-    if (perIn === undefined || perOut === undefined) {
-      console.log('  cost: the catalog row carried no per-token price, so none is claimed');
-    } else {
-      const nano = (usage.prompt_tokens ?? 0) * perIn + (usage.completion_tokens ?? 0) * perOut;
-      console.log(`  cost of this exchange (S-09): ${nano} nano-USD = $${(nano / 1e9).toFixed(8)} at ${perIn}/${perOut} nano per in/out token`);
-    }
-  } else {
-    console.log('  cost: GET /v1/model/{model_name} did not parse as a catalog row — a finding, not a skip');
-  }
+  const price = await priceOf(near, model);
+  if (price.status === 'priced') console.log(costLine('this exchange (S-09)', usage, price));
+  else console.log(`  cost: ${price.status === 'no_price' ? 'the catalog row carried no per-token price, so none is claimed' : 'GET /v1/model/{model_name} did not parse as a catalog row — a finding, not a skip'}`);
 
   const servedModel = e.model ?? model;
   const { value: record, ms: sigMs } = await timed(() => fetchSignature(near, e.id, { model: servedModel, algo: 'ed25519' }));
@@ -418,6 +443,238 @@ async function stageStream(near: NearClient, model: string, attested: Attested):
   checkAgainstAttestedKeys(record.data, { requestBytes: body, responseBytes: rawText, modelId: model }, attested);
 }
 
+// ------------------------------------------------------------- image (S-09 per page, C-03's request shape)
+
+/**
+ * A photographed page at the resolution a phone gives when the page fills the frame: 3024×4032 is a
+ * 4:3 sensor, portrait. This is the input C-02 gets from a camera, and it is synthetic — a canvas this
+ * file draws, not anybody's letter (AGENTS.md §5, "never do" real documents and photos).
+ */
+const PAGE_INPUT = { width: 3024, height: 4032 };
+
+/**
+ * The probe asks for a line count, not a transcription. S-09's per-page figure is the **input** half of
+ * the cost (`prompt_tokens`, of which `image_tokens` is the page) and that half does not depend on the
+ * instruction; the output half — a full transcription plus its reasoning — belongs to S-03's golden set
+ * and is deliberately not claimed here.
+ */
+const PAGE_PROMPT = 'This is a photograph of one page of printed text. Reply with the number of separate lines of text you can see, as digits only.';
+const PAGE_MAX_TOKENS = 256;
+
+/** `prepare.ts` bundled for the page — the same method `tests/e2e/image-prepare.spec.ts` uses for C-01's proof. */
+const PREPARE_BUNDLE = buildSync({
+  entryPoints: [path.join(SRC, 'lib', 'image', 'prepare.ts')],
+  bundle: true,
+  write: false,
+  format: 'iife',
+  globalName: 'SightlinePrepare',
+  platform: 'browser',
+  target: 'esnext',
+  alias: { '@': SRC },
+}).outputFiles[0]!.text;
+
+interface PageSample {
+  sourceB64: string;
+  sourceBytes: number;
+  preparedB64: string;
+  preparedBytes: number;
+  preparedWidth: number;
+  preparedHeight: number;
+  prepareMs: number;
+}
+
+interface ProbeResult {
+  usage: Usage;
+  chatId: string;
+  servedModel: string;
+  requestBytes: string;
+  responseBytes: string;
+  bodyBytes: number;
+  /** Whether the app's own envelope schema would have accepted this reply — C-03 depends on the answer. */
+  envelopeOk: boolean;
+}
+
+/** Draws the page, then prepares it with C-01's real module inside the browser. */
+async function drawPage(page: Page): Promise<PageSample> {
+  return page.evaluate(async ({ w, h }) => {
+    const toB64 = async (blob: Blob): Promise<string> => {
+      const view = new Uint8Array(await blob.arrayBuffer());
+      let bin = '';
+      for (let i = 0; i < view.length; i += 0x8000) bin += String.fromCharCode(...Array.from(view.subarray(i, i + 0x8000)));
+      return btoa(bin);
+    };
+
+    const canvas = new OffscreenCanvas(w, h);
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#9a9a9a';
+    ctx.fillRect(0, 0, w, h);
+    ctx.save();
+    ctx.translate(w / 2, h / 2);
+    ctx.rotate(-0.011); // a slightly crooked page, because that is what a hand-held shot looks like
+    ctx.fillStyle = '#f6f4ef';
+    ctx.fillRect(-w * 0.47, -h * 0.485, w * 0.94, h * 0.97);
+    ctx.fillStyle = '#1d1d1d';
+    const left = -w * 0.47 + w * 0.09;
+    const lineH = h * 0.011;
+    let y = -h * 0.485 + h * 0.06;
+    for (let i = 0; i < 34; i++) {
+      const wide = i % 7 === 6 ? 0.42 : 0.72 + ((i * 37) % 21) / 100;
+      ctx.fillRect(left, y, wide * (w * 0.78), lineH);
+      y += lineH * 2.15;
+    }
+    ctx.restore();
+    const source = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.93 });
+
+    const api = (window as unknown as {
+      SightlinePrepare: { prepareImage: (b: Blob, o?: object) => Promise<{ blob: Blob; width: number; height: number }> };
+    }).SightlinePrepare;
+    const at = performance.now();
+    const prepared = await api.prepareImage(source);
+    return {
+      sourceB64: await toB64(source),
+      sourceBytes: source.size,
+      preparedB64: await toB64(prepared.blob),
+      preparedBytes: prepared.blob.size,
+      preparedWidth: prepared.width,
+      preparedHeight: prepared.height,
+      prepareMs: Math.round(performance.now() - at),
+    };
+  }, { w: PAGE_INPUT.width, h: PAGE_INPUT.height });
+}
+
+/** One page-sized request through the production client. Nothing of the reply is printed but its length. */
+async function probePage(near: NearClient, model: string, price: Price, label: string, b64: string, jpegBytes: number): Promise<ProbeResult | undefined> {
+  const body = {
+    model,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: PAGE_PROMPT },
+          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } },
+        ],
+      },
+    ],
+    max_tokens: PAGE_MAX_TOKENS,
+    stream: false,
+  };
+
+  let request;
+  try {
+    request = await timed(() => near.post('chat/completions', body, { purpose: 'analyse' }));
+  } catch (error) {
+    console.log(`  ${label}: rejected — ${error instanceof NearError ? `${error.name} code ${error.error.code} at HTTP ${error.status ?? '?'}` : 'a non-NearError escaped'}`);
+    process.exitCode = 1;
+    return undefined;
+  }
+  const response = request.value;
+  console.log(`  ${label}: HTTP ${response.status} in ${request.ms} ms · JPEG ${jpegBytes} bytes · request body ${bytes(response.sentBody ?? '')} bytes (base64 adds a third) · reply ${bytes(response.rawText)} bytes`);
+
+  const rawJson = response.json as {
+    id?: unknown;
+    model?: unknown;
+    usage?: unknown;
+    choices?: { message?: Record<string, unknown>; finish_reason?: unknown }[];
+  };
+
+  // Usage is read off the raw JSON, not through `completionEnvelopeSchema`, because the schema can be
+  // the thing that fails (see the envelope verdict below) and the token count is what S-09 came for.
+  const usageParse = usageSchema.safeParse(rawJson.usage ?? {});
+  const usage = usageParse.success ? usageParse.data : {};
+  console.log(
+    `    usage: prompt ${usage.prompt_tokens ?? '(absent)'} of which image ${usage.prompt_tokens_details?.image_tokens ?? '(absent)'} · completion ${usage.completion_tokens ?? '(absent)'} of which reasoning ${usage.completion_tokens_details?.reasoning_tokens ?? '(absent)'}`,
+  );
+  if (price.status === 'priced') {
+    console.log(costLine(label, usage, price));
+    const inputOnly = (usage.prompt_tokens ?? 0) * price.perIn;
+    console.log(`    the input half, which is what a page costs whatever the answer is: ${inputOnly} nano-USD = $${(inputOnly / 1e9).toFixed(8)} per page`);
+  }
+
+  // Shape, never values: which fields the message carries and how big each is (AGENTS.md §4 rule 7).
+  const message = rawJson.choices?.[0]?.message ?? {};
+  console.log(`    message fields: ${Object.entries(message).map(([k, v]) => `${k}=${v === null ? 'null' : typeof v === 'string' ? `string(${v.length})` : typeof v}`).join(', ') || '(none)'}`);
+  console.log(`    finish_reason: ${String(rawJson.choices?.[0]?.finish_reason ?? '(absent)')}`);
+
+  const envelope = completionEnvelopeSchema.extend({ usage: usageSchema.optional(), created: z.number().optional() }).safeParse(response.json);
+  if (!envelope.success) {
+    console.log('    FAIL  completionEnvelopeSchema — the schema `readCompletion` parses with — rejected this image envelope:');
+    for (const issue of envelope.error.issues.slice(0, 6)) console.log(`      ${issue.path.join('.')}: ${issue.message}`);
+    console.log('      In the app this is `invalid_model_output`: the answer is discarded and nothing is shown. C-03 has to answer it.');
+    process.exitCode = 1;
+    return {
+      usage,
+      chatId: typeof rawJson.id === 'string' ? rawJson.id : '',
+      servedModel: typeof rawJson.model === 'string' ? rawJson.model : model,
+      requestBytes: response.sentBody ?? '',
+      responseBytes: response.rawText,
+      bodyBytes: bytes(response.sentBody ?? ''),
+      envelopeOk: false,
+    };
+  }
+  const e = envelope.data;
+  console.log(`    envelope accepted · content ${e.choices[0]?.message.content.length ?? 0} chars (never printed) · refusal ${e.choices[0]?.message.refusal ?? '(absent)'}`);
+  return {
+    usage,
+    chatId: e.id,
+    servedModel: e.model ?? model,
+    requestBytes: response.sentBody ?? '',
+    responseBytes: response.rawText,
+    bodyBytes: bytes(response.sentBody ?? ''),
+    envelopeOk: true,
+  };
+}
+
+async function stageImage(near: NearClient, model: string, attested: Attested): Promise<void> {
+  console.log(`== image — a synthetic page through C-01's prepareImage in Chromium, then POST /v1/chat/completions`);
+  let sample: PageSample;
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.addScriptTag({ content: PREPARE_BUNDLE });
+    // `tsx` keeps function names by wrapping them in `__name`; Playwright sends the function's source
+    // text to the page, where that helper does not exist. The shim is what `drawPage` needs to run, not
+    // part of what is measured.
+    await page.evaluate('globalThis.__name = (f) => f');
+    sample = await drawPage(page);
+  } finally {
+    await browser.close();
+  }
+
+  const geometry = targetSize(PAGE_INPUT.width, PAGE_INPUT.height, DEFAULT_MAX_EDGE);
+  console.log(`  drawn ${PAGE_INPUT.width}×${PAGE_INPUT.height} → JPEG ${sample.sourceBytes} bytes (${(sample.sourceBytes / 1048576).toFixed(2)} MiB)`);
+  console.log(`  prepareImage in ${sample.prepareMs} ms → ${sample.preparedWidth}×${sample.preparedHeight}, ${sample.preparedBytes} bytes (${(sample.preparedBytes / 1024).toFixed(0)} KiB) · C-01's budget MAX_PAGE_BYTES = ${MAX_PAGE_BYTES} → ${sample.preparedBytes <= MAX_PAGE_BYTES ? 'inside' : 'OVER'}`);
+  console.log(`  targetSize(${PAGE_INPUT.width}, ${PAGE_INPUT.height}, DEFAULT_MAX_EDGE ${DEFAULT_MAX_EDGE}) = ${geometry.width}×${geometry.height} — what the module's own helper says the output should be`);
+
+  const price = await priceOf(near, model);
+  if (price.status === 'priced') console.log(`  priced from GET /v1/model/{model_name}: ${price.perIn}/${price.perOut} nano-USD per in/out token`);
+  else console.log(`  price: ${price.status === 'no_price' ? 'the catalog row carried no per-token price, so no figure is claimed' : 'GET /v1/model/{model_name} did not parse as a catalog row'}`);
+
+  const prepared = await probePage(near, model, price, 'prepared page (what Sightline sends)', sample.preparedB64, sample.preparedBytes);
+  const raw = await probePage(near, model, price, 'unprepared page (what the phone gave)', sample.sourceB64, sample.sourceBytes);
+
+  if (prepared !== undefined) {
+    console.log(`  five pages at the prepared size ≈ ${prepared.bodyBytes * 5} bytes of request body — F-05's cap is MAX_BODY_BYTES in lib/server/allowlist.ts, and the relay sees this number, not the JPEG's`);
+    if (attested.keyOrAddress === undefined) {
+      console.log('  signature: SKIPPED, no attested key from the attestation stage (rule 6 — no pass by absence)');
+    } else {
+      const { value: record, ms: sigMs } = await timed(() => fetchSignature(near, prepared.chatId, { model: prepared.servedModel, algo: 'ed25519' }));
+      console.log(`  signature for the image exchange in ${sigMs} ms · kind ${record.signature_kind ?? '(absent)'} · signing_algo ${record.signing_algo}`);
+      // Which model id the signed text names is still undocumented, so both spellings are tried, as in
+      // the text stage. A `Set` because for this model they are the same string and a doubled line in a
+      // measurement output reads like two checks that disagreed.
+      for (const candidate of new Set([prepared.servedModel, model])) {
+        checkAgainstAttestedKeys(record, { requestBytes: prepared.requestBytes, responseBytes: prepared.responseBytes, modelId: candidate }, attested);
+      }
+    }
+  }
+
+  if (prepared !== undefined && raw !== undefined && price.status === 'priced') {
+    const p = prepared.usage.prompt_tokens ?? 0;
+    const r = raw.usage.prompt_tokens ?? 0;
+    console.log(`  what C-01 saves on the input half: ${r === 0 ? 'the unprepared page returned no prompt count' : `${(100 * (1 - p / r)).toFixed(1)}% fewer prompt tokens`}, and ${raw.bodyBytes - prepared.bodyBytes} fewer bytes of body per page`);
+  }
+}
+
 // ------------------------------------------------------------------------------------ runner
 
 async function main(): Promise<void> {
@@ -435,9 +692,10 @@ async function main(): Promise<void> {
   for (const stage of stages) {
     if (stage === 'catalog') await stageCatalog();
     if (stage === 'attestation') attested = await stageAttestation(near, model);
-    if (stage === 'complete') {
+    if (stage === 'complete' || stage === 'image') {
       if (attested.keyOrAddress === undefined) attested = await stageAttestation(near, model);
-      await stageComplete(near, model, attested);
+      if (stage === 'complete') await stageComplete(near, model, attested);
+      else await stageImage(near, model, attested);
     }
   }
   console.log(`done · exit ${process.exitCode ?? 0}`);

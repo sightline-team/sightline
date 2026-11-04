@@ -55,7 +55,8 @@ signature header** — signatures are fetched separately (§5). Source: openapi.
 | Envelope | `id`, `model` (echoes the requested id verbatim, case and namespace included), `created` (unix seconds), `choices[0].{message,finish_reason}`, `usage`. `completionEnvelopeSchema` (`src/lib/near-ai/envelope.ts`) accepted it unchanged — the two optional fields it was written around are real: `finish_reason` came back `"stop"`, and `refusal` was absent rather than null. |
 | `id` shape | NEAR-hosted models: 32 lowercase hex, no prefix (`678f8acfeab24d9c8795879729b4d3d4`). A proxied model: `chatcmpl-EgFWMLXriLHBMXEILTJe3rBPXaFGC`. The signature lookup keys on this value, so a Mode A session that mixed providers would be fetching two different id shapes. |
 | **Reasoning eats the token budget** | With `max_tokens: 8` three models returned **HTTP 200, `finish_reason: "length"`, `content: ""`** and `usage.completion_tokens_details.reasoning_tokens: 8`. The answer was not truncated by accident — the entire budget went to reasoning, so a low `max_tokens` produces an *empty reply that parses fine*. `PROBE_MAX_TOKENS = 640` in `scripts/spike.ts` yields `finish_reason: "stop"` with real content (38 completion tokens, 36 of them reasoning, for "Reply with exactly: OK"). **This is P-08's business**: `truncated()` is true and `contentOf()` is `""` at the same time, and a per-page token cap has to leave room for thinking. |
-| `usage` details | `prompt_tokens_details.image_tokens` appears on an image request (64 tokens for a 1×1 PNG on `Qwen/Qwen3.8-27B`, 16 on `z-ai/glm-5.3-flash`), `cached_tokens: 0`. **An input image is billed as prompt tokens**; `costPerImage` is 0 for every text-output model and nonzero only for image-*generating* ones. The envelope schema does not carry `usage` at all — the cost line in the spike reads it off the raw JSON (follow-up for S-09 and the README's cost figure). |
+| `usage` details | `prompt_tokens_details.image_tokens` appears on an image request (64 tokens for a 1×1 PNG on `Qwen/Qwen3.8-27B`, 16 on `z-ai/glm-5.3-flash`; **2,494** for a C-01-prepared 1200×1600 page of the chosen model — §4), `cached_tokens: 0`. **An input image is billed as prompt tokens**; `costPerImage` is 0 for every text-output model and nonzero only for image-*generating* ones. The envelope schema does not carry `usage` at all — the cost line in the spike reads it off the raw JSON (follow-up for S-09 and the README's cost figure). |
+| `message.content` on a truncated answer | **[Measured 2026-11-04] `null`, not `""`.** A page request with a 256-token budget came back `content: null`, `reasoning_content: <string>`, `finish_reason: "length"` — the budget went entirely to reasoning, which this service returns in a field the documented message shape does not name. `completionEnvelopeSchema` required `content: z.string()` and rejected it; item **P-13** fixes the schema, not the check. |
 | Errors | `502` `{"error":{"message":"The model is currently unavailable. Please try again later.","type":"bad_gateway"}}` (a `chutes` model that the catalog says is ready); `400 … "type":"invalid_request_error","param":"model"` with `Upstream request failed with status 404` (an attested model that is not deployed). `src/lib/near-ai/client.ts` maps 404/5xx on a completion to `model_unavailable` and a 400 to `unknown` — the 400 case is *about* the model, so that mapping is the one place the conservative default costs a clearer message. Recorded, not changed. |
 | 404 on a signature | `GET /v1/signature/<unknown>?signing_algo=ed25519` → **404** `Signature not found: <id>:ed25519` (`type: not_found_error`). **The message is not the "Chat id not found or expired" §5 quoted from the docs** — so anything that ever matched on that text would be wrong. The client's retry-on-GET-404 is keyed on the status, which is the right choice and is what the measured response supports. |
 
@@ -294,7 +295,50 @@ still open** (S-09 stays `[~]` until the golden set runs, S-03). What is now mea
 guessed is the order of magnitude and the fact that reasoning tokens, not the answer, dominate the
 budget.
 
+### [Measured] 2026-11-04 — S-09's per-page figure, and the first image exchange signed
+
+`npm run spike -- --stage=image` (a fourth stage in `scripts/spike.ts`). One **synthetic** A4 page is
+drawn in Chromium at 3024×4032 — the resolution a phone gives when the page fills the frame — prepared
+by **the real `lib/image/prepare.ts`** (C-01, bundled and run in the page exactly as
+`tests/e2e/image-prepare.spec.ts` runs it), then posted as an `image_url` part through `NearClient`. The
+probe asks for a line count rather than a transcription, because the number S-09 needs is the **input**
+half and that half does not depend on the instruction.
+
+| | JPEG bytes | request body | geometry | `prompt_tokens` | of which `image_tokens` | input half | whole exchange |
+|---|---|---|---|---|---|---|---|
+| prepared by C-01 (what Sightline sends) | 108,795 | 145,382 | 1200×1600 | **2,536** | **2,494** | **$0.00020288 / page** | $0.00033088 |
+| as the phone gave it | 380,169 | 507,214 | 3024×4032 | **7,973** | **7,931** | $0.00063784 / page | $0.00076584 |
+
+at the catalog's own 80/500 nano-USD per in/out token, read from `GET /v1/model/{model_name}`.
+
+- **C-01 pays for itself in tokens, not only in bytes:** 68.2% fewer prompt tokens and 361,832 fewer
+  bytes of body per page. Tokens do not track pixels — 6.3× the pixels cost 3.2× the image tokens,
+  because the vision encoder tiles the image rather than reading it pixel by pixel. The prepared page
+  still costs 2,494 tokens, so a five-page document is ~12.7 K input tokens before any of its text.
+- **The 5-page body is ~0.69 MiB** (726,910 bytes at the prepared size). F-05's cap is `MAX_BODY_BYTES`
+  = 8 MiB, so **size is not the binding constraint on the five-page case** — which narrows S-08's open
+  question to execution *time*, where §4's held-open connections already point.
+- **A page takes seconds, not the 1.83 s of the 1×1 probe:** 4.7 s prepared, 6.0 s unprepared, both on a
+  256-token budget that was fully consumed. C-02's per-10-second announcements (T-13) and any timeout
+  should be sized for single-digit seconds *per page*.
+- **The first `provider_tee` signature over an image exchange:** `kind provider_tee`, `verified=true`
+  against `model_attestations[0]` over the exact bytes sent and received. ADR-19's hash-over-wire-bytes
+  holds for a body carrying a 145 KB data URL, not only for the short text probe.
+- **`content` can be `null`, and our schema says it cannot be.** Both replies came back as
+  `message: {role, content: null, reasoning_content: <string>}` with `finish_reason: "length"` — the
+  model spent the entire budget on reasoning, which this service returns in a field our schema does not
+  name, and left the answer empty. `completionEnvelopeSchema` requires `content: z.string()`, so **the
+  app would have thrown `invalid_model_output` at a truncated page** and reported a transport failure
+  for what is actually "no answer arrived". Recorded as new item **P-13**; the fix belongs there, and it
+  is not to relax the check — `null` is what the wire carries, so the schema is wrong about the
+  transport, and the honest path is truncation (P-08) rather than `invalid_model_output`.
+- Still open, and this stage cannot close it: the **output half** of the per-page figure — a real
+  transcription's completion tokens with its reasoning — comes from S-03's golden-set run. What is
+  measured now is the input half, plus the same finding as the text exchange above with a page in front
+  of it: reasoning, not the answer, dominates the budget.
+
 ## 5. Response signatures — [Verified], and they are not what our docs assumed
+
 
 `GET /v1/signature/{chat_id}` returns required `text`, `signature`, `signing_address`, `signing_algo`
 and optional `signature_kind`.
@@ -478,14 +522,15 @@ Still open, with what each one now waits on:
    dependency decision (T-10) and a real browser, not a key alone. (S-01)
 2. How badly the chosen vision model misreads **numbers on bad photographs**. A key and a model are not
    the missing thing here; the golden set run against the live service is. (S-03)
-3. **Price per page**, as opposed to price per probe exchange. Measured: `$0.0000399` for a 126-byte
-   prompt. A real five-page document is a different token count, and the number a budget needs has not
-   been produced. (S-09, `[~]` not `[x]`)
+3. **Price per page**, as opposed to price per probe exchange. The **input half is measured**:
+   `$0.00020288` per C-01-prepared page, `$0.00063784` unprepared (§4). What has not been produced is the
+   output half — the completion tokens a real transcription costs — because that needs the golden set.
+   (S-09, `[~]` not `[x]`)
 4. The **browser** half of CORS: a Chromium round trip with the signature verified. The preflight
    headers say yes; a header dump is not a navigation. (S-06, T-13)
-5. Host request-size and execution-time limits for a 5-page upload on the plan we deploy to. A 45-second
-   hang from a live model (§4) is a hint that an execution cap exists and is not the one our timeout
-   assumes. (S-08)
+5. Host execution-time limits for a 5-page upload on the plan we deploy to. **Size is measured and is
+   not the problem** — 726,910 bytes of body against F-05's 8 MiB cap (§4). A 45-second hang from a live
+   model is the hint that a *time* cap exists and is not the one our timeout assumes. (S-08)
 6. Whether `spendLimit` is reachable on the account type we ended up with, and how much of the `$10`
    grant is left. The credits arrived and were spent on measurements; the cap itself has not been set,
    because setting it is an action on a shared account rather than a read. (S-10)
