@@ -27,9 +27,12 @@ import { chromium, type Page } from '@playwright/test';
 import { buildSync } from 'esbuild';
 import path from 'node:path';
 import { attestationReportSchema, bindReport, newNonce } from '@/lib/near-ai/attestation';
-import { createNearClient, NearError, type NearClient } from '@/lib/near-ai/client';
+import { createNearClient, NearError, type CallPurpose, type NearClient } from '@/lib/near-ai/client';
 import { completionEnvelopeSchema, contentOf } from '@/lib/near-ai/envelope';
 import { DEFAULT_MAX_EDGE, MAX_PAGE_BYTES, targetSize } from '@/lib/image/prepare';
+import { TRANSCRIBE_SYSTEM_PROMPT, TRANSCRIBE_USER_PROMPT } from '@/features/capture/prompts';
+import { transcribeSchema } from '@/features/capture/schemas';
+import { TRANSCRIBE_MAX_TOKENS } from '@/features/capture/transcribe';
 import { isAllowed, isNearUpstreamHost, modelCatalogRowSchema, toModelMetadata, type ModelCatalogRow } from '@/lib/near-ai/models';
 import { checkSignature, fetchSignature, signatureRecordSchema, type SignatureRecord } from '@/lib/near-ai/signatures';
 import type { CheckResult } from '@/types';
@@ -457,6 +460,11 @@ const PAGE_INPUT = { width: 3024, height: 4032 };
  * the cost (`prompt_tokens`, of which `image_tokens` is the page) and that half does not depend on the
  * instruction; the output half — a full transcription plus its reasoning — belongs to S-03's golden set
  * and is deliberately not claimed here.
+ *
+ * **Amended 2026-11-04:** a third probe below (`--stage=image`, the "C-03's own request" line) now sends
+ * the app's real transcription body, so the output half is measured for the request the product makes
+ * and not only for this probe. The line-count probe stays, because the two geometries it compares are
+ * what makes C-01's saving a number, and a comparison needs the instruction to be the same both times.
  */
 const PAGE_PROMPT = 'This is a photograph of one page of printed text. Reply with the number of separate lines of text you can see, as digits only.';
 const PAGE_MAX_TOKENS = 256;
@@ -477,6 +485,8 @@ interface PageSample {
   sourceB64: string;
   sourceBytes: number;
   preparedB64: string;
+  /** The app's own `toDataUrl` output for the prepared page — the exact string C-03 puts in a body. */
+  preparedDataUrl: string;
   preparedBytes: number;
   preparedWidth: number;
   preparedHeight: number;
@@ -492,6 +502,8 @@ interface ProbeResult {
   bodyBytes: number;
   /** Whether the app's own envelope schema would have accepted this reply — C-03 depends on the answer. */
   envelopeOk: boolean;
+  /** Set only by the C-03 probe: the `transcribeSchema` verdict, as a count summary. */
+  transcribeContract?: string;
 }
 
 /** Draws the page, then prepares it with C-01's real module inside the browser. */
@@ -513,20 +525,34 @@ async function drawPage(page: Page): Promise<PageSample> {
     ctx.rotate(-0.011); // a slightly crooked page, because that is what a hand-held shot looks like
     ctx.fillStyle = '#f6f4ef';
     ctx.fillRect(-w * 0.47, -h * 0.485, w * 0.94, h * 0.97);
+    // Real glyphs, not bars. A first run drew grey rectangles as "text", which is enough to count
+    // lines and to price a page, but not enough to ask a vision model for a transcript: C-03's probe
+    // needs the reply to be a *reading of something*, or `transcribeSchema` would be judged on a page
+    // with no words in it. Everything here is synthetic — an invented reference, invented line items
+    // (AGENTS.md §5: never a real document).
     ctx.fillStyle = '#1d1d1d';
+    ctx.textBaseline = 'top';
     const left = -w * 0.47 + w * 0.09;
     const lineH = h * 0.011;
     let y = -h * 0.485 + h * 0.06;
-    for (let i = 0; i < 34; i++) {
-      const wide = i % 7 === 6 ? 0.42 : 0.72 + ((i * 37) % 21) / 100;
-      ctx.fillRect(left, y, wide * (w * 0.78), lineH);
+    ctx.font = `${Math.round(lineH * 1.9)}px sans-serif`;
+    ctx.fillText('SYNTHETIC INVOICE - NOT A REAL DOCUMENT', left, y);
+    y += lineH * 3.2;
+    ctx.font = `${Math.round(lineH * 1.5)}px sans-serif`;
+    ctx.fillText('Northgate Example Trust   Reference NC-0000-SYN', left, y);
+    y += lineH * 2.4;
+    for (let i = 0; i < 28; i++) {
+      ctx.fillText(`Line ${(i + 1).toString().padStart(2, '0')}  example service ${(i % 4) + 1}  GBP 00${(i % 9) + 1}.00`, left, y);
       y += lineH * 2.15;
     }
     ctx.restore();
     const source = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.93 });
 
     const api = (window as unknown as {
-      SightlinePrepare: { prepareImage: (b: Blob, o?: object) => Promise<{ blob: Blob; width: number; height: number }> };
+      SightlinePrepare: {
+        prepareImage: (b: Blob, o?: object) => Promise<{ blob: Blob; width: number; height: number }>;
+        toDataUrl: (b: Blob) => Promise<string>;
+      };
     }).SightlinePrepare;
     const at = performance.now();
     const prepared = await api.prepareImage(source);
@@ -534,6 +560,9 @@ async function drawPage(page: Page): Promise<PageSample> {
       sourceB64: await toB64(source),
       sourceBytes: source.size,
       preparedB64: await toB64(prepared.blob),
+      // The app's own helper, in the app's own browser, on the app's own prepared page — so the URL in
+      // the probe's body is the string `transcribePage` would send, chunking and all.
+      preparedDataUrl: await api.toDataUrl(prepared.blob),
       preparedBytes: prepared.blob.size,
       preparedWidth: prepared.width,
       preparedHeight: prepared.height,
@@ -542,26 +571,23 @@ async function drawPage(page: Page): Promise<PageSample> {
   }, { w: PAGE_INPUT.width, h: PAGE_INPUT.height });
 }
 
-/** One page-sized request through the production client. Nothing of the reply is printed but its length. */
-async function probePage(near: NearClient, model: string, price: Price, label: string, b64: string, jpegBytes: number): Promise<ProbeResult | undefined> {
-  const body = {
-    model,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: PAGE_PROMPT },
-          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } },
-        ],
-      },
-    ],
-    max_tokens: PAGE_MAX_TOKENS,
-    stream: false,
-  };
-
+/**
+ * One page-sized request through the production client. Nothing of the reply is printed but its
+ * length and field shapes (AGENTS.md §4 rule 7). The caller builds the body, so the two probes below
+ * differ only in what they ask — and the C-03 one asks with the app's own bytes.
+ */
+async function probePage(
+  near: NearClient,
+  model: string,
+  price: Price,
+  label: string,
+  jpegBytes: number,
+  body: Record<string, unknown>,
+  opts: { purpose: CallPurpose; checkTranscribeContract?: boolean } = { purpose: 'analyse' },
+): Promise<ProbeResult | undefined> {
   let request;
   try {
-    request = await timed(() => near.post('chat/completions', body, { purpose: 'analyse' }));
+    request = await timed(() => near.post('chat/completions', body, { purpose: opts.purpose }));
   } catch (error) {
     console.log(`  ${label}: rejected — ${error instanceof NearError ? `${error.name} code ${error.error.code} at HTTP ${error.status ?? '?'}` : 'a non-NearError escaped'}`);
     process.exitCode = 1;
@@ -613,6 +639,28 @@ async function probePage(near: NearClient, model: string, price: Price, label: s
   }
   const e = envelope.data;
   console.log(`    envelope accepted · content ${contentOf(e).length} chars (never printed) · truncated: ${e.choices[0]?.finish_reason === 'length' ? 'yes — `readCompletion` would send this to the transcript-only screen' : 'no'}`);
+
+  // C-03's real question is not "did a model answer" but "did it answer in the shape
+  // `transcribeSchema` validates", because a reply that does not is one repair retry away from
+  // transcript-only for the whole page. Field names and counts only — the transcript itself is
+  // document-derived and never printed (AGENTS.md §4 rule 7).
+  let transcribeContract: string | undefined;
+  if (opts.checkTranscribeContract) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(contentOf(e));
+    } catch {
+      parsed = undefined;
+    }
+    const contract = transcribeSchema.safeParse(parsed);
+    if (contract.success) {
+      transcribeContract = `transcribeSchema ACCEPTED · text ${contract.data.text.length} chars · uncertain ${contract.data.uncertain.length} span(s) · captureIssues ${contract.data.captureIssues.length === 0 ? '(none)' : contract.data.captureIssues.join(',')} · pageLabel ${contract.data.pageLabel === undefined ? 'absent' : 'present'}`;
+    } else {
+      transcribeContract = `transcribeSchema REJECTED — ${contract.error.issues.slice(0, 6).map((i) => `${i.path.join('.')}: ${i.message}`).join(' · ')}. In the app that is one repair retry and then the transcript-only screen.`;
+      process.exitCode = 1;
+    }
+    console.log(`    ${transcribeContract}`);
+  }
   return {
     usage,
     chatId: e.id,
@@ -621,6 +669,7 @@ async function probePage(near: NearClient, model: string, price: Price, label: s
     responseBytes: response.rawText,
     bodyBytes: bytes(response.sentBody ?? ''),
     envelopeOk: true,
+    transcribeContract,
   };
 }
 
@@ -649,21 +698,69 @@ async function stageImage(near: NearClient, model: string, attested: Attested): 
   if (price.status === 'priced') console.log(`  priced from GET /v1/model/{model_name}: ${price.perIn}/${price.perOut} nano-USD per in/out token`);
   else console.log(`  price: ${price.status === 'no_price' ? 'the catalog row carried no per-token price, so no figure is claimed' : 'GET /v1/model/{model_name} did not parse as a catalog row'}`);
 
-  const prepared = await probePage(near, model, price, 'prepared page (what Sightline sends)', sample.preparedB64, sample.preparedBytes);
-  const raw = await probePage(near, model, price, 'unprepared page (what the phone gave)', sample.sourceB64, sample.sourceBytes);
+  const lineCountBody = (b64: string): Record<string, unknown> => ({
+    model,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: PAGE_PROMPT },
+          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } },
+        ],
+      },
+    ],
+    max_tokens: PAGE_MAX_TOKENS,
+    stream: false,
+  });
 
-  if (prepared !== undefined) {
-    console.log(`  five pages at the prepared size ≈ ${prepared.bodyBytes * 5} bytes of request body — F-05's cap is MAX_BODY_BYTES in lib/server/allowlist.ts, and the relay sees this number, not the JPEG's`);
+  const prepared = await probePage(near, model, price, 'prepared page (what Sightline sends)', sample.preparedBytes, lineCountBody(sample.preparedB64));
+  const raw = await probePage(near, model, price, 'unprepared page (what the phone gave)', sample.sourceBytes, lineCountBody(sample.sourceB64));
+
+  /**
+   * C-03's own request, with the app's own pieces: the system prompt it sends, the one-line user text
+   * that names no page index (so `pageLabel` can only come off the paper), the `image_url` part built by
+   * the production client's body shape, and `max_tokens: TRANSCRIBE_MAX_TOKENS`. It deliberately sends
+   * **no `stream` key**, because `readCompletion` sends none (ADR-22) — if the service answered this one
+   * as a stream, `NearClient` would fail to parse it, and that is a fact worth knowing before the photo
+   * path ships rather than after.
+   */
+  const transcription = await probePage(
+    near,
+    model,
+    price,
+    "C-03's transcription request (the body `readCompletion` builds)",
+    sample.preparedBytes,
+    {
+      model,
+      messages: [
+        { role: 'system', content: TRANSCRIBE_SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: TRANSCRIBE_USER_PROMPT },
+            { type: 'image_url', image_url: { url: sample.preparedDataUrl } },
+          ],
+        },
+      ],
+      max_tokens: TRANSCRIBE_MAX_TOKENS,
+    },
+    { purpose: 'transcribe', checkTranscribeContract: true },
+  );
+
+  // The receipt to check is the one for the app's own bytes, when that exchange happened.
+  const signed = transcription ?? prepared;
+  if (signed !== undefined) {
+    console.log(`  five pages at the prepared size ≈ ${signed.bodyBytes * 5} bytes of request body — F-05's cap is MAX_BODY_BYTES in lib/server/allowlist.ts, and the relay sees this number, not the JPEG's`);
     if (attested.keyOrAddress === undefined) {
       console.log('  signature: SKIPPED, no attested key from the attestation stage (rule 6 — no pass by absence)');
     } else {
-      const { value: record, ms: sigMs } = await timed(() => fetchSignature(near, prepared.chatId, { model: prepared.servedModel, algo: 'ed25519' }));
-      console.log(`  signature for the image exchange in ${sigMs} ms · kind ${record.signature_kind ?? '(absent)'} · signing_algo ${record.signing_algo}`);
+      const { value: record, ms: sigMs } = await timed(() => fetchSignature(near, signed.chatId, { model: signed.servedModel, algo: 'ed25519' }));
+      console.log(`  signature for the ${transcription === undefined ? 'prepared' : 'transcription'} exchange in ${sigMs} ms · kind ${record.signature_kind ?? '(absent)'} · signing_algo ${record.signing_algo}`);
       // Which model id the signed text names is still undocumented, so both spellings are tried, as in
       // the text stage. A `Set` because for this model they are the same string and a doubled line in a
       // measurement output reads like two checks that disagreed.
-      for (const candidate of new Set([prepared.servedModel, model])) {
-        checkAgainstAttestedKeys(record, { requestBytes: prepared.requestBytes, responseBytes: prepared.responseBytes, modelId: candidate }, attested);
+      for (const candidate of new Set([signed.servedModel, model])) {
+        checkAgainstAttestedKeys(record, { requestBytes: signed.requestBytes, responseBytes: signed.responseBytes, modelId: candidate }, attested);
       }
     }
   }

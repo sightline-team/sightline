@@ -341,6 +341,58 @@ at the catalog's own 80/500 nano-USD per in/out token, read from `GET /v1/model/
   transcription's completion tokens with its reasoning — comes from S-03's golden-set run. What is
   measured now is the input half, plus the same finding as the text exchange above with a page in front
   of it: reasoning, not the answer, dominates the budget.
+  *(Closed the same day by **C-03** — see the block below: the stage now sends the app's own
+  transcription request, and its output half is measured. What remains with the golden set is whether
+  the transcription is* correct*, which no token count answers.)*
+
+### [Measured] 2026-11-04 — C-03's own request answers, and the answer passes the schema
+
+The same stage, run again (`npm run spike -- --stage=image`, exit **0**) after `features/capture/transcribe.ts`
+existed, so the third request in the output is **the body `readCompletion` builds**: `TRANSCRIBE_SYSTEM_PROMPT`
+as the system message, `Transcribe this page.` plus an `image_url` part as the user message,
+`max_tokens: 8192`, and **no `stream` key** because ADR-22 says the app does not stream. The page itself
+changed too: the first run drew grey bars as "text", which is fine for pricing a page and useless for
+asking a model to transcribe one, so it now draws legible synthetic lines (an invented trust name, an
+invented `NC-0000-SYN` reference, 28 `Line nn … GBP 00n.00` items) at a **0.011 rad tilt**. Still
+synthetic, still nobody's letter.
+
+| request | JPEG | body | reply | `prompt_tokens` | `image_tokens` | completion (of which reasoning) | cost | time |
+|---|---|---|---|---|---|---|---|---|
+| line count, prepared | 203,434 | 271,570 | 1,032 | 2,536 | 2,494 | 224 (222) | $0.00031488 | 5.01 s |
+| line count, unprepared | 866,763 | 1,156,006 | 1,179 | 7,973 | 7,931 | **256 (257) — truncated, `content: null`** | $0.00076584 | 5.96 s |
+| **C-03's transcription request** | 203,434 | 272,736 | 5,559 | **2,810** | **2,494** | **1,492 (1,008)** | **$0.00097080** | **25.77 s** |
+
+- **The photo path's request shape is now measured, not inferred.** HTTP 200, `finish_reason: stop`, and
+  `transcribeSchema` **ACCEPTED**: `text 1,181 chars · uncertain 0 span(s) · captureIssues rotated ·
+  pageLabel absent`. Every field in §9's contract is reachable on a real reply, not merely tolerated —
+  and the two empty ones are empty *correctly*: the drawn page has no illegible span and no printed page
+  label. The `image_url` multipart form, the `data:` URL from `toDataUrl`, and a request with no `stream`
+  field all behave.
+- **`captureIssues` fired on a tilt of 0.63°, which is C-04's problem, not C-03's.** The model reported
+  `rotated` for a page that is upright and slightly crooked — the exact thing a hand-held phone shot
+  always is (PRD §10 risk 6). So the enum vocabulary works, and a retake loop that treats `rotated` as
+  "take it again" would nag on nearly every photograph. C-04 must decide what a reported tilt *costs*
+  the person; the answer is not in this file.
+- **The output half, which the block above left open:** a real page costs **1,492 completion tokens,
+  1,008 of them reasoning**, so two thirds of the answer's cost is the model thinking before it answers.
+  At the catalog's 80/500 nano-USD that is **$0.00097 per page**, and a five-page document is ~$0.0049 —
+  against ADR-23's 8,192-token ceiling, this page used 18% of it.
+- **A page transcription takes 25.8 s, five times the line-count probe.** Whatever §12's progress
+  announcements and any per-page timeout are set to, they are sized for ~26 s per page and ~2 minutes
+  for a five-page document on this model, not for the 1.83 s the 1×1 probe showed. This is the strongest
+  argument in the repo for announcing progress rather than showing a spinner.
+- **Image tokens are geometry, not content:** two prepared pages at 1200×1600 — one of grey bars at
+  108,795 bytes, one of glyphs at 203,434 — both billed **2,494**. So C-01's byte ladder buys nothing on
+  the token line; only the long edge does. The byte budget still matters for the relay cap and for
+  upload time, and that is what it was always for.
+- **P-13's condition reproduced**, not invented: the unprepared 256-token probe again spent the whole
+  budget on reasoning and returned `content: null` with `finish_reason: "length"`, and the schema — after
+  P-13 — reads it as a truncation instead of a broken service. On a 256-token budget roughly every other
+  page lands there; on 8,192 this page did not come close.
+- **The first app-shaped image exchange that verifies:** `kind provider_tee`, `verified=true` against
+  `model_attestations[0]` over the exact 272,736 bytes sent and 5,559 received; the gateway key does not
+  verify it, which is the distinction ADR-22 keeps. Mode B's relay is still the untested half (**B-12**,
+  and the fact that no live mode has ever sent a document from the app).
 
 ## 5. Response signatures — [Verified], and they are not what our docs assumed
 

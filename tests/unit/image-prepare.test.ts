@@ -7,6 +7,7 @@ import {
   QUALITY_LADDER,
   prepareImage,
   qualityRungs,
+  toDataUrl,
   targetSize,
   type DecodedImage,
   type ImageIo,
@@ -212,5 +213,35 @@ describe('prepareImage', () => {
     expect(DEFAULT_MAX_EDGE).toBe(1600);
     expect(MAX_PAGE_BYTES).toBe(768 * 1024);
     expect(Math.round(MAX_PAGE_BYTES * (4 / 3)) * 5).toBeLessThan(8 * 1024 * 1024);
+  });
+});
+
+describe('toDataUrl (the encoding C-03 puts in a request body)', () => {
+  it('labels the page as the JPEG the ladder produced', async () => {
+    const url = await toDataUrl(new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], { type: 'image/jpeg' }));
+
+    expect(url).toBe('data:image/jpeg;base64,/9j/2Q==');
+  });
+
+  it('encodes a page bigger than one chunk without losing or reordering bytes', async () => {
+    // The chunk loop is the whole reason this is a function and not `btoa(String.fromCharCode(...bytes))`:
+    // a spread of a whole page as call arguments overflows the stack at roughly the size a page is.
+    const bytes = new Uint8Array(100_000).map((_, i) => i % 256);
+    const url = await toDataUrl(new Blob([bytes], { type: 'image/jpeg' }));
+
+    expect(url.startsWith('data:image/jpeg;base64,')).toBe(true);
+    const base64 = url.slice('data:image/jpeg;base64'.length + 1);
+    expect(base64.length).toBe(Math.ceil(bytes.length / 3) * 4);
+    expect(Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))).toEqual(bytes);
+  });
+
+  it('puts the JPEG marker bytes under a label that cannot lie', async () => {
+    // The MIME type is written by this function, not read from the blob, because `prepareImage` only
+    // ever returns a canvas JPEG. A blob that arrived with `type: 'image/png'` would otherwise get a
+    // data URL whose label disagrees with the bytes inside it.
+    const url = await toDataUrl(new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], { type: 'image/png' }));
+
+    expect(url.startsWith('data:image/jpeg;base64,')).toBe(true);
+    expect(Array.from(Uint8Array.from(atob(url.slice('data:image/jpeg;base64,'.length)), (c) => c.charCodeAt(0)))).toEqual([255, 216, 255, 217]);
   });
 });

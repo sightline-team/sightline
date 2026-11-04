@@ -170,8 +170,28 @@ describe('the replay client answers demo documents and nothing else', () => {
     expect(JSON.stringify(error)).not.toContain('metastatic');
   });
 
-  it('refuses a partial document: containment is exact, not similar', async () => {
+  it('refuses a page call even when the body names a document it does have answers for', async () => {
+    // The discriminating direction of C-03's guard in `replay.ts`. This body carries a real demo
+    // document, so a missing guard would answer it with that fixture's *analysis* — authored prose
+    // presented as a reading of a photograph. And the guard has to sit **before** the document
+    // lookup: a transcription body carries its text as an `image_url` multipart array, which
+    // `findFixture` cannot read, so the lookup would refuse for the wrong reason ("unknown document")
+    // while the true reason is that Mode F has no page replies at all (S-11 records them).
     const client = createFixtureClient();
+    const fixture = FIXTURE_CASES[0]!;
+
+    const failure = await client
+      .post('chat/completions', { model: 'fixtures/demo-model', messages: [{ role: 'user', content: fixture.text }] }, { purpose: 'transcribe' })
+      .then(
+        () => undefined,
+        (cause: unknown) => cause,
+      );
+
+    expect(failure).toBeInstanceOf(NearError);
+    expect((failure as NearError).error.code).toBe('no_fixture_for_input');
+  });
+
+  it('refuses a partial document: containment is exact, not similar', async () => {    const client = createFixtureClient();
     const partial = FIXTURE_CASES[0]!.text.split('\n').slice(0, 3).join('\n');
 
     await expect(client.post('chat/completions', { model: 'm', messages: [{ role: 'user', content: partial }] })).rejects.toBeInstanceOf(NearError);

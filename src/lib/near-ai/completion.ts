@@ -41,7 +41,7 @@ import type { AppError, Mode, TrustPurpose, TrustRecord } from '@/types';
  * ### What the retry is *not* used for
  *
  * A `finish_reason: length` answer is not retried. §13's answer to truncation is "split by page,
- * retry once", and splitting is the image path's job (C-03/C-05); the text path has one page and
+ * retry once", and splitting is the image path's job (C-03/C-11); the text path has one page and
  * nothing to split. Re-sending the same oversized request after a note about JSON would spend a
  * second completion to produce the same cut-off answer, so a truncation is reported instead.
  * A transport failure is likewise never retried here — F-03's client already owns transient
@@ -90,7 +90,29 @@ export interface ReadCompletionDeps<T> {
   mode: Mode;
   /** The allowlisted, TEE-hosted model the run settled on. Never a user-typed string. */
   model: string;
-  request: { system: string; user: string };
+  /**
+   * The instruction pair. `image` is set only by the photo path (**C-03**): a thunk that returns the
+   * `data:` URL of the JPEG `lib/image/prepare.ts` produced, sent as an `image_url` part alongside
+   * the text. Nothing else may appear there — the byte shape SPIKE §4 measured is the shape this
+   * builds, and an *unprepared* image is exactly the thing that carries EXIF and GPS (AGENTS.md §4
+   * rule 1).
+   *
+   * It is a **thunk, not a string**, for one reason: rule 6 says nothing document-derived is built
+   * before the required checks pass, and the page is the most document-derived thing in the request.
+   * A string would mean `transcribePage` had already encoded ~1 MB of the person's photograph by the
+   * time the gate said `failed` and threw it away. Here the encoding happens inside `send`, after the
+   * gate, and `transcribePage` memoizes it so a repair retry sends the same page rather than
+   * re-encoding the photograph a second time.
+   */
+  request: { system: string; user: string; image?: () => Promise<string> };
+  /**
+   * The reply budget, in tokens. Left unset for the two text calls, which have always taken the
+   * service's default. Set for a page, because of a measured fact (**P-13**, `docs/SPIKE_RESULTS.md`
+   * §1): a reasoning model that spends its whole budget before answering returns `content: null` —
+   * the 256-token probe spent all 256 on reasoning twice over. A budget is therefore not a cost
+   * knob but a correctness one, and ADR-23 records the number and how it was arrived at.
+   */
+  maxTokens?: number;
   transport: NearClient;
   gate: AttestationGate;
   verifySignature: SignatureVerifier;
@@ -172,25 +194,40 @@ async function attemptOnce<T>(deps: ReadCompletionDeps<T>, repair: boolean): Pro
 
 /**
  * The request itself. The body is built **after** the gate returns, and carries nothing §1 of
- * `docs/SPIKE_RESULTS.md` does not document: no `stream`, no `response_format`, no sampling
- * fields — a request field nobody can point a source at is a field nobody can explain when it
- * misbehaves.
+ * `docs/SPIKE_RESULTS.md` does not document: no `stream`, no `response_format`, no sampling fields —
+ * a request field nobody can point a source at is a field nobody can explain when it misbehaves.
+ * The two exceptions are both measured there: the `image_url` part (S-02, §4) and `max_tokens`
+ * (§1's 256-token probe), and both arrive only from a caller that asked for them.
  */
 async function send<T>(deps: ReadCompletionDeps<T>, repair: boolean): Promise<Attempt> {
   try {
-    const response: NearResponse = await deps.transport.post(
-      'chat/completions',
-      {
-        model: deps.model,
-        messages: [
-          { role: 'system', content: deps.request.system },
-          // The repair note joins here, not in the system prompt: the instruction-bearing message
-          // stays byte-stable, and the document's own words stay inside the fenced user message.
-          { role: 'user', content: repair ? `${deps.request.user}\n\n${REPAIR_NOTE}` : deps.request.user },
-        ],
-      },
-      { signal: deps.signal, purpose: deps.purpose },
-    );
+    // The instruction-bearing user message, text-only or text-plus-page. The repair note joins the
+    // *text*, so the system prompt stays byte-identical across both attempts and the document's own
+    // words stay inside the user message (AGENTS.md §11).
+    const userText = repair ? `${deps.request.user}\n\n${REPAIR_NOTE}` : deps.request.user;
+    const image = deps.request.image;
+    const user =
+      image === undefined
+        ? userText
+        : [
+            { type: 'text', text: userText },
+            // Awaited here, inside `send`, and therefore after the gate: this is the call's only
+            // route out, so a page's bytes cannot be encoded before the run is allowed to have them.
+            { type: 'image_url', image_url: { url: await image() } },
+          ];
+    const body: Record<string, unknown> = {
+      model: deps.model,
+      messages: [
+        { role: 'system', content: deps.request.system },
+        { role: 'user', content: user },
+      ],
+    };
+    if (deps.maxTokens !== undefined) body.max_tokens = deps.maxTokens;
+
+    const response: NearResponse = await deps.transport.post('chat/completions', body, {
+      signal: deps.signal,
+      purpose: deps.purpose,
+    });
 
     return {
       // A response that does not match the transport contract is not "unreadable model output":

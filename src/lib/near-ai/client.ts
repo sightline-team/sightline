@@ -82,14 +82,15 @@ export interface CallInit {
   /**
    * Which document-derived call this is. Mode F's replay client (F-09) has to choose between
    * the analysis reply and the answer to a prepared question (P-06), and both go to the same
-   * endpoint with the same transcript in the body. **Local metadata only**: it is never put in
+   * endpoint with the same transcript in body. `transcribe` is the third (C-03): one page image
+   * read back as text, which Mode F has no authored reply for and says so. **Local metadata only**: it is never put in
    * the request body, so the bytes a live mode hashes and signs are exactly the bytes it sent
    * (ADR-19) and the relay allowlist is untouched.
    */
   purpose?: CallPurpose;
 }
 
-export type CallPurpose = 'analyse' | 'qa';
+export type CallPurpose = 'analyse' | 'qa' | 'transcribe';
 
 export interface GetInit extends CallInit {
   query?: Record<string, string>;

@@ -156,6 +156,19 @@ export function createFixtureClient(): NearClient {
     baseUrl: 'fixtures://authored-synthetic',
 
     post: async (path, body, init): Promise<NearResponse> => {
+      if (init?.purpose === 'transcribe') {
+        // A page image has no authored reply in Mode F. Returning `fixture.analysis` here would put
+        // hand-written prose on screen as though a model had read the photograph — the same
+        // dishonesty F-09 refuses for an unknown document, and the transcript is the input to
+        // everything downstream, so it is the worst place to invent one. Recording a real reply is
+        // S-11's job and the photo demo's half of it is C-09's; until then this path fails closed.
+        //
+        // Checked **before** the fixture lookup, not after: a transcription body carries its text as
+        // an `image_url` multipart array, which `findFixture` cannot read, so testing the lookup
+        // first would refuse it for the wrong reason ("no such document") instead of the right one.
+        throw new NearError(path, appError('no_fixture_for_input'));
+      }
+
       const fixture = findFixture(body);
       if (fixture === undefined) {
         // Nothing document-derived is answered for text we have no authored reply for, and

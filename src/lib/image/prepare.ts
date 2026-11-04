@@ -126,6 +126,32 @@ export async function prepareImage(
   }
 }
 
+/**
+ * The `data:` URL a prepared page becomes inside a request body (item **C-03**, ARCH §9 step 1).
+ *
+ * This lives next to `prepareImage` rather than in `features/capture` because the two halves are
+ * one fact: **only a prepared JPEG may be encoded this way.** An unprepared phone photo still
+ * carries the EXIF and GPS bytes C-01 removed by re-encoding (AGENTS.md §4 rule 1), and a helper
+ * named for the encoding would invite callers to hand it whatever blob is in scope. The type says
+ * `Blob` because `prepareImage` returns one; the naming is the guard.
+ *
+ * Base64 is done in 32 KiB chunks on purpose: `String.fromCharCode(...bytes)` with a whole page as
+ * arguments overflows the call stack somewhere near 100 KiB, which is exactly where a photographed
+ * page sits. A 768 KiB page is ~1 MiB of base64, and the relay's 8 MiB body cap (`MAX_BODY_BYTES`,
+ * `lib/server/allowlist.ts`) is sized for five of them.
+ */
+export async function toDataUrl(jpeg: Blob): Promise<string> {
+  const bytes = new Uint8Array(await jpeg.arrayBuffer());
+  const chunk = 0x8000;
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunk));
+  }
+  // Fixed, because `prepareImage` only ever encodes JPEG (`browserImageIo.encode`), and a MIME type
+  // read off the blob would let a non-JPEG through with a label that lies about it.
+  return `data:image/jpeg;base64,${btoa(binary)}`;
+}
+
 /** The browser's own decode/encode, and the default `io`. */
 export const browserImageIo: ImageIo = {
   async decode(source) {
