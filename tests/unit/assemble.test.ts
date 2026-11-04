@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { assembleDocument, PAGE_JOINER, unreadablePageMarker, type PageOutcome } from '@/features/capture/assemble';
+import { assembleDocument, PAGE_JOINER, type PageOutcome } from '@/features/capture/assemble';
+import { unreadablePageMarker } from '@/lib/transcript/holes';
 import { appError } from '@/lib/errors';
 import type { TranscribeOutput } from '@/features/capture/schemas';
 import type { Transcript } from '@/types';

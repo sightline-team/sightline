@@ -104,6 +104,7 @@ sightline/
 │  │  ├─ a11y/announcer.tsx       # Single aria-live announcer + interval progress
 │  │  ├─ session/                 # reducer.ts (state shape, page cap), store.tsx (provider + in-flight run + object-URL registry + forget()), forget.ts (P-10: the pure clear, the `sightline.` key rule)
 │  │  ├─ fixtures/                # replay.ts (content-matched Mode F client, `transportFor`), cases.ts (authored synthetic demo corpus: four letters, each carrying either an `analysis` or one `unreadableReply` — the prose case is what makes the transcript-only screen reachable with no key, P-11)
+│  │  ├─ transcript/holes.ts      # P-17, ADR-27: the words for a page that yielded no text (`unreadablePageMarker`) and `groundableText()`, the same-length mask grounding searches. Shared because both the writer (`features/capture`) and the reader (`features/analysis`, `features/qa`) need one wording
 │  │  ├─ server/                  # Server-only: env.ts, allowlist.ts, rateLimit.ts (all `import 'server-only'`)
 │  │  ├─ config.ts                # Env validation (zod); mode selection
 │  │  ├─ settings.ts              # `sightline.settings` in localStorage, and the only code that reads or writes it: validated read of `speechRate`/`highContrast` (both defaulted), the re-validating read-modify-write, `applyHighContrast`, `describeRate`, and the external store the controls subscribe to (P-09 read, A-15 both). Non-sensitive only — never a key, never document data
@@ -115,7 +116,7 @@ sightline/
 │  └─ types/index.ts
 │
 └─ tests/
-   ├─ unit/                       # config, server-env, session reducer, errors, nonce, grounding, schemas, near-client, pipeline, fixtures, qa, roadmap-check, forget (P-10), live-writes (P-12), safety-notices (P-07/P-11), speech (P-09), settings-writer (A-15), model-allowlist (F-04, payloads copied from live JSON); image prep still to write
+   ├─ unit/                       # config, server-env, session reducer, errors, nonce, grounding (incl. P-17's marker holes), schemas, assemble (C-11), near-client, pipeline, fixtures, qa, roadmap-check, forget (P-10), live-writes (P-12), safety-notices (P-07/P-11), speech (P-09), settings-writer (A-15), model-allowlist (F-04, payloads copied from live JSON); image prep still to write
    ├─ verification/               # attestation.test.ts: stubs refuse + strong claim unreachable; 9 `it.todo` rows name what T-01/T-02/T-05 must still prove
    ├─ relay/                      # relay.test.ts: both API routes answer 501, name their item, forward nothing, leak no key. A-09 adds rejected path/oversize/rate limit
    ├─ stubs/server-only.ts        # no-op stand-in so unit tests can import server modules (see vitest.config.mts)

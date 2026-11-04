@@ -113,13 +113,18 @@ written as the honest version rather than the convenient one.
 ## Accuracy
 
 No accuracy number exists. The golden set is item C-09 with its cases designed in
-`public/sample-docs/README.md`, and the image path (C-01…C-06) is not built. Two statements will be
-required there and are stated now so they cannot be quietly dropped later:
+`public/sample-docs/README.md`. The photo path is three modules and no screen: **C-01** prepares a
+page, **C-03** transcribes one against the live service and **C-11** joins five into one transcript,
+but **C-02** — the screen that would call them — is not built, so no photographed document has ever
+been read inside the app. Two statements will be required there and are stated now so they cannot be
+quietly dropped later:
 
 - Results include **bad photos** (glare, cut edges, small text), with the small-sample caveat.
 - `quoteFound` means the quoted words appear in **our transcript**. It does **not** mean they are
   correct against the page — a model that misreads a number and then quotes its own misreading
-  passes it perfectly (`src/features/analysis/grounding.ts`).
+  passes it perfectly (`src/features/analysis/grounding.ts`). The transcript it searches has
+  Sightline's own `[page n could not be read]` hole marker masked out first
+  (`src/lib/transcript/holes.ts`), so a quote cannot be "found" in a sentence we wrote (**P-17**).
 
 ## Cost per document
 

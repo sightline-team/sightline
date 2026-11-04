@@ -1,6 +1,7 @@
 import type { TranscribeOutput } from '@/features/capture/schemas';
 import type { CompletionResult } from '@/lib/near-ai/completion';
-import type { CaptureIssue, ErrorCode, Transcript, UncertainSpan } from '@/types';
+import { unreadablePageMarker } from '@/lib/transcript/holes';
+import type { CaptureIssue, MissingPage, Transcript, UncertainSpan } from '@/types';
 
 /**
  * Five pages, one document (item **C-11**; spec: `docs/ARCHITECTURE.md` §7's `Transcript`, §9 step 1,
@@ -23,7 +24,7 @@ import type { CaptureIssue, ErrorCode, Transcript, UncertainSpan } from '@/types
  * rejected:
  *  - *drop the page quietly* — the summary would then describe four of five photographs as if it
  *    described five, and the missing one is usually the page with the clause in it;
- *  - *halt the run* — a 25.8 s page (SPIKE §4) failing would throw away the other four and the
+ *  - *halt the run* — a 28 s page (SPIKE §4, C-11's five-page mean) failing would throw away the other four and the
  *    person's whole upload, and §13's image-path rows are degradations, not stops (only a refusal
  *    stops, and `readCompletion`'s `refused` never reaches this function);
  *  - *keep the partial text of a truncated reply* — there usually is none. `finish_reason: length` on
@@ -34,6 +35,11 @@ import type { CaptureIssue, ErrorCode, Transcript, UncertainSpan } from '@/types
  *
  * `usable` is what the run acts on: a document with a hole still gets a reading, and the reading has
  * to say so.
+ *
+ * **The marker's own cost is closed where the marker is read, not here:** putting our sentence inside a
+ * transcript that is otherwise verbatim means `quoteFound` could credit it, so
+ * `lib/transcript/holes.ts` masks it out of the text grounding searches (**P-17**, and the tests in
+ * `tests/unit/grounding.test.ts`).
  *
  * ### Nothing is reordered
  *
@@ -55,34 +61,11 @@ import type { CaptureIssue, ErrorCode, Transcript, UncertainSpan } from '@/types
 export const PAGE_JOINER = '\n\n';
 
 /**
- * The line that stands in for a page that yielded no text, in the convention the transcription prompt
- * already establishes for unreadable writing (`[illegible]`, `features/capture/prompts.ts`).
- *
- * It is in the transcript, so it is read aloud and it is what the structure step sees: both are the
- * point. A blind person hearing "[page 3 could not be read]" between page 2 and page 4 knows which
- * photograph to retake; a model summarising the document sees that part of it is absent instead of
- * assuming the four pages it was given were the whole thing.
- *
- * The number is the person's own page number (capture position + 1) and never anything read off the
- * page, because the page is the thing that failed.
- */
-export function unreadablePageMarker(page: number): string {
-  return `[page ${page + 1} could not be read]`;
-}
-
-/**
  * One page's outcome, in capture order. A `refused` reply is **not** in this type on purpose: §13 makes
  * a refusal halt the run (`features/analysis/pipeline.ts`'s `refused` branch), so a caller that has one
  * in hand has a decision to make before it has an assembly to call.
  */
 export type PageOutcome = Exclude<CompletionResult<TranscribeOutput>, { kind: 'refused' }>;
-
-/** A page that contributed no text, with the catalogue code that says why. */
-export interface MissingPage {
-  /** Capture position, 0-based — the same index `pageOffsets` and the marker use. */
-  page: number;
-  code: ErrorCode;
-}
 
 export interface AssembledDocument {
   transcript: Transcript;

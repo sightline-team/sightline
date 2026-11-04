@@ -35,7 +35,8 @@ import { DEFAULT_MAX_EDGE, MAX_PAGE_BYTES, targetSize } from '@/lib/image/prepar
 import { TRANSCRIBE_SYSTEM_PROMPT, TRANSCRIBE_USER_PROMPT } from '@/features/capture/prompts';
 import { transcribeSchema, type TranscribeOutput } from '@/features/capture/schemas';
 import { TRANSCRIBE_MAX_TOKENS } from '@/features/capture/transcribe';
-import { assembleDocument, unreadablePageMarker, type PageOutcome } from '@/features/capture/assemble';
+import { assembleDocument, type PageOutcome } from '@/features/capture/assemble';
+import { unreadablePageMarker } from '@/lib/transcript/holes';
 import { STRUCTURE_SYSTEM_PROMPT, structureUserPrompt } from '@/features/analysis/prompts';
 import { analysisSchema } from '@/features/analysis/schemas';
 import { groundFacts, quoteFound } from '@/features/analysis/grounding';

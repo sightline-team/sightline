@@ -11,12 +11,21 @@
  *
  * So this function is a consistency check, and it is set by code, never by the model
  * (ADR-11).
+ *
+ * **And it is a check against the reading, not against Sightline's own sentences** (**P-17**): ADR-27
+ * puts `[page n could not be read]` inside a joined transcript so the person can hear which photograph
+ * is missing, which means the text the model quotes from now holds one line the paper never carried.
+ * Matching goes through `groundableText` (`lib/transcript/holes.ts`), which masks those markers to the
+ * same length, so a quote of the marker, of part of it, or of a run spanning the hole fails instead of
+ * passing. A pasted document has no markers, so nothing about it changes.
  */
+
+import { groundableText } from '@/lib/transcript/holes';
 
 /** Exact substring test against the transcript. No fuzzy matching: a near-miss quote is a flag, not a pass. */
 export function quoteFound(transcript: string, sourceQuote: string): boolean {
   if (sourceQuote.length === 0) return false;
-  return transcript.includes(sourceQuote);
+  return groundableText(transcript).includes(sourceQuote);
 }
 
 /**

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { groundFacts, quoteFound } from '@/features/analysis/grounding';
+import { GROUNDING_MASK, groundableText, unreadablePageMarker } from '@/lib/transcript/holes';
 
 /**
  * Grounding tests (P-02). The whole point of these is to pin down what `quoteFound: true`
@@ -52,6 +53,56 @@ describe('quoteFound is a consistency check against the transcript', () => {
 
   it('handles a quote longer than the transcript', () => {
     expect(quoteFound('short', 'a much longer quoted passage')).toBe(false);
+  });
+});
+
+describe('a quote that lands on Sightline\'s own marker is not grounded (P-17, ADR-27)', () => {
+  // The joined photo transcript is verbatim *except* for the line ADR-27 puts in where a page yielded
+  // nothing. If that line could ground a quote, the screen would say "these are the words it read"
+  // about words this app wrote — the one way rule 8 can be broken from inside our own code.
+  const WITH_HOLE = ['Amount due: £840', unreadablePageMarker(1), 'NHS number 943 476 1989'].join('\n\n');
+
+  it('refuses the whole marker', () => {
+    expect(quoteFound(WITH_HOLE, unreadablePageMarker(1))).toBe(false);
+  });
+
+  it('refuses part of the marker, which is how a model tends to quote a note it has seen', () => {
+    expect(quoteFound(WITH_HOLE, 'could not be read')).toBe(false);
+    expect(quoteFound(WITH_HOLE, '[page 2 could not be read]')).toBe(false);
+  });
+
+  it('refuses a run that quotes across the hole, because those words were never adjacent on the paper', () => {
+    expect(quoteFound(WITH_HOLE, `Amount due: £840\n\n${unreadablePageMarker(1)}`)).toBe(false);
+  });
+
+  it('still grounds the real pages on either side of the hole', () => {
+    expect(quoteFound(WITH_HOLE, 'Amount due: £840')).toBe(true);
+    expect(quoteFound(WITH_HOLE, 'NHS number 943 476 1989')).toBe(true);
+  });
+
+  it('masks every hole in the document, not just the first', () => {
+    const twoHoles = [unreadablePageMarker(0), 'Amount due: £840', unreadablePageMarker(2)].join('\n\n');
+    expect(groundFacts(twoHoles, [{ sourceQuote: 'Amount due: £840' }, { sourceQuote: 'could not be read' }])).toEqual([
+      { sourceQuote: 'Amount due: £840', quoteFound: true },
+      { sourceQuote: 'could not be read', quoteFound: false },
+    ]);
+  });
+
+  it('leaves a transcript with no hole byte-identical, which is what the paste path depends on', () => {
+    expect(groundableText(TRANSCRIPT)).toBe(TRANSCRIPT);
+    expect(groundableText(WITH_HOLE)).toBe(WITH_HOLE.replace(unreadablePageMarker(1), GROUNDING_MASK.repeat(unreadablePageMarker(1).length)));
+  });
+
+  it('keeps the length, so pageOffsets and uncertain spans mean the same thing in both forms', () => {
+    expect(groundableText(WITH_HOLE).length).toBe(WITH_HOLE.length);
+  });
+
+  it('fails toward rule 8 when a document genuinely carries the marker shape as its own text', () => {
+    // Stated as behaviour, not as a bug: a letter that literally prints "[page 3 could not be read]"
+    // stops grounding that line. The wrong answer it can produce is a real quote flagged as unconfirmed,
+    // never our sentence credited as the model's.
+    expect(quoteFound('Form 7 says [page 3 could not be read] in the margin', 'Form 7 says')).toBe(true);
+    expect(quoteFound('Form 7 says [page 3 could not be read] in the margin', '[page 3 could not be read]')).toBe(false);
   });
 });
 
