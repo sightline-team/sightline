@@ -554,6 +554,26 @@ describe('truncation and refusal (P-08, ARCH §13)', () => {
     expect(h.analyses).toEqual([]);
   });
 
+  it('reads a reply that carried `content: null` as a truncation, not as a broken service', async () => {
+    // P-13. This is the exact shape a live page came back with on 2026-11-04 — `content: null`,
+    // `reasoning_content`, `finish_reason: "length"` (`docs/SPIKE_RESULTS.md` §1, §4) — when its whole
+    // budget went to reasoning. Before the schema knew `null` was a wire shape the person was told the
+    // service had broken; the honest sentence is that no answer arrived, which is P-08's transcript-only
+    // screen. One request only: a repair note cannot make a spent budget answer.
+    const h = harness({
+      envelope: {
+        id: 'chat-77',
+        model: MODEL,
+        choices: [{ message: { content: null, reasoning_content: 'The page has thirty-four lines of text.' }, finish_reason: 'length' }],
+      },
+    });
+
+    await expectDegraded(h, 'output_truncated');
+
+    expect(h.posts).toHaveLength(1);
+    expect(h.analyses).toEqual([]);
+  });
+
   it('claims nothing about a finish_reason it has never seen', async () => {
     const h = harness({ extra: { finish_reason: 'stop' } });
 

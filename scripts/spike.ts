@@ -28,7 +28,7 @@ import { buildSync } from 'esbuild';
 import path from 'node:path';
 import { attestationReportSchema, bindReport, newNonce } from '@/lib/near-ai/attestation';
 import { createNearClient, NearError, type NearClient } from '@/lib/near-ai/client';
-import { completionEnvelopeSchema } from '@/lib/near-ai/envelope';
+import { completionEnvelopeSchema, contentOf } from '@/lib/near-ai/envelope';
 import { DEFAULT_MAX_EDGE, MAX_PAGE_BYTES, targetSize } from '@/lib/image/prepare';
 import { isAllowed, isNearUpstreamHost, modelCatalogRowSchema, toModelMetadata, type ModelCatalogRow } from '@/lib/near-ai/models';
 import { checkSignature, fetchSignature, signatureRecordSchema, type SignatureRecord } from '@/lib/near-ai/signatures';
@@ -339,7 +339,7 @@ async function stageComplete(near: NearClient, model: string, attested: Attested
   const usage = e.usage ?? {};
   console.log(`  id present: ${e.id.length > 0} · model echoed: ${e.model ?? '(absent)'} · created: ${e.created ?? '(absent)'}`);
   console.log(`  finish_reason: ${e.choices[0]?.finish_reason ?? '(absent)'} · refusal: ${e.choices[0]?.message.refusal ?? '(absent)'}`);
-  console.log(`  content length: ${e.choices[0]?.message.content.length ?? 0} chars (content itself is never printed)`);
+  console.log(`  content length: ${contentOf(e).length} chars (content itself is never printed; a null answer reads as 0, which is the shape P-13 measured)`);
   console.log(
     `  usage: prompt ${usage.prompt_tokens ?? '(absent)'} · completion ${usage.completion_tokens ?? '(absent)'} · total ${usage.total_tokens ?? '(absent)'}` +
       ` · reasoning ${usage.completion_tokens_details?.reasoning_tokens ?? '(absent)'} · image ${usage.prompt_tokens_details?.image_tokens ?? '(absent)'}`,
@@ -612,7 +612,7 @@ async function probePage(near: NearClient, model: string, price: Price, label: s
     };
   }
   const e = envelope.data;
-  console.log(`    envelope accepted · content ${e.choices[0]?.message.content.length ?? 0} chars (never printed) · refusal ${e.choices[0]?.message.refusal ?? '(absent)'}`);
+  console.log(`    envelope accepted · content ${contentOf(e).length} chars (never printed) · truncated: ${e.choices[0]?.finish_reason === 'length' ? 'yes — `readCompletion` would send this to the transcript-only screen' : 'no'}`);
   return {
     usage,
     chatId: e.id,

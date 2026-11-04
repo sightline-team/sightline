@@ -18,8 +18,12 @@ import { z } from 'zod';
  * SPIKE §1 records the openapi response properties at the **top level** — `choices`, `created`,
  * `id`, `model`, `object`, `usage` — and never enumerates what sits inside a choice. Both fields
  * below are what an OpenAI-compatible endpoint is expected to carry (`PRD.md` §"Error handling" and
- * `ARCHITECTURE.md` §13 both plan around `finish_reason: length`), so they are **[Unverified]**
- * here, and the honest reading of that is:
+ * `ARCHITECTURE.md` §13 both plan around `finish_reason: length`), so they were planned as
+ * **[Unverified]**. **Partly closed by measurement on 2026-11-04** (`docs/SPIKE_RESULTS.md` §1, §4):
+ * a live page request carried `finish_reason: "length"` and a `content` of `null`, and put the answer's
+ * absence in a `reasoning_content` string — so `length` is now a value this repo has *seen*, and the
+ * null is handled by `content` being nullable rather than by a second guess about the shape.
+ * `refusal` has still never been observed, and the reading of all of this is unchanged:
  *
  *  - **they are optional**, so a response that omits them still parses and still gets verified;
  *  - **`finish_reason` is compared only against the one value a plan exists for** (`length`). Any
@@ -30,8 +34,8 @@ import { z } from 'zod';
  *  transcript-only path run anyway. Detection is a faster, clearer route to the same behaviour, not
  *  a precondition for it.
  *
- * Confirming both field names and their real value set is S-08/S-11 (blocker B-05); until then this
- * file is the only place that reads them, and `truncated`/`refusalOf` are the only way to ask.
+ * The value set beyond `length` is still owed (S-08, S-11); until then this file is the only place that
+ * reads these fields, and `truncated`/`refusalOf` are the only way to ask.
  */
 export const completionEnvelopeSchema = z.object({
   id: z.string().min(1),
@@ -40,11 +44,22 @@ export const completionEnvelopeSchema = z.object({
     .array(
       z.object({
         message: z.object({
-          content: z.string(),
+          /**
+           * **Nullable, because the wire carries `null`** (measured 2026-11-04, item **P-13**,
+           * `docs/SPIKE_RESULTS.md` §1, §4): a page request whose whole 256-token budget went to
+           * reasoning answered `content: null` alongside a `reasoning_content` string, with
+           * `finish_reason: "length"`. The field stays *required* — a message with no `content` key at
+           * all is still a transport failure — and `contentOf` turns `null` into the empty string, so
+           * the answer lands on the truncation path a person is told about instead of
+           * `invalid_model_output`. `reasoning_content` is deliberately not in this schema: nothing in
+           * Sightline reads a model's chain of thought aloud, and zod strips what it does not name.
+           */
+          content: z.string().nullable(),
           /** Present on a safety or capability refusal. Model-authored, so treated as data (§11). */
           refusal: z.string().nullable().optional(),
         }),
-        /** OpenAI-compatible reason string. **[Unverified]** on this endpoint; see above. */
+        /** OpenAI-compatible reason string. **[Measured]** on this endpoint: `"length"` is what a budget-
+         * exhausted page returned (`docs/SPIKE_RESULTS.md` §1). Other values have still never been seen. */
         finish_reason: z.string().nullable().optional(),
       }),
     )
@@ -63,9 +78,13 @@ export function truncated(envelope: CompletionEnvelope): boolean {
   return choice(envelope).finish_reason === 'length';
 }
 
-/** The content string this run should try to read — empty content is not an answer. */
+/**
+ * The content string this run should try to read — empty content is not an answer, and neither is
+ * `null`, which is what a budget-exhausted reply carries (P-13). It is folded to `''` here so the one
+ * place that decides "no answer" stays `content.length === 0` in the caller.
+ */
 export function contentOf(envelope: CompletionEnvelope): string {
-  return choice(envelope).message.content;
+  return choice(envelope).message.content ?? '';
 }
 
 /**
