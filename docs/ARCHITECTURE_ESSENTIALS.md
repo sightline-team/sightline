@@ -84,6 +84,20 @@ Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.m
 
 ## Accessibility
 - WCAG 2.2 AA target; manual tests on the devices you actually have; list untested platforms
+- **One visual system in `globals.css`, asserted not reviewed** (**A-17**, **ADR-37**, `tests/e2e/design.spec.ts`): one
+  44rem measure shared by nav + banner + `main` (same two edges at 1440/768/390, ~75 chars a line), one type
+  scale where no heading is smaller than the body it heads, **one button pair chosen by native semantics**
+  (`button[type=submit]` = primary, so `Button.tsx` has no variant to drift from; a disabled primary changes
+  fill, never label opacity), `--target: 44px` on the nav links too, hover = colour step + 2 px that
+  `prefers-reduced-motion` takes the movement out of. The three palettes set values only — contrast is
+  computed from the elements' own styles in all three, which is how `color-scheme: dark` was found drawing an
+  unselected radio as a dark disc on a near-black page (under 1.4.11's 3:1, in the contrast theme). Three rules
+  for the next editor of that test file: a class in a component is a promise the CSS must keep (eleven were styled
+  by nothing); a themed page must be *poll-for-attribute* before it is measured, or one read spans two palettes;
+  and a colour read inside the stylesheet's own 120 ms transition is the interpolated value, not the palette's, so
+  `colours()` returns the first answer two animation frames agree on. One finding went to the app instead of the
+  CSS (**A-18**): a press on a Settings control that lands before hydration writes nothing, themes nothing,
+  announces nothing, and leaves the checkbox showing `checked`.
 - One `aria-live` announcer; progress announced ~every 10 s; focus to new heading / error summary
 - Result order: Summary → Key facts → Actions → Warnings → Full text → Ask → Trust receipt
 - **Key facts is a decided size, not a dump** (**P-16**, ADR-36, `features/analysis/facts.ts`): 12 or fewer

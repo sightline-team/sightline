@@ -1,42 +1,99 @@
+/* Sightline's only stylesheet (AGENTS.md §7: native HTML + plain CSS, no framework, no web fonts).
+ *
+ * Item **A-17** read these four screens at 1440, 768 and 390 and rewrote this file around what the
+ * reading needs, not around a brand. Every rule below is justified by one of five things:
+ *
+ * 1. **A heading is never smaller than the text it heads.** `h3`/`h4` had no rules at all, so the
+ *    receipt's `<h4>Checks that ran</h4>` rendered *below* the body size the browser was given.
+ * 2. **One measure, one left edge.** `nav`, the demo-data banner and `main` are siblings, and only
+ *    `main` was centred — so the links and the privacy warning hung at the viewport's left edge
+ *    while the content sat in a column. All three now share `--measure` and `--wrap-pad`.
+ * 3. **One button pair, chosen by native semantics, not by a class.** A `type=submit` button *is*
+ *    the primary action of the form it belongs to — `Read this text`, `Read these photographs`,
+ *    `Ask` — and everything else (`type=button`: the demo choosers, the suggested questions,
+ *    Retake, Remove, Forget, read-aloud) is secondary. That needs no new prop on `Button.tsx`, so
+ *    no component can drift away from the pair.
+ * 4. **Every pointer answer is a step, and `prefers-reduced-motion` switches the transition off**
+ *    (the block at the bottom of this file). Nothing here moves on scroll.
+ * 5. **The three palettes set values only.** Dark, light and the opt-in high-contrast theme
+ *    (A-15) differ in tokens; no rule below reads a theme name, so a colour change cannot fix one
+ *    theme and break another. `color-scheme` is declared per palette because the native file
+ *    picker's own button (`::file-selector-button`) is drawn by the browser, not here.
+ *
+ * Two things this file deliberately does **not** do: it never hides a fact or a section behind
+ * colour alone (the flags carry words as well as colour, AGENTS.md §4 rule 5), and it adds no
+ * live region, no title and no heading — the announcer and the fixed section order are contracts
+ * in `docs/ARCHITECTURE.md` §12, not styling choices.
+ */
+
 :root {
+  color-scheme: dark;
+
   --bg: #101014;
   --fg: #f2f2f5;
   --muted: #b6b6c2;
   --accent: #4ea1ff;
+  --accent-hover: #8cc4ff;
+  --on-accent: #101014;
   --panel: #1a1a22;
+  --panel-hover: #26262f;
   --border: #3a3a48;
   --warn-bg: #3a2a10;
   --warn-fg: #ffd591;
 
+  /* One spacing rhythm. `--space-4` is what separates a section from the one after it. */
   --space-1: 0.5rem;
   --space-2: 1rem;
   --space-3: 1.5rem;
+  --space-4: 2.5rem;
+
   --radius: 10px;
   --target: 44px;
+  --measure: 44rem;
+  --wrap-pad: var(--space-2);
+  --motion: 120ms;
+
+  /* One type scale, all of it above the 16px floor. `--text-base` is deliberately large: this app
+     is read by people with low vision, and 200% zoom is a requirement (A-08), not a stretch. */
   --text-base: 1.125rem;
-  --text-h1: clamp(1.6rem, 5vw, 2.25rem);
+  --text-hint: 1rem;
+  --text-h1: clamp(1.75rem, 6vw, 2.25rem);
+  --text-h2: 1.5rem;
+  --text-h3: 1.25rem;
+  --text-h4: 1.125rem;
 }
 
 @media (prefers-color-scheme: light) {
   :root {
+    color-scheme: light;
+
     --bg: #ffffff;
     --fg: #14141a;
     --muted: #4a4a56;
     --accent: #0b5cad;
+    --accent-hover: #084a8c;
+    --on-accent: #ffffff;
     --panel: #f2f4f7;
+    --panel-hover: #e2e6ee;
     --border: #c9ccd4;
     --warn-bg: #fff4e0;
     --warn-fg: #5c3c00;
   }
 }
 
-/* One high-contrast theme, opt-in from the settings page (docs/PRD.md §7). */
+/* One high-contrast theme, opt-in from the settings page (docs/PRD.md §7). Its body background
+   must stay exactly #000000: `tests/e2e/flow.spec.ts` measures it as the proof the theme applied. */
 :root[data-high-contrast='true'] {
+  color-scheme: dark;
+
   --bg: #000000;
   --fg: #ffffff;
   --muted: #ffffff;
   --accent: #ffff00;
+  --accent-hover: #ffffff;
+  --on-accent: #000000;
   --panel: #000000;
+  --panel-hover: #1c1c1c;
   --border: #ffffff;
   --warn-bg: #000000;
   --warn-fg: #ffff00;
@@ -61,12 +118,62 @@ body {
   font-size: var(--text-base);
   line-height: 1.6;
   text-rendering: optimizeLegibility;
+  overflow-wrap: break-word;
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * The shell: three siblings, one measure, one pair of edges.
+ * ------------------------------------------------------------------------------------------- */
+
+nav,
+.banner,
+main {
+  max-width: var(--measure);
+  margin-inline: auto;
+  padding-inline: var(--wrap-pad);
+}
+
+nav {
+  border-bottom: 1px solid var(--border);
+  padding-block: var(--space-1);
+}
+
+/* The links are the app's only navigation, so they are a row that wraps rather than a bullet
+   column, and each is a `--target`-tall box: a magnifier user aims at the label, not the glyph.
+   `Forget this document` is a `<li>` in the same row by design (P-10: it must be reachable on
+   every route, including mid-run). */
+nav ul {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  padding: 0;
+}
+
+nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target);
+  padding: 0 var(--space-1);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
 }
 
 main {
-  max-width: 46rem;
-  margin: 0 auto;
-  padding: var(--space-3) var(--space-2) 4rem;
+  padding-block: var(--space-3) var(--space-4);
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * Typography: one scale, one rhythm.
+ * ------------------------------------------------------------------------------------------- */
+
+h1,
+h2,
+h3,
+h4 {
+  text-wrap: balance;
 }
 
 h1 {
@@ -76,21 +183,53 @@ h1 {
 }
 
 h2 {
-  font-size: 1.4rem;
+  font-size: var(--text-h2);
+  line-height: 1.3;
+  margin: var(--space-4) 0 var(--space-1);
+}
+
+h3 {
+  font-size: var(--text-h3);
+  line-height: 1.35;
   margin: var(--space-3) 0 var(--space-1);
+}
+
+/* The receipt's two lists are `<h4>`, and an unstyled `h4` is smaller than body text. */
+h4 {
+  font-size: var(--text-h4);
+  line-height: 1.4;
+  margin: var(--space-3) 0 var(--space-1);
+}
+
+p {
+  margin: var(--space-2) 0;
 }
 
 a {
   color: var(--accent);
 }
 
+a:hover {
+  color: var(--accent-hover);
+  text-decoration-thickness: 2px;
+}
+
+label {
+  font-weight: 600;
+}
+
 button,
 a,
 input,
 textarea,
-select {
+select,
+summary {
   font: inherit;
 }
+
+/* ---------------------------------------------------------------------------------------------
+ * Controls: one pair, one focus ring, one disabled look.
+ * ------------------------------------------------------------------------------------------- */
 
 button,
 [role='button'] {
@@ -102,6 +241,34 @@ button,
   background: var(--panel);
   color: var(--fg);
   cursor: pointer;
+  transition:
+    background-color var(--motion) ease,
+    border-color var(--motion) ease,
+    color var(--motion) ease,
+    transform var(--motion) ease;
+}
+
+button[type='submit'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+button:hover:not([disabled]) {
+  border-color: var(--accent);
+  background: var(--panel-hover);
+  transform: translateY(-2px);
+}
+
+button[type='submit']:hover:not([disabled]) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+button:active:not([disabled]) {
+  transform: translateY(0);
+  background: var(--panel);
 }
 
 textarea,
@@ -114,22 +281,55 @@ input[type='text'] {
   color: var(--fg);
 }
 
+textarea {
+  line-height: 1.5;
+}
+
+textarea:hover,
+input[type='text']:hover {
+  border-color: var(--accent);
+}
+
 :focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 2px;
 }
 
+/* A primary button filled with the accent colour cannot show an accent-coloured ring, so its ring
+   takes the foreground colour instead — black on blue in the light theme, white on yellow in the
+   high-contrast one. */
+button[type='submit']:focus-visible {
+  outline-color: var(--fg);
+}
+
+/* Not `opacity`: a faded label is a contrast failure waiting to be measured. The disabled look is
+   the secondary button's shape with the muted colour, which stays above 4.5:1 in all three
+   palettes. */
+button[disabled] {
+  background: var(--bg);
+  border-color: var(--border);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * The shell's own blocks.
+ * ------------------------------------------------------------------------------------------- */
+
 .skip-link {
   position: absolute;
   left: var(--space-1);
-  top: -3rem;
+  top: -3.5rem;
   z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target);
   padding: var(--space-1) var(--space-2);
   background: var(--panel);
   color: var(--fg);
   border: 2px solid var(--accent);
   border-radius: var(--radius);
-  transition: top 0.1s linear;
+  transition: top var(--motion) ease;
 }
 
 .skip-link:focus {
@@ -147,13 +347,15 @@ input[type='text'] {
   white-space: nowrap;
 }
 
+/* Rule 11 (AGENTS.md §4): Mode F says it is demo data, above the content it qualifies, on every
+   route. It is a panel with a border the width of the warning, not a tint alone. */
 .banner {
   border: 2px solid var(--warn-fg);
   background: var(--warn-bg);
   color: var(--warn-fg);
-  padding: var(--space-2);
+  padding: var(--space-2) var(--wrap-pad);
   border-radius: var(--radius);
-  margin-bottom: var(--space-3);
+  margin-block: var(--space-2) var(--space-3);
 }
 
 .muted {
@@ -170,17 +372,37 @@ div:focus {
 
 main > section,
 section {
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-4);
 }
+
+/* The hints sit under the field they describe (`aria-describedby`), so they read as one unit with
+   it: slightly smaller than the body — never below 16px — and one step of space above. */
+.paste-hint,
+.capture-hint,
+.question-hint {
+  font-size: var(--text-hint);
+  margin-block: var(--space-1) var(--space-2);
+}
+
+.mode-downgraded,
+.record-count {
+  font-size: var(--text-hint);
+  border-left: 3px solid var(--border);
+  padding-left: var(--space-2);
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * The input screen.
+ * ------------------------------------------------------------------------------------------- */
 
 /* Touch targets sit in a row without bullet markers (demo document buttons). */
 .button-row {
   list-style: none;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-1);
+  gap: var(--space-1) var(--space-2);
   padding: 0;
-  margin: var(--space-1) 0;
+  margin: var(--space-2) 0;
 }
 
 /* The photographs a person has added (item **C-02**).
@@ -206,6 +428,11 @@ section {
   border: 2px solid var(--border);
   border-radius: var(--radius);
   padding: var(--space-2);
+  transition: border-color var(--motion) ease;
+}
+
+.page-list li:hover {
+  border-color: var(--accent);
 }
 
 .page-line {
@@ -219,6 +446,7 @@ section {
   max-block-size: 6rem;
   max-inline-size: 6rem;
   border: 1px solid var(--border);
+  border-radius: 4px;
 }
 
 .page-actions {
@@ -232,12 +460,30 @@ section {
   min-block-size: var(--target);
 }
 
+/* "Nothing added yet" is the state a first-time user is actually in, so it is a frame the page
+   will fill rather than a line of grey text. */
+.capture-empty {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2);
+  margin-block: var(--space-2);
+}
+
 /* The native file picker's own button is part of the control, so it is a 44 px target too (AGENTS.md §8)
  * rather than the small default the browser draws. */
 input[type='file']::file-selector-button {
   min-block-size: var(--target);
   margin-inline-end: var(--space-2);
+  padding-inline: var(--space-2);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--fg);
 }
+
+/* ---------------------------------------------------------------------------------------------
+ * The results screen.
+ * ------------------------------------------------------------------------------------------- */
 
 /* The read-aloud control and its "nothing is read until you press this" line (P-09). */
 .speak-control {
@@ -248,52 +494,11 @@ input[type='file']::file-selector-button {
   margin: var(--space-1) 0;
 }
 
-/* A-15's settings controls. The whole row is the tap target, not the dot: a 44 px row that a
-   magnification user can hit beside the visible label is the requirement (AGENTS.md §8), and the
-   native control keeps its own keyboard behaviour — radios by arrow keys, checkbox by space. */
-.setting-group {
-  border: 2px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--space-2);
-  margin: var(--space-1) 0;
-}
-
-.setting-group legend {
-  padding: 0 var(--space-1);
-}
-
-.setting-options {
-  list-style: none;
-  display: grid;
-  gap: var(--space-1);
-  padding: 0;
-  margin: 0;
-}
-
-.setting-options label,
-.setting-row label {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-height: var(--target);
-}
-
-.setting-row {
-  margin: var(--space-1) 0;
-}
-
-.setting-options input[type='radio'],
-.setting-row input[type='checkbox'] {
-  width: 1.5rem;
-  height: 1.5rem;
-  accent-color: var(--accent);
-}
-
 .fact-list {
   display: grid;
   grid-template-columns: minmax(8rem, 12rem) 1fr;
   gap: var(--space-1) var(--space-2);
-  margin: var(--space-1) 0;
+  margin: var(--space-2) 0;
 }
 
 .fact-list dt {
@@ -302,11 +507,15 @@ input[type='file']::file-selector-button {
 
 .fact-list dd {
   margin: 0;
+  min-width: 0;
 }
 
 /* A fact whose quote was not found in the transcript (AGENTS.md §4 rule 8) is marked in the
    text as well as by colour, so it survives greyscale and colour-blind reading. */
-.flag {
+.flag,
+.fact-flagged,
+.answer-flagged,
+.answer-unsourced {
   color: var(--warn-fg);
   font-weight: 600;
 }
@@ -318,6 +527,7 @@ input[type='file']::file-selector-button {
   border-radius: var(--radius);
   background: var(--panel);
   padding: var(--space-2);
+  line-height: 1.5;
 }
 
 /* Answers in the order they were asked, each holding its question, its answer and its grounding
@@ -329,6 +539,10 @@ input[type='file']::file-selector-button {
 .answer-list li {
   margin-bottom: var(--space-2);
 }
+
+/* ---------------------------------------------------------------------------------------------
+ * The receipt.
+ * ------------------------------------------------------------------------------------------- */
 
 /* One receipt block per call, separated rather than merged, so a later question cannot read as
    though it were part of the record of the document that was opened (T-09). */
@@ -342,13 +556,18 @@ input[type='file']::file-selector-button {
 .detail-list {
   list-style: none;
   padding: 0;
-  margin: var(--space-1) 0;
+  margin: var(--space-2) 0;
 }
 
 .check-list li,
 .detail-list li {
   border-bottom: 1px solid var(--border);
   padding: var(--space-1) 0;
+}
+
+.check-list li:last-child,
+.detail-list li:last-child {
+  border-bottom: 0;
 }
 
 .check-passed,
@@ -367,15 +586,130 @@ input[type='file']::file-selector-button {
   color: var(--warn-fg);
 }
 
+/* The two collapsible controls on the results screen — "Technical details" and P-16's "Show the
+   other N facts" — are framed so the fold reads as a control with content behind it. The summary
+   keeps the native marker: removing it is the change that makes a `<details>` stop being
+   discoverable to a keyboard user. */
+details {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-1) var(--space-2);
+  margin-block: var(--space-2);
+}
+
 details summary {
   min-height: var(--target);
   cursor: pointer;
   font-weight: 600;
+  transition: color var(--motion) ease;
+}
+
+details summary:hover {
+  color: var(--accent);
 }
 
 details summary:focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 2px;
+}
+
+details[open] summary {
+  margin-bottom: var(--space-1);
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * A-15's settings controls. The whole row is the tap target, not the dot: a 44 px row that a
+   magnification user can hit beside the visible label is the requirement (AGENTS.md §8), and the
+   native control keeps its own keyboard behaviour — radios by arrow keys, checkbox by space.
+ * ------------------------------------------------------------------------------------------- */
+
+.setting-group {
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2);
+  margin: var(--space-2) 0;
+}
+
+.setting-group legend {
+  padding: 0 var(--space-1);
+  font-weight: 600;
+}
+
+.setting-options {
+  list-style: none;
+  display: grid;
+  gap: var(--space-1);
+  padding: 0;
+  margin: 0;
+}
+
+.setting-options label,
+.setting-row label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--target);
+  padding-inline: var(--space-1);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background-color var(--motion) ease;
+}
+
+.setting-options label:hover,
+.setting-row label:hover {
+  background: var(--panel-hover);
+}
+
+.setting-row {
+  margin: var(--space-1) 0;
+}
+
+.setting-options input[type='radio'],
+.setting-row input[type='checkbox'] {
+  width: 1.5rem;
+  height: 1.5rem;
+  accent-color: var(--accent);
+  cursor: pointer;
+  /* Asked for on the control rather than on `:root`, because the dark palettes are the problem
+     here: with `color-scheme: dark` the browser draws an unselected radio as a dark disc on a
+     near-black page, and the indicator of a control owes 3:1 under WCAG 1.4.11. `light` asks for
+     the light rendering of the widget itself — a pale disc with a coloured dot — which is the only
+     way to get that without replacing the native control (AGENTS.md §8: native HTML first). The
+     light theme is unchanged by it, and so is the selected state, which `accent-color` owns. */
+  color-scheme: light;
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * Narrow screens (390 px is the phone this is built for: the camera is on it).
+ * ------------------------------------------------------------------------------------------- */
+
+@media (max-width: 30rem) {
+  /* A label column of 8rem beside a value leaves the value 12rem wide — the fact list becomes
+     two lines per fact at phone width, so the label goes on top of its own value instead. */
+  .fact-list {
+    grid-template-columns: 1fr;
+    gap: 0 var(--space-2);
+  }
+
+  .fact-list dt {
+    margin-top: var(--space-1);
+  }
+
+  /* Full-width actions: at 390 px a natural-width button is a 44 px target the thumb still has to
+     find, and the row's own ragged edges are what made the input screen look unfinished. */
+  .button-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .button-row button,
+  button[type='submit'] {
+    width: 100%;
+  }
+
+  nav ul {
+    gap: var(--space-1);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -387,10 +721,18 @@ details summary:focus-visible {
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+
+  /* The lift is the part a vestibular-sensitive reader feels; the colour step stays, so a hovered
+     control is still visibly hovered. */
+  button:hover:not([disabled]) {
+    transform: none;
+  }
 }
 
 @media (prefers-contrast: more) {
   :root {
     --border: var(--fg);
+    --muted: var(--fg);
+    --panel: var(--bg);
   }
 }

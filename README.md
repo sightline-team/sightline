@@ -63,7 +63,7 @@ is never put behind the control. The
 fourth letter exists to show the other ending: its reply is not the answer the app asked for, so the
 run makes its one repair retry and then shows the text you gave with no summary on it, which is the
 path most likely to meet a real user and the one `docs/ARCHITECTURE.md` §13 promises. Proved by
-`tests/e2e/flow.spec.ts` (72 of the suite's 120 Playwright tests) against exactly these two commands.
+`tests/e2e/flow.spec.ts` (72 of the suite's 141 Playwright tests) against exactly these two commands.
 Three of the four letters are **authored synthetic**; the fifth case is **recorded** traffic, and the two
 provenances are labelled separately everywhere they appear (`fixtures/README.md`, item **S-11**).
 
@@ -241,6 +241,10 @@ that with no figure of its own. What would make the real total knowable — the 
 Built to the conventions in AGENTS.md §8: native HTML semantics, one polite live region for every
 status change, focus moved after navigation and on errors, fixed results order, no gesture-only
 actions, ≥ 44 px targets, 4.5:1 contrast, `prefers-reduced-motion` and `prefers-contrast` honoured.
+The target minimum, the contrast ratio and the reduced-motion rest are not a review of the stylesheet:
+`tests/e2e/design.spec.ts` (item **A-17**) reads the colours and sizes a browser actually computed for
+the page, in all three palettes, at 1440/768/390, and fails if one pair falls under 4.5:1, if a nav
+target shrinks under 44 px, or if reduced motion leaves a button still moving.
 
 One **read-aloud button** sits at the top of the results screen (item P-09). It is opt-in and off by
 default: nothing is spoken until it is pressed, and it reads Sightline's own summary plus Sightline's
