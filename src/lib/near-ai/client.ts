@@ -129,8 +129,13 @@ export interface NearClientConfig {
 /** Hosts `next.config.ts`'s CSP `connect-src` allows, and the only ones Mode A may talk to. */
 const NEAR_DIRECT_HOSTS = ['cloud-api.near.ai'] as const;
 
-/** Where the relay lives: our own origin, under our own route handler. Never a caller-supplied host. */
-const RELAY_PREFIX = '/api/relay/v1';
+/**
+ * Where the relay lives: our own origin, under our own route handler. Never a caller-supplied host.
+ * Exported because the composition root builds a Mode B client from this exact string
+ * (`app/_flow/collaborators.ts`) — `validateBaseUrl` below is its mirror, so the wiring and the guard
+ * cannot drift into two different paths.
+ */
+export const RELAY_PREFIX = '/api/relay/v1';
 
 const DEFAULT_RETRY_DELAY_MS = 500;
 /** `Retry-After` is honoured but capped: hammering a rate-limited relay slows everyone down. */

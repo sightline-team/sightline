@@ -212,9 +212,16 @@ export async function fetchSignature(client: NearClient, chatId: string, input: 
 }
 
 /**
- * The collaborator the pipeline and Q&A ask for. It is built around a key provider rather than a
- * key argument, because the key belongs to the session that was attested, not to the individual
+ * The collaborator the pipeline and Q&A ask for. It is built around a key *provider* rather than a
+ * key argument, because the key belongs to the enclave that was attested, not to the individual
  * call: a verifier constructed before the gate ran has nothing to check against and says so.
+ *
+ * The provider is given the **model**, because a session can attest more than one machine.
+ * **ADR-24** plans a run over two of them (`STEP_PLANS.transcribe` and `STEP_PLANS.analyse`), and
+ * **T-08**'s recorded reports showed those two models answer with two different signing keys
+ * (`attestation-fixtures.test.ts` › "the two models are two enclaves"). A provider that ignored the
+ * model would hand the reading step's answer to the page enclave's key, and a signature that does
+ * not match is a *failed check* — so the drift is not subtle, it stops the run.
  *
  * That is deliberate. `SignatureVerifier`'s arguments carry no key, so the only way to hand over
  * an attested key is at construction, and the only honest reading of "no attested key yet" is a
@@ -223,14 +230,14 @@ export async function fetchSignature(client: NearClient, chatId: string, input: 
  */
 export function createSignatureVerifier(deps: {
   client: NearClient;
-  /** Returns the key material this session attested to, or `undefined` if nothing has been attested. */
-  attested: () => { algo: SigningAlgo; keyOrAddress: string } | undefined;
+  /** The key material attested for **this** model, or `undefined` when no gate call covered it. */
+  attested: (model: string) => { algo: SigningAlgo; keyOrAddress: string } | undefined;
 }): SignatureVerifier {
   return async ({ chatId, model, sentBody, rawText, signal }): Promise<SignatureOutcome> => {
     const ran: CheckResult[] = [{ name: 'response_signature', ran: true, passed: false }];
-    const key = deps.attested();
+    const key = deps.attested(model);
     if (key === undefined) {
-      return { algo: 'ecdsa', verified: false, checks: [{ ...ran[0]!, detail: 'no attestation has run in this session, so there is no key to verify against' }] };
+      return { algo: 'ecdsa', verified: false, checks: [{ ...ran[0]!, detail: 'no attestation has run for this model in this session, so there is no key to verify against' }] };
     }
     if (sentBody === undefined) {
       return { algo: key.algo, verified: false, checks: [{ ...ran[0]!, detail: 'the exact request bytes are missing, so request_hash cannot be rebuilt' }] };

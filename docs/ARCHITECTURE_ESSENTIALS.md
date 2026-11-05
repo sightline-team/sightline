@@ -21,7 +21,7 @@ Outline only. Detail: `ARCHITECTURE.md`. Scope and hard-questions review: `PRD.m
 1. **Claims are computed, not written.** UI statement comes from `TrustRecord.claim` (`e2ee_enclave` | `attested_model_signed_responses` | `partial` | `fixtures`).
 2. **Browser cannot prove upload ends in the enclave** (cannot read/pin TLS). Only E2EE to the attested key closes this. No E2EE → use the weaker statement.
 3. **TEE-hosted models only.** Proxied models have no TEE guarantee **[V]**.
-4. **Fresh nonce per session** (32 random bytes, 64 hex). Check attestation before sending; fetch and verify the response signature after every call — it is a separate keyed request, not a header (ADR-19).
+4. **Fresh nonce per session** (32 random bytes, 64 hex). Check attestation before sending; fetch and verify the response signature after every call — it is a separate keyed request, not a header (ADR-19). The nonce stays one per session, but the **report** is one per model: a photographed run asks two models, they are two enclaves with two keys, and each answer is verified against the key *that* model's report bound (ADR-35).
 5. **`partial` is never shown as "verified".** List checks with `ran` + `passed`.
 6. **Server stores/logs no content.** Relay is stateless, fixed host, exact-path allowlist, size cap.
 7. **`quoteFound` is code-computed.** It proves consistency with the transcript, **not** correctness against the page. Never describe it as page-verified. The transcript it searches is `groundableText(transcript)`: Sightline's own `[page n could not be read]` marker (**ADR-27**) is masked to the same length before matching, so a quote that lands on a hole is not grounded (**P-17**).

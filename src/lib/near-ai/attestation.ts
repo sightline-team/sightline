@@ -248,16 +248,24 @@ export interface TrustSession {
  * nonce minted for this session and the key the report bound to it. Build them separately and a
  * caller can wire a verifier to a gate that never ran — which verifies against nothing.
  *
- * One nonce, short-lived cache: `ttlMs` decides when the report is re-fetched, not when a new
- * nonce is minted (rule 4 asks for a fresh nonce per *session*, and re-answering the same nonce is
- * how a re-fetch stays comparable to the first answer).
+ * One nonce, short-lived cache **per model**: `ttlMs` decides when the report is re-fetched, not
+ * when a new nonce is minted (rule 4 asks for a fresh nonce per *session*, and re-answering the
+ * same nonce is how a re-fetch stays comparable to the first answer).
+ *
+ * The cache is keyed by model, and the reason it must be is **ADR-24**'s plan rather than
+ * tidiness: one photographed run asks two models — the page reading and the structure step — and
+ * **T-08** recorded that those two answer with two different enclave keys (`attestation-fixtures
+ * .test.ts` › "the two models are two enclaves"). A single slot would attest the page model, reuse
+ * that outcome for the structure step without ever asking about *its* enclave (rule 4 asks for a
+ * check before document data goes out, and the second step sends a transcript), and then verify
+ * the second step's signature against the first enclave's key — a check that can only ever fail,
+ * reported as though the service had signed nothing.
  */
 export function createTrustSession(deps: { client: NearClient; ttlMs?: number; fetchImpl?: typeof fetch; signingAlgo?: SigningAlgo }): TrustSession {
   const nonce = newNonce();
   const algo = deps.signingAlgo ?? 'ed25519';
   const ttl = deps.ttlMs ?? 60_000;
-  let cached: { outcome: GateOutcome; at: number } | undefined;
-  let current: GateOutcome | undefined;
+  const cache = new Map<string, { outcome: GateOutcome; at: number }>();
 
   const run = async (model: string, signal: AbortSignal): Promise<GateOutcome> => {
     const report = await fetchReport(deps.client, { model, nonce, signingAlgo: algo, signal });
@@ -292,19 +300,22 @@ export function createTrustSession(deps: { client: NearClient; ttlMs?: number; f
         ? 'verified'
         : 'partial';
     const outcome: GateOutcome = { status, checks, nonce, signingAlgo: algo, fetchedAt: server.fetchedAt, signingKey: local.signingKey };
-    cached = { outcome, at: Date.now() };
-    current = outcome;
+    cache.set(model, { outcome, at: Date.now() });
     return outcome;
   };
 
   const gate = async ({ model, signal }: { model: string; signal: AbortSignal }): Promise<GateOutcome> => {
-    if (cached !== undefined && Date.now() - cached.at < ttl) return cached.outcome;
+    const held = cache.get(model);
+    if (held !== undefined && Date.now() - held.at < ttl) return held.outcome;
     return run(model, signal);
   };
 
   const verifySignature = createSignatureVerifier({
     client: deps.client,
-    attested: () => current?.signingKey,
+    // The key for *the model that answered*, which is the one this session attested before its
+    // request was built. A different model in the same session has a different enclave and its own
+    // outcome, and nothing here falls back to another model's key.
+    attested: (model) => cache.get(model)?.outcome.signingKey,
   });
 
   return { gate, verifySignature, nonce: () => nonce };

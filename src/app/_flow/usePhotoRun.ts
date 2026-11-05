@@ -2,12 +2,12 @@
 
 import { useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { createFixtureClient, transportFor, FIXTURE_MODEL } from '@/lib/fixtures/replay';
 import { readPages } from '@/features/capture/read_pages';
 import { checkPageLabels, pageLabelSummary } from '@/features/capture/page-labels';
 import { runPipeline } from '@/features/analysis/pipeline';
 import { RunHalt } from '@/lib/near-ai/verification';
-import { LIVE_MODE_UNAVAILABLE, refusedGate, refusedSignatureVerifier } from '@/app/_flow/refused_steps';
+import { DIRECT_MODE_UNAVAILABLE } from '@/app/_flow/refused_steps';
+import { collaboratorsFor, modelFor } from '@/app/_flow/collaborators';
 import { liveWrites } from '@/app/_flow/live_writes';
 import { captureIssueSummary } from '@/lib/errors';
 import { missingPagesAnnouncement } from '@/lib/transcript/holes';
@@ -27,9 +27,13 @@ import type { AppError } from '@/types';
  * (`docs/SPIKE_RESULTS.md` §4), so a photograph that looks like a duplicate, or a missing page in the
  * middle of the document, has to reach the person **before** the structure step is paid for.
  *
- * **Live modes refuse at the door**, the same sentence as the paste run (`refused_steps.ts`), and for
- * the same reason: what is missing is a service B-12 can reach, not a check. Demo mode gets all the way
- * through: **S-11** recorded the three photographs this demo ships, so a run started from those files
+ * **Mode A refuses at the door**, the same sentence as the paste run (`refused_steps.ts`, item
+ * **T-13**), and for the same reason: what is missing is a key the browser could send. Mode B runs
+ * for real, and a photo run is the one that shows why the wiring is a *session* rather than a call:
+ * `STEP_PLANS.transcribe` and `STEP_PLANS.analyse` are two models (**ADR-24**) and **T-08** measured
+ * them as two enclaves with two keys, so the gate attests each one before that step's request is
+ * built, and each step's signature is checked against its own key. Mode F gets all the way through
+ * too: **S-11** recorded the three photographs this demo ships, so a run started from those files
  * reaches the page loop, the structure step and the Ask section in a browser with no key (**C-13**,
  * `tests/e2e/photo-fixtures.spec.ts`), while any other photograph is refused at the first page
  * (`no_fixture_for_page`) instead of being answered with somebody else's transcription. The loop is
@@ -38,9 +42,9 @@ import type { AppError } from '@/types';
  *
  * `verification_passed` is deliberately **not** dispatched. It exists in the reducer to move the
  * status to `transcribing`, and the status is not what the person hears — progress here is the
- * per-page announcement — while the name would report a check that this build has not run (mode F's
- * gate is recorded `not_run`, and AGENTS.md §4 rule 5 forbids showing a check as passed when it is
- * not). The action stays for the run that can honestly dispatch it.
+ * per-page announcement — while the name would report a check that this build has not run (the gate's
+ * strongest live answer is still `partial` while **B-12** is open, and AGENTS.md §4 rule 5 forbids
+ * showing a check as passed when it is not). The action stays for the run that can honestly dispatch it.
  */
 export function usePhotoRun(): () => Promise<RunOutcome> {
   const { session, dispatch, beginRun, endRun } = useSessionStore();
@@ -55,9 +59,9 @@ export function usePhotoRun(): () => Promise<RunOutcome> {
       // would put a photograph's error in the paste section and steal its focus target.
       dispatch({ type: 'input_selected', input: 'images' });
 
-      if (transportFor(session.mode) === 'network') {
-        dispatch({ type: 'failed', code: LIVE_MODE_UNAVAILABLE.code });
-        announce(LIVE_MODE_UNAVAILABLE.userMessage);
+      if (session.mode === 'direct') {
+        dispatch({ type: 'failed', code: DIRECT_MODE_UNAVAILABLE.code });
+        announce(DIRECT_MODE_UNAVAILABLE.userMessage);
         return { ok: false };
       }
 
@@ -68,6 +72,7 @@ export function usePhotoRun(): () => Promise<RunOutcome> {
         return { ok: false };
       }
 
+      const { transport, gate, verifySignature } = collaboratorsFor(session);
       const controller = beginRun();
       // P-12: every write this run makes goes through the signal, not only its last one.
       const dispatchLive = liveWrites(controller.signal, dispatch);
@@ -81,12 +86,13 @@ export function usePhotoRun(): () => Promise<RunOutcome> {
       try {
         const assembled = await readPages(session.pages, {
           mode: session.mode,
-          // Named in the receipt; it is not a TEE model and does not claim to be one. A live photo run
-          // names `STEP_PLANS.transcribe.model` instead (ADR-24) when B-12 lets it reach a service.
-          model: FIXTURE_MODEL,
-          transport: createFixtureClient(),
-          gate: refusedGate,
-          verifySignature: refusedSignatureVerifier,
+          // The page model for a live run, the fixture's own name for Mode F (`modelFor`, ADR-24). It is
+          // named in the receipt, and a receipt that named the summarising model here would describe a
+          // call this step never made.
+          model: modelFor(session.mode, 'transcribe'),
+          transport,
+          gate,
+          verifySignature,
           signal: controller.signal,
           onTrustRecord: (record) => dispatchLive({ type: 'trust_recorded', record }),
           // §12's cadence is per page rather than per tick: a page is ≈26 s, so this is about one
@@ -153,13 +159,13 @@ export function usePhotoRun(): () => Promise<RunOutcome> {
           mode: session.mode,
           // The transcript C-11 joined is the one this reading is about (C-02's dep).
           transcript: assembled.transcript,
-          // Named in the receipt. Mode F never reaches a service; a live run names
-          // `STEP_PLANS.analyse.model` — not the page model — because ADR-24 separated the two on the
-          // strength of §4's measurement that the page model answered this request in shape 0 of 6 times.
-          model: FIXTURE_MODEL,
-          transport: createFixtureClient(),
-          gate: refusedGate,
-          verifySignature: refusedSignatureVerifier,
+          // `STEP_PLANS.analyse` for a live run — not the page model — because ADR-24 separated the two
+          // on the strength of §4's measurement that the page model answered this request in shape 0 of 6
+          // times. It is a second model in the same session, so the gate attests it separately.
+          model: modelFor(session.mode, 'analyse'),
+          transport,
+          gate,
+          verifySignature,
           signal: controller.signal,
           onTranscript: (t) => dispatchLive({ type: 'transcript_received', transcript: t }),
           onTrustRecord: (record) => dispatchLive({ type: 'trust_recorded', record }),

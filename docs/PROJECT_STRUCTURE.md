@@ -68,14 +68,15 @@ sightline/
 │  ├─ app/
 │  │  ├─ layout.tsx               # <html lang>, skip link, landmarks, announcer + session store (over the nav too, so Forget reaches every route), fixtures banner
 │  │  ├─ _flow/useDocumentRun.ts  # Composition root for one run: store, announcer, router, transport, pipeline. `_` = not a route. Its **first** statement is the paste length guard (`pasteLengthProblem`, C-12/**ADR-29**) — before the mode check, before a controller, before a body exists
-│  │  ├─ _flow/usePhotoRun.ts   # Composition root for a photographed document (**C-02**, §5.1): `readPages` → the pre-analysis notices (holes, C-05 labels, unplaceable spans, capture issues) spoken as ONE announcement → `usable` → `runPipeline` with the joined transcript. Same door-refusal, same `liveWrites`, same "a forgotten run writes nothing"
+│  │  ├─ _flow/usePhotoRun.ts   # Composition root for a photographed document (**C-02**, §5.1): `readPages` → the pre-analysis notices (holes, C-05 labels, unplaceable spans, capture issues) spoken as ONE announcement → `usable` → `runPipeline` with the joined transcript. Same door-refusal for Mode A only, same `liveWrites`, same "a forgotten run writes nothing"
 │  │  ├─ _flow/useAskAboutDocument.ts # Same shape for one question (P-06); reads the mode off the session, not the build
 │  │  ├─ _flow/useForget.ts       # Same shape for Forget (P-10): store + announcer + the read-aloud stop, and the sentence built from what was counted
 │  │  ├─ _flow/live_writes.ts     # `liveWrites(signal, dispatch)` (P-12): once a run is aborted its own callbacks write nothing into the session Forget emptied
 │  │  ├─ _flow/SettingsControls.tsx # A-15's two controls: four named speeds (native radio group) and the contrast checkbox, both driven by the store
 │  │  ├─ _flow/HighContrastTheme.tsx # Layout-mounted, renders nothing: puts the stored theme on `<html>` where `globals.css` defines it (A-15)
 │  │  ├─ _flow/useStoredSettings.ts # `useSyncExternalStore` over the settings blob; raw string as the snapshot (A-15)
-│  │  ├─ _flow/refused_steps.ts   # Live modes refuse at the door (T-01/T-02 unbuilt) with one shared sentence
+│  │  ├─ _flow/collaborators.ts   # The one place a run's transport, attestation gate and signature verifier are built, chosen from `session.mode` (**F-05**, **ADR-35**): Mode B gets the relay client plus `createTrustSession`, Mode F gets the replay client plus two guards that throw, Mode A refuses (T-13). `modelFor(mode, purpose)` is the same decision for the model id (ADR-24)
+│  │  ├─ _flow/refused_steps.ts   # Mode A's door only (**T-13**): the two plain-language sentences and `refuseDirectMode()`, which throws `NotBuilt('T-13')` — no key field exists, so a direct call could not authenticate
 │  │  ├─ _flow/ReadAloud.tsx      # Composition root for the read-aloud control (P-09): session store + the words to speak
 │  │  ├─ _flow/spoken_answer.ts   # `spokenAnswer(analysis)` — summary + Sightline's own cautions, and the button's label (P-09)
 │  │  ├─ page.tsx                 # The document screen, two ways in: paste text (`features/paste/PasteView.tsx`, P-05) or photograph it (`features/capture/CaptureView.tsx`, **C-02**). **B-13** closes as "no new route" — the photo input grows on `/` beside the paste box, because a second screen for one document would split the person's own sense of what is in flight

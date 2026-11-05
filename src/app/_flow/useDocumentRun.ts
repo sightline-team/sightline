@@ -2,15 +2,14 @@
 
 import { useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { createFixtureClient, transportFor, FIXTURE_MODEL } from '@/lib/fixtures/replay';
 import { runPipeline } from '@/features/analysis/pipeline';
 import { RunHalt } from '@/lib/near-ai/verification';
-import { LIVE_MODE_UNAVAILABLE, refusedGate, refusedSignatureVerifier } from '@/app/_flow/refused_steps';
+import { DIRECT_MODE_UNAVAILABLE } from '@/app/_flow/refused_steps';
+import { collaboratorsFor, modelFor } from '@/app/_flow/collaborators';
 import { liveWrites } from '@/app/_flow/live_writes';
 import { pasteLengthProblem } from '@/lib/session/reducer';
 import { useSessionStore } from '@/lib/session/store';
 import { useAnnouncer } from '@/lib/a11y/announcer';
-import type { PublicConfig } from '@/lib/config';
 import type { AppError, Transcript } from '@/types';
 
 /**
@@ -22,20 +21,24 @@ import type { AppError, Transcript } from '@/types';
  * Next's convention for "not a route".
  *
  * The pipeline decides *what* happens and in which order (`features/analysis/pipeline.ts`);
- * this supplies the collaborators and turns the outcome into state and speech.
+ * this supplies the collaborators and turns the outcome into state and speech. The three
+ * collaborators a run needs — transport, gate, signature verifier — and the model each step
+ * asks for come from one place now (`_flow/collaborators.ts`), which is what keeps a pasted
+ * document and a question about it from getting two different answers about who they asked.
  *
- * **Live modes refuse here, at the door.** The refusal text and the two throwing placeholders
- * are in `refused_steps.ts`, shared with the Q&A hook so a question and a document cannot get
- * two different answers about what this build can do. The gate and verifier themselves exist
- * (T-01, T-02); what is missing is a service they could reach, which is F-04 and F-05. When
- * those land the refusal is deleted and `createTrustSession` / `createSignatureVerifier` are
- * constructed here; nothing else about the run changes.
+ * **Mode A still refuses at the door** (`refused_steps.ts`, item **T-13**: no place to hold the
+ * person's own key). Mode B runs for real: the gate fetches and binds an attestation report before
+ * the request body exists, and the answer's signature is checked against the key that report bound
+ * before a single word of it reaches the screen. Mode F replays its own documents and says so.
+ * What has *not* changed is that no run may claim more than its checks decided — the receipt is
+ * still computed from the `TrustRecord`, and a live run's ceiling is `partial` while **B-12** stays
+ * open (AGENTS.md §4 rule 5).
  */
 export interface RunOutcome {
   ok: boolean;
 }
 
-export function useDocumentRun(config: PublicConfig) {
+export function useDocumentRun(): (text: string) => Promise<RunOutcome> {
   const { session, dispatch, beginRun, endRun } = useSessionStore();
   const announce = useAnnouncer().announce;
   const router = useRouter();
@@ -59,20 +62,23 @@ export function useDocumentRun(config: PublicConfig) {
         return { ok: false };
       }
 
-      if (transportFor(config.mode) === 'network') {
-        dispatch({ type: 'failed', code: LIVE_MODE_UNAVAILABLE.code });
-        announce(LIVE_MODE_UNAVAILABLE.userMessage);
+      if (session.mode === 'direct') {
+        dispatch({ type: 'failed', code: DIRECT_MODE_UNAVAILABLE.code });
+        announce(DIRECT_MODE_UNAVAILABLE.userMessage);
         return { ok: false };
       }
 
+      const { transport, gate, verifySignature } = collaboratorsFor(session);
       const transcript: Transcript = { text, pageOffsets: [0], uncertain: [], captureIssues: [] };
       const controller = beginRun();
       // P-12: every write this run makes, not only its last one, goes through the signal.
       const dispatchLive = liveWrites(controller.signal, dispatch);
 
       dispatch({ type: 'analysis_started' });
-      // Mode F has no verification step to describe, so "checking the enclave" would be the lie.
-      announce('Reading the demo text.');
+      // One sentence, chosen by mode, and neither one claims more than the run does. Mode F has no
+      // verification step to describe, so "checking the enclave" would be the lie; Mode B has one, and
+      // saying only "reading your text" would hide the seconds the gate spends before it asks.
+      announce(session.mode === 'fixtures' ? 'Reading the demo text.' : 'Checking the service first, then reading your text.');
 
       // Set by the run when it finished with nothing readable to show (P-08). It has to be
       // captured here rather than read back from the store, because this hook is what decides
@@ -85,11 +91,12 @@ export function useDocumentRun(config: PublicConfig) {
           // transcript above is the one this run built, so it is handed over rather than re-read.
           mode: session.mode,
           transcript,
-          // Named in the receipt. It is not a TEE model and does not claim to be one.
-          model: FIXTURE_MODEL,
-          transport: createFixtureClient(),
-          gate: refusedGate,
-          verifySignature: refusedSignatureVerifier,
+          // `STEP_PLANS.analyse` for a live run, the fixture's own name for Mode F (ADR-24). Named in
+          // the receipt either way, so a demo run never reads as a TEE call.
+          model: modelFor(session.mode, 'analyse'),
+          transport,
+          gate,
+          verifySignature,
           signal: controller.signal,
           onTranscript: (t) => dispatchLive({ type: 'transcript_received', transcript: t }),
           onTrustRecord: (record) => dispatchLive({ type: 'trust_recorded', record }),
@@ -133,6 +140,6 @@ export function useDocumentRun(config: PublicConfig) {
         endRun(controller);
       }
     },
-    [announce, beginRun, config.mode, dispatch, endRun, router, session],
+    [announce, beginRun, dispatch, endRun, router, session],
   );
 }

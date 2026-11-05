@@ -1272,6 +1272,25 @@ heavy checks (§10 of ARCH).
 
 ---
 
+## 11. The gate in front of the live service, through our own relay — one session, two enclaves, two keys [Measured 2026-11-05]
+
+**How this was run, and what it cost.** Same shape as §10: `RELAY_ENABLED=true ALLOWED_MODELS='z-ai/glm-5.3-flash,Qwen/Qwen3.8-27B' npx next dev -p 3100`, the key loaded by Next from the untracked `.env` and never printed or placed on a command line. On top of it ran a throwaway `tsx` script — deleted afterwards, deliberately not committed — whose only custom code was a `NearClient` whose `get` fetches `http://localhost:3100/api/relay/v1/…` and whose `post` throws. Everything else was the app's own `createTrustSession`, with `fetchImpl` pointed at `http://localhost:3100/api/verify`. **Again, not one billable completion:** a report GET and a catalog read cost nothing, and the thing under test is the gate, not the model. What §10 proved was that the *transport* forwards the right bytes; what this section proves is that the security code the app actually runs reaches the end of that transport and makes a verdict.
+
+| Asked of the running app | Came back |
+|---|---|
+| one `createTrustSession`, `gate({model: 'z-ai/glm-5.3-flash'})` | **`partial`** · 13 checks ran, all 13 passed, 17 listed · session nonce echoed in `request_nonce` · bound key `5a0210f2442c7935…` (ed25519, 32 bytes) |
+| the same session, `gate({model: 'Qwen/Qwen3.8-27B'})` | **`partial`** · same 13/17 · the **same** session nonce · a **different** key, `89154a43a4768474…` |
+| the page model asked a third time, inside the TTL | the identical outcome object, **no second report fetched** — the per-model cache (`ADR-35`) answering, not a re-attestation |
+| the raw report from the relay (`curl`, one path §10 already measured) | **200**, 318,282 bytes, `model_attestations[0]` carrying `model_name`, `signing_address`, `signing_algo`, `signing_public_key`, `request_nonce`, `intel_quote` (10,012 hex characters = 5,006 bytes), `nvidia_payload`, `event_log`, `info`, `compose_manager_attestation`, `ohttp_attestation`, `ohttp_key_config` |
+
+**The finding that decides a design, not a number: the two planned models are two machines, live.** **ADR-24** chose them apart on output *shape*, and **T-08**'s recorded reports showed two different signing keys — but a recording shows what was recorded, and a single-slot attestation cache looked harmless against one. Two gate calls in one session, seconds apart, through the code path a photographed document takes, answered with two different ed25519 keys under one nonce. So a session that attests once for the run attests the *page* enclave and then sends the joined transcript to a machine nobody checked, and verifies that step's signature against the other key — a check that cannot pass, reported as though the service had signed nothing. That is why `createTrustSession`'s cache is keyed by model with one nonce beneath it (**ADR-35**), and why `createSignatureVerifier`'s key provider now takes the model.
+
+**What the live report still cannot decide.** The four gaps ADR-32 names stayed exactly four and stayed `ran: false` on both models: `quote_signed_by_hardware`, `platform_still_trusted`, `gpu_evidence_verdict`, `report_expiry`. Every one needs Intel's certificate service, NVIDIA's, or a clock the report does not expose in plaintext — **B-12**, not access and not effort. The ceiling is therefore still `partial`, and the receipt says so (rule 5); nothing in this section moves it, and a live `verified` from this build would be a bug.
+
+**Not measured here, and deliberately so.** A completion through the relay, and with it the signature round trip for a real answer (`GET /v1/signature/{chat_id}` for an id that exists) and the first `partial` receipt on a real document. That is **task #21**'s paid run, and AGENTS.md §5 leaves it to the human; the halves that are free are now all measured.
+
+---
+
 ## What is still unknown (and cannot be closed by reading)
 
 Closed by the key on 2026-11-03, so removed from this list: the live TEE-and-image catalog, which model

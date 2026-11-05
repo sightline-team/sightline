@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback } from 'react';
-import { createFixtureClient, transportFor, FIXTURE_MODEL } from '@/lib/fixtures/replay';
-import { RunHalt } from '@/lib/near-ai/verification';
 import { askAboutDocument } from '@/features/qa/ask';
-import { LIVE_MODE_QA_UNAVAILABLE, refusedGate, refusedSignatureVerifier } from '@/app/_flow/refused_steps';
+import { RunHalt } from '@/lib/near-ai/verification';
+import { DIRECT_MODE_QA_UNAVAILABLE } from '@/app/_flow/refused_steps';
+import { collaboratorsFor, modelFor } from '@/app/_flow/collaborators';
 import { liveWrites } from '@/app/_flow/live_writes';
 import { useSessionStore } from '@/lib/session/store';
 import { useAnnouncer } from '@/lib/a11y/announcer';
@@ -14,13 +14,20 @@ import type { QAEntry } from '@/types';
 /**
  * The composition root for one question (item **P-06**), the sibling of `useDocumentRun`.
  *
- * Same shape on purpose: the transport is chosen from the session's mode, live modes refuse at
- * the door (`refused_steps.ts`), the run registers its `AbortController` with the store so
- * nothing keeps running after the user leaves, and every outcome goes through the announcer —
- * an answer a screen reader never hears is not an answer (§8: no silent transitions).
+ * Same shape on purpose: the collaborators are chosen from the session's mode in one place
+ * (`_flow/collaborators.ts`), Mode A refuses at the door (`refused_steps.ts`), the run registers its
+ * `AbortController` with the store so nothing keeps running after the user leaves, and every outcome
+ * goes through the announcer — an answer a screen reader never hears is not an answer (§8: no silent
+ * transitions).
  *
  * It reads the mode from the **session** rather than from `publicConfig` because the results
  * view is a client tree and the session already carries the mode the server chose (ADR-8).
+ *
+ * A question asked in Mode B is a document-derived call like the run that answered it, so it is gated
+ * and signature-checked on the same rules (AGENTS.md §4 rule 4) — and on **its own** model row,
+ * `STEP_PLANS.qa`. The session's trust session attests each model separately, which is what stops a
+ * question answered by the page model being verified against the key of the model that summarised the
+ * document.
  */
 export function useAskAboutDocument(): (question: string) => Promise<RunOutcome> {
   const { session, dispatch, beginRun, endRun } = useSessionStore();
@@ -28,12 +35,13 @@ export function useAskAboutDocument(): (question: string) => Promise<RunOutcome>
 
   return useCallback(
     async (question: string): Promise<RunOutcome> => {
-      if (transportFor(session.mode) === 'network') {
-        dispatch({ type: 'failed', code: LIVE_MODE_QA_UNAVAILABLE.code });
-        announce(LIVE_MODE_QA_UNAVAILABLE.userMessage);
+      if (session.mode === 'direct') {
+        dispatch({ type: 'failed', code: DIRECT_MODE_QA_UNAVAILABLE.code });
+        announce(DIRECT_MODE_QA_UNAVAILABLE.userMessage);
         return { ok: false };
       }
 
+      const { transport, gate, verifySignature } = collaboratorsFor(session);
       const controller = beginRun();
       // P-12: the record the answer carries is dispatched while the run is still going, so it goes
       // through the signal too. The answer itself is guarded after the await below.
@@ -43,10 +51,10 @@ export function useAskAboutDocument(): (question: string) => Promise<RunOutcome>
       try {
         const entry = await askAboutDocument({
           session,
-          model: FIXTURE_MODEL,
-          transport: createFixtureClient(),
-          gate: refusedGate,
-          verifySignature: refusedSignatureVerifier,
+          model: modelFor(session.mode, 'qa'),
+          transport,
+          gate,
+          verifySignature,
           question,
           signal: controller.signal,
           onTrustRecord: (record) => dispatchLive({ type: 'trust_recorded', record }),

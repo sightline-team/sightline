@@ -60,20 +60,21 @@ path most likely to meet a real user and the one `docs/ARCHITECTURE.md` §13 pro
 Three of the four letters are **authored synthetic**; the fifth case is **recorded** traffic, and the two
 provenances are labelled separately everywhere they appear (`fixtures/README.md`, item **S-11**).
 
-**What it does not do:** read *your* photo, or run in relay/direct mode. The live modes still refuse at
-the door, and since 2026-11-05 the reason is precise rather than general — and it moved twice that day.
-The transport is no longer missing: the relay's handler is **built** (four allowlisted paths, a live
-per-model TEE check before any document byte leaves, the received bytes forwarded verbatim) and was
-measured answering the real service with not one billable call in the run, and the model allowlist's
-per-model metadata read now has a transport too (**F-05**, **ADR-34**). What still stops a live run is
-this app's own wiring: `src/app/_flow/refused_steps.ts` refuses one by name until a session is bound to
-the trust gate and the signature verifier, and Mode A — where the browser could ask directly — has no
-field for a person to put a key in (**T-13**, held by **B-10**). What changed on 2026-11-05 is that the gate itself is no longer one of the reasons: with
-**T-03**'s `/api/verify` answering, a live report that binds and agrees reaches `partial` and a run would
-be allowed to send. No run has yet been allowed to send a document. Nothing on screen can imply a
-verified run before verification exists, and `partial` is not the word "verified" (**AGENTS.md §4** rule 5).
-Questions are answered in fixture mode only; the same ask path is what a live
-mode will use once it can run.
+**What it does not do:** read *your* photo or *your* letter, yet. Both live halves now exist and are
+measured — the relay's handler (**F-05**, **ADR-34**: four allowlisted paths, a live per-model TEE check
+before any document byte leaves, the received bytes forwarded verbatim) and the gate that binds an
+attestation report to the session (**T-01**, **T-03**, **ADR-32**) — and since 2026-11-05 the app is wired
+to them: `src/app/_flow/collaborators.ts` gives a Mode B session the relay transport and one trust session
+per Sightline session, whose gate attests **each model the run asks** before that step's request is built
+(**ADR-35**), because a photographed run crosses two enclaves with two keys (**ADR-24**, **SPIKE §11**).
+So **Mode B runs**. What has not happened is the paid half of it: no document has been sent, because a real
+completion is a human decision (AGENTS.md §5), and `partial` is the strongest word a live receipt can print
+while the four quote checks that need Intel's and NVIDIA's services stay open (**B-12**) — rule 5 forbids
+more. Mode A — where the browser would ask with your own key — still refuses at the door, for one reason
+that has not moved: there is no field to put a key in (**T-13**, held by **B-10**). Nothing on screen can
+imply a verified run before verification exists, and `partial` is not the word "verified" (**AGENTS.md §4**
+rule 5). Questions are answered in demo mode, and the same ask path is what a Mode B run uses — gated and
+signature-checked on its own model row.
 
 ## Live demo
 
@@ -115,10 +116,14 @@ the hardware — which is the sentence its receipt line carries. What it does wh
 what it never does (say `verified`), is pinned by `tests/verification/verify_route.test.ts`.
 
 A run that reaches **this gate** — `createTrustSession`, which ANDs its local checks with `/api/verify` —
-in a browser has never happened, and the reason is no longer the verifier, nor the relay: in Mode B the
-app's own door refusal (`_flow`) stops the run before a report is ever asked for, while the handler that
-would forward it answers today (**F-05**), and in Mode A a person has no place to put a key (**T-13**, held
-as a consent decision by **B-10**). In fixture mode no report is
+has now run against the live service, and the sentence needs its limits kept on it: it ran from a script
+pointed at the app's own running relay, not from a person's screen and not with a document (**SPIKE §11**,
+2026-11-05). Mode B is wired to it today — `_flow/collaborators.ts` gives a live session the relay transport
+and one trust session per Sightline session, and the gate attests **each model the run asks** (ADR-35) — so
+what stops a person's document from crossing it is no longer a missing handler or a missing check but a paid
+completion nobody has authorised (AGENTS.md §5) and `partial` being the ceiling while **B-12** is open. In
+Mode A a person still has no place to put a key (**T-13**, held as a consent decision by **B-10**).
+In fixture mode no report is
 fetched at all, so what a person sees on the receipt there is the demo sentence, not this list. The
 signature step adds two more names when a completion is answered — `response_signature` and
 `signed_by_model_enclave` (**T-02**) — and neither is an attestation check.
@@ -132,7 +137,9 @@ attestation report, post a completion and verify its signature over the exact by
 question and it closes "can a browser even read this answer", which for two days this README could only
 infer from a Node script's header dump. It is still not the sentence a user needs, for three separate
 reasons, each with its own ID: the app has **no key field** for a person to start Mode A with (**T-13**,
-held as a consent decision by **B-10**), the composed gate reaches only **`partial`** while the four checks
+held as a consent decision by **B-10**) — and Mode B, which needs no key from the person, is wired to the
+gate but has never carried a document, because that half costs money and is a human decision (**SPIKE §11**,
+AGENTS.md §5), the composed gate reaches only **`partial`** while the four checks
 that need Intel's certificate service and NVIDIA's service stay unanswered (**B-12**, since **T-03** for a
 new reason rather than because the route said nothing), and nothing in the round trip is **end-to-end
 encrypted** — a bearer key in a header is rule 2's weaker claim, not rule 2's strong one (**B-07**, T-10).

@@ -37,7 +37,7 @@ export function PasteView({ config }: { config: PublicConfig }) {
 
 function PasteForm({ config }: { config: PublicConfig }) {
   const { session } = useSessionStore();
-  const run = useDocumentRun(config);
+  const run = useDocumentRun();
   const announce = useAnnouncer().announce;
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
