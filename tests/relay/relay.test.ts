@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { POST as relayPost } from '@/app/api/relay/[...path]/route';
-import { POST as verifyPost } from '@/app/api/verify/route';
 
 /**
  * The relay contract at scaffold time (F-05 owns the real handler, A-09 owns the full suite).
@@ -10,6 +9,9 @@ import { POST as verifyPost } from '@/app/api/verify/route';
  * proxy pointed at a service holding our demo key — so this file is written first, and F-05 has
  * to keep it passing while it adds behaviour. When F-05 gives the handlers their `(request)`
  * parameter, these calls gain a body and the rejected-path/oversize tests go in A-09.
+ *
+ * `/api/verify` was asserted here while it answered 501 as an unbuilt route; **T-03** built it, so its
+ * contract lives in `tests/verification/verify_route.test.ts` with the rest of the verification suite.
  */
 const saved = { ...process.env };
 
@@ -40,18 +42,5 @@ describe('/api/relay refuses until F-05 lands', () => {
   it('says nothing that claims a document was protected', async () => {
     const text = await relayPost().then((r) => r.text());
     expect(text.toLowerCase()).not.toMatch(/encrypt|secure|private|anonymi[sz]ed/);
-  });
-});
-
-describe('/api/verify refuses until T-03 lands', () => {
-  it('POST is 501, not a verifier that returns an optimistic verdict', async () => {
-    const response = await verifyPost();
-    expect(response.status).toBe(501);
-    expect((await response.json()).item).toBe('T-03');
-  });
-
-  it('has no GET: verification consumes a report, it does not serve one', async () => {
-    const routes = await import('@/app/api/verify/route');
-    expect('GET' in routes).toBe(false);
   });
 });

@@ -60,12 +60,15 @@ path most likely to meet a real user and the one `docs/ARCHITECTURE.md` §13 pro
 Three of the four letters are **authored synthetic**; the fifth case is **recorded** traffic, and the two
 provenances are labelled separately everywhere they appear (`fixtures/README.md`, item **S-11**).
 
-**What it does not do:** read *your* photo, or run in relay/direct mode. The live modes still
-refuse at the door, and since 2026-11-03 the reason is precise rather than general: the model
-allowlist has no transport yet (F-04) and the relay forwards nothing (F-05), and even with both, the
-attestation gate would report `failed` because `/api/verify` is T-03's unimplemented route — so no
-run has ever been allowed to send a document. Nothing on screen can imply a verified run before
-verification exists. Questions are answered in fixture mode only; the same ask path is what a live
+**What it does not do:** read *your* photo, or run in relay/direct mode. The live modes still refuse at
+the door, and since 2026-11-05 the reason is precise rather than general: the model allowlist has no
+transport yet (F-04) and the relay forwards nothing (F-05), so Mode B cannot ask for a report at all, and
+Mode A — where the browser could ask directly — has no field for a person to put a key in (**T-13**, held
+by **B-10**). What changed on 2026-11-05 is that the gate itself is no longer one of the reasons: with
+**T-03**'s `/api/verify` answering, a live report that binds and agrees reaches `partial` and a run would
+be allowed to send. No run has yet been allowed to send a document. Nothing on screen can imply a
+verified run before verification exists, and `partial` is not the word "verified" (**AGENTS.md §4** rule 5).
+Questions are answered in fixture mode only; the same ask path is what a live
 mode will use once it can run.
 
 ## Live demo
@@ -95,18 +98,25 @@ checks the gate emits", which compares this list with a real gate call in both d
 | Quote consistency (the only check fixture mode runs) | Yes, in fixture mode | Per fact: a quote that is not in the transcript is shown **flagged**, never as sourced | P-02; it proves consistency with our transcript, not correctness against the page. **On the recorded case it is the model's own quote against the model's own transcript** — 86 facts, all consistent, which says nothing about whether any of them matches the page (**S-03**) |
 
 **The names, as the gate's `CheckResult[]` emits them** — one call of `createTrustSession` over a
-recorded live report, with `/api/verify` answering 501 as it does in this build (2026-11-05):
+recorded live report, with the app's own `/api/verify` answering it (**T-03**, 2026-11-05):
 
-- **Ran, and passed:** `attestation_report`, `nonce_fresh`, `signing_address_shape`, `signing_public_key_shape`, `quote_is_tdx`, `td_not_debug`, `td_attributes_allowed`, `quote_binds_our_nonce`, `quote_binds_attested_key`, `quote_binds_compose_hash`, `quote_matches_report_measurements`, `event_log_replays_rtmr0_to_2`
-- **Ran, and did not pass:** `server_verification`
+- **Ran, and passed:** `attestation_report`, `nonce_fresh`, `signing_address_shape`, `signing_public_key_shape`, `quote_is_tdx`, `td_not_debug`, `td_attributes_allowed`, `quote_binds_our_nonce`, `quote_binds_attested_key`, `quote_binds_compose_hash`, `quote_matches_report_measurements`, `event_log_replays_rtmr0_to_2`, `server_verification`
+- **Ran, and did not pass:** —
 - **Did not run:** `quote_signed_by_hardware`, `platform_still_trusted`, `gpu_evidence_verdict`, `report_expiry`
 
+`server_verification` is the newest of the thirteen, and it is worth saying what it is worth: since
+**T-03** our own route re-reads the same bytes on our own machine and reports whether it agrees. It is
+told this session's nonce rather than minting one, so it adds a second opinion and no new evidence about
+the hardware — which is the sentence its receipt line carries. What it does when the bytes disagree, and
+what it never does (say `verified`), is pinned by `tests/verification/verify_route.test.ts`.
+
 A run that reaches **this gate** — `createTrustSession`, which ANDs its local checks with `/api/verify` —
-in a browser has never happened: the server half answers 501, and F-04's allowlist and F-05's relay refuse
-at the door before a report is ever asked for. In fixture mode no report is fetched at all, so what a
-person sees on the receipt there is the demo sentence, not this list. The signature step adds two more
-names when a completion is answered — `response_signature` and `signed_by_model_enclave` (**T-02**) — and
-neither is an attestation check.
+in a browser has never happened, and the reason is no longer the verifier: in Mode B F-04's allowlist
+transport and F-05's relay refuse at the door before a report is ever asked for, and in Mode A a person
+has no place to put a key (**T-13**, held as a consent decision by **B-10**). In fixture mode no report is
+fetched at all, so what a person sees on the receipt there is the demo sentence, not this list. The
+signature step adds two more names when a completion is answered — `response_signature` and
+`signed_by_model_enclave` (**T-02**) — and neither is an attestation check.
 
 **None of the NEAR AI verification checks above has been reached from the app's own screens.** What is new
 on 2026-11-05 is narrower and worth stating exactly: those checks have now run **inside a browser**.
@@ -117,12 +127,13 @@ attestation report, post a completion and verify its signature over the exact by
 question and it closes "can a browser even read this answer", which for two days this README could only
 infer from a Node script's header dump. It is still not the sentence a user needs, for three separate
 reasons, each with its own ID: the app has **no key field** for a person to start Mode A with (**T-13**,
-held as a consent decision by **B-10**), the composed gate still ANDs with a `/api/verify` that answers
-**501** (**B-12**), and nothing in the round trip is **end-to-end encrypted** — a bearer key in a header is
-rule 2's weaker claim, not rule 2's strong one (**B-07**, T-10). Until those change, Sightline has no
-verification claim to make about a person's own document — which is why the receipt in fixture mode states
-the demo-data sentence from `claims.ts` instead of a list of checks that passed, and why every recorded
-fixture carries `"e2ee": false`.
+held as a consent decision by **B-10**), the composed gate reaches only **`partial`** while the four checks
+that need Intel's certificate service and NVIDIA's service stay unanswered (**B-12**, since **T-03** for a
+new reason rather than because the route said nothing), and nothing in the round trip is **end-to-end
+encrypted** — a bearer key in a header is rule 2's weaker claim, not rule 2's strong one (**B-07**, T-10).
+Until those change, Sightline has no verification claim to make about a person's own document — which is
+why the receipt in fixture mode states the demo-data sentence from `claims.ts` instead of a list of checks
+that passed, and why every recorded fixture carries `"e2ee": false`.
 
 ## Forgetting a document
 

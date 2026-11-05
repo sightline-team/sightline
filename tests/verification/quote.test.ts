@@ -22,8 +22,10 @@ import type { CheckResult } from '@/types';
  * - **The quote's own signature is not checked.** Not one test here verifies that Intel signed these
  *   bytes; the checks prove the quote agrees with the report beside it and binds our nonce and our key.
  *   `QUOTE_CHECKS_THAT_CANNOT_RUN` is the list of what stays unproven, and a test below pins it.
- * - **A perfect quote still cannot open the gate.** `/api/verify` answers 501, so the composed session
- *   ends `failed` for every case here, good bytes included (§4 rules 5 and 6).
+ * - **A perfect quote still cannot open the gate.** Twelve passing checks are not the whole set, so a
+ *   composed session ends `failed` when the verifier says nothing and `partial` when it agrees — never
+ *   `verified` (§4 rules 5 and 6). The gate cases below inject the verifier rather than trusting the
+ *   real route's answer, which is `verify_route.test.ts`'s job since **T-03** built it.
  * - **Replay covers three registers, not four.** RTMR3's boot events are logged with an empty digest
  *   and no framing we could reproduce gets the value the quote carries, so the check's name and its
  *   detail both say which registers replayed.
@@ -350,7 +352,7 @@ describe('the gate around a real quote: what it can say, and what it still canno
 
   const heavy = QUOTE_CHECKS_THAT_CANNOT_RUN.map((c) => ({ name: c.name, ran: true, passed: true }));
 
-  it('the route still answers 501, so a real quote ends the session failed rather than quietly unverified', async () => {
+  it('a verifier that answers 501 ends the session failed, so twelve passing checks alone open nothing', async () => {
     for (const f of fixtures) {
       const outcome = await gateOf(f, livingClient(f.raw), (async () => new Response(JSON.stringify({ error: 'not_implemented' }), { status: 501 })) as unknown as typeof fetch);
       for (const name of RAN_CHECKS) expect(check(outcome.checks, name)!.ran, `${f.slug}: ${name} ran against the real quote`).toBe(true);

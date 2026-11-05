@@ -1,27 +1,78 @@
+import { attestationReportSchema } from '@/lib/near-ai/attestation';
+import type { SigningAlgo } from '@/lib/near-ai/attestation';
+import { verifyReportInput } from '@/lib/server/verify';
+import { z } from 'zod';
+
 /**
- * `POST /api/verify` — item **T-03**.
+ * `POST /api/verify` — item **T-03**, decided in ADR-33.
  *
- * Takes an attestation report plus our nonce and the model id and returns named
- * `CheckResult[]` with `ran` and `passed`. It receives **no user content** by
- * construction (docs/ARCHITECTURE.md §8), and running the heavy checks here means the
- * user trusts our server's verdict for those checks — which the receipt must disclose
- * (ARCH §10).
+ * Takes an attestation report plus the nonce the page minted and returns named `CheckResult[]` with
+ * `ran` and `passed`. It receives **no user content** by construction (docs/ARCHITECTURE.md §8) and
+ * it makes **no upstream call**, so it costs nothing and needs no key; that is also why it is safe to
+ * answer at all.
  *
- * Until T-03 exists this answers 501 rather than pretending to verify. A caller must
- * treat a non-2xx as a failed check and fail closed (AGENTS.md §4 rule 6), never as
- * "verification passed because nobody said otherwise".
+ * Read `lib/server/verify.ts` for what the answer means: every check this handler can run is a check
+ * the browser already ran, so its verdict is a second opinion on the same bytes and its receipt line
+ * says so. It is not yet a verifier in the sense ARCH §10 means — the four checks that need Intel's
+ * certificate service, NVIDIA's service, or signed validity windows are still unanswered (**B-12**),
+ * which is why the reachable status here is `partial` and never `verified` (AGENTS.md §4 rule 5).
+ *
+ * Before this route existed it answered 501, and a 501 is read as a **failed** check, not as silence
+ * (rule 6) — which is what held every live-mode gate at `failed`. That behaviour stays: the only ways
+ * to get a non-2xx out of here are a body this handler cannot read or one that is too big, and both
+ * still halt a run. A caller must never be able to talk its way into a pass, so nothing in the
+ * request can ask for a status; the status is computed from the bytes.
  */
 export const dynamic = 'force-dynamic';
 
-const NOT_BUILT = {
-  error: 'not_implemented',
-  message: 'Attestation verification is not implemented yet. Owner: ROADMAP item T-03.',
-  item: 'T-03',
-};
+/**
+ * A full live report measured 318,885 bytes (`fixtures/attestation/`, **T-08**) and the un-redacted
+ * one is under a megabyte, so this is more than twelve times the largest thing the service has ever
+ * answered here. Over it the handler replies 413 rather than parsing, because the report is
+ * attacker-shaped input and an unbounded JSON parse on a public route is a free way to spend the
+ * machine's time.
+ */
+const MAX_REPORT_BODY_BYTES = 4 * 1024 * 1024;
 
-export async function POST(): Promise<Response> {
-  return new Response(JSON.stringify(NOT_BUILT), {
-    status: 501,
-    headers: { 'content-type': 'application/json' },
+const requestSchema = z.object({
+  report: attestationReportSchema,
+  /** 32 random bytes as hex. Uppercase is accepted because `decodeHex` reads it; nothing else is. */
+  nonce: z.string().regex(/^[0-9a-fA-F]{64}$/),
+  signing_algo: z.enum(['ecdsa', 'ed25519']).default('ed25519'),
+});
+
+function json(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+}
+
+/** The failure shapes, all of them readable as a failed check by the client and none of them quoting back what it sent. */
+function refuse(status: number, reason: string): Response {
+  return json({ error: reason, item: 'T-03' }, status);
+}
+
+export async function POST(request: Request): Promise<Response> {
+  const raw = await request.text();
+  // Bytes, not characters: a body of multi-byte text is longer on the wire than `raw.length` claims,
+  // and a cap that a caller can negotiate is not a cap.
+  if (new TextEncoder().encode(raw).length > MAX_REPORT_BODY_BYTES) return refuse(413, 'body_too_large');
+
+  // A body that is not JSON is a *finding*, not a crash: letting `JSON.parse` throw would answer 500
+  // with a stack trace, and 400 with the reason is the same fail-closed outcome in plainer words.
+  let body: unknown;
+  try {
+    body = JSON.parse(raw) as unknown;
+  } catch {
+    return refuse(400, 'invalid_request');
+  }
+
+  const parsed = requestSchema.safeParse(body);
+  if (!parsed.success) return refuse(400, 'invalid_request');
+
+  const outcome = verifyReportInput({
+    report: parsed.data.report,
+    nonce: parsed.data.nonce,
+    signingAlgo: parsed.data.signing_algo as SigningAlgo,
   });
+
+  return json({ status: outcome.status, checks: outcome.checks }, 200);
 }

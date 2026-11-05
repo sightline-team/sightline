@@ -135,19 +135,20 @@ export async function fetchReport(client: NearClient, input: { model: string; no
 }
 
 /**
- * `POST /api/verify` with the report and the nonce we sent. The heavy checks — the TDX quote, the
- * event-log replay, the GPU verdict — are **T-03**'s, not this file's; what T-01 owns is asking,
- * and reading the answer as a verdict.
+ * `POST /api/verify` with the report and the nonce we sent. The heavy checks — Intel's signature over
+ * the quote, the GPU verdict, a signed expiry — are still **B-12**'s, not this file's; what T-01 owns is
+ * asking, and reading the answer as a verdict. Since T-03 landed the route does answer, with a second
+ * opinion on the checks below (`lib/server/verify.ts`, ADR-33), and the four gaps stay gaps until it
+ * answers one of them by name.
  *
- * Which is why a non-2xx is converted into a failed check rather than swallowed: today the route
- * answers 501, and "nobody said otherwise" is exactly the silence AGENTS.md §4 rule 6 forbids. A
- * caller that treats an unreachable verifier as agreement has turned the security check into a
- * comment.
+ * Which is why a non-2xx is converted into a failed check rather than swallowed: "nobody said otherwise"
+ * is exactly the silence AGENTS.md §4 rule 6 forbids. A caller that treats an unreachable verifier as
+ * agreement has turned the security check into a comment.
  */
 export async function verifyWithServer(
   report: AttestationReport,
   nonce: string,
-  deps: { fetchImpl?: typeof fetch; signal?: AbortSignal } = {},
+  deps: { fetchImpl?: typeof fetch; signal?: AbortSignal; signingAlgo?: SigningAlgo } = {},
 ): Promise<AttestationCheck> {
   const doFetch = deps.fetchImpl ?? fetch;
   const checks: CheckResult[] = [];
@@ -156,13 +157,16 @@ export async function verifyWithServer(
     const response = await doFetch('/api/verify', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ report, nonce }),
+      body: JSON.stringify({ report, nonce, signing_algo: deps.signingAlgo ?? 'ed25519' }),
       signal: deps.signal,
     });
     const parsed = response.ok ? verifyResponseSchema.safeParse(await response.json().catch(() => undefined)) : undefined;
     if (parsed?.success) {
       checks.push(...parsed.data.checks);
-      status = parsed.data.status ?? (parsed.data.checks.every((c) => c.ran && c.passed) ? 'verified' : 'partial');
+      // A verifier that listed its checks but stated no verdict has not said the strong word, so the
+      // fallback is `partial` and not an inference from "everything it sent me passed". The old
+      // inference read a one-check answer as `verified`, and one check can never be the whole set.
+      status = parsed.data.status ?? 'partial';
     } else {
       checks.push({ name: 'server_verification', ran: true, passed: false, detail: `the verifier answered ${response.status}, which is a failure, not an absence of one` });
       status = 'failed';
@@ -261,11 +265,12 @@ export function createTrustSession(deps: { client: NearClient; ttlMs?: number; f
     // T-03's dependency-free half, decided here rather than on our server: a browser that reads the
     // quote itself trusts its own arithmetic, a browser that asks `/api/verify` trusts our verdict.
     const quote = checkQuote({ attestation: report.model_attestations?.[0], nonce, label: 'the model enclave', expectedKey: local.signingKey?.keyOrAddress });
-    const server = await verifyWithServer(report, nonce, { fetchImpl: deps.fetchImpl, signal });
+    const server = await verifyWithServer(report, nonce, { fetchImpl: deps.fetchImpl, signal, signingAlgo: algo });
     // Rule 5 in its structural form: a check that never ran has to stop the word `verified`, not merely
     // annotate it. The four gaps count against the status until `/api/verify` answers one of them — when
     // it does, its own entry replaces the placeholder by name and nothing here has to be re-argued.
-    // Today the route answers 501, so all four stand and `verified` is unreachable on purpose.
+    // T-03's route answers today, but it answers with the checks this page already ran (ADR-33), so all
+    // four gaps still stand and `verified` is unreachable on purpose.
     const answered = new Set(server.checks.map((c) => c.name));
     const gaps = QUOTE_CHECKS_THAT_CANNOT_RUN.filter((c) => !answered.has(c.name));
     const checks = [...local.checks, ...quote, ...gaps, ...server.checks];
@@ -273,7 +278,13 @@ export function createTrustSession(deps: { client: NearClient; ttlMs?: number; f
     // us, a verifier that said no, and a quote that says the enclave is in debug mode — in which
     // state the machine's operator can read its memory, so nothing here would be private.
     const required = ['nonce_fresh', 'server_verification', 'attestation_report', 'td_not_debug'];
-    const requiredFailed = checks.some((c) => c.ran && !c.passed && required.includes(c.name));
+    // Rule 4 with its teeth on: no readable quote means no readable debug bit, and a machine whose
+    // debug bit is unknown is one whose operator may be able to read its memory, so nothing in it would
+    // be private. A report like that stops the run instead of merely lowering the wording. Until T-03
+    // landed this halt arrived by accident, because the route's 501 failed `server_verification`; now
+    // it is stated where the fact is, and it survives the route answering.
+    const noQuote = checks.some((c) => c.name === 'quote_is_tdx' && !c.ran);
+    const requiredFailed = noQuote || checks.some((c) => c.ran && !c.passed && required.includes(c.name));
     const binding = [...local.checks, ...quote, ...gaps];
     const status: AttestationStatus = requiredFailed
       ? 'failed'

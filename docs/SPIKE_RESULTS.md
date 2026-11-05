@@ -197,6 +197,11 @@ for the TDX quote, is not a dependency of this repo (`package.json` has `@noble/
 to call a 501 "not run" instead of "failed" would make live mode work *and* weaken the claim; that
 trade is not ours to make silently.
 
+**Where this block's ceiling stands now (2026-11-05, ADR-33):** the trade was not made. `POST /api/verify`
+answers, with the checks it can honestly run and a `partial` ceiling it cannot talk past, so a good live
+report composes to `partial` and a live run is no longer stopped by our own silence. The heavy four are
+still B-12's, and the block below is the measurement of the route.
+
 ### [Measured] 2026-11-05 — T-08: two reports recorded to disk, and what a report does not say
 
 `npm run fixtures:record -- --attestation --confirm`, one run at **2026-11-05 00:27:08 UTC**, both
@@ -264,6 +269,10 @@ is T-03's 501, `createTrustSession` ANDs the local binding with it, so **every c
 against a service that echoes the session nonce correctly: four local passes, one loud failure,
 nothing sent. `verified` from `bindReport` means "these bytes are well-shaped and bound to our
 nonce", never "an enclave was verified" (**ADR-22**'s distinction, now with a live report behind it).
+*(**Superseded the same day, from the top:** the twelve dependency-free checks moved into the browser with
+ADR-32, so a good recorded report there earns twelve passes rather than four, and ADR-33's route replaced
+the 501 — the same call now ends at `partial`, with the four gaps holding `verified` back by name instead
+of one silence holding everything back. See "[Measured] 2026-11-05 — **T-03**: our own verifier answers".*)
 
 ### [Measured] 2026-11-05 — the quote opens with no new dependency, and NRAS answers on the first ask
 
@@ -331,6 +340,52 @@ already in `package.json`. `npm run spike -- --stage=attestation` now runs
   that stayed stripped are listed there too: `app_cert`, `instance_id`, `app_id`, `mr_aggregated`,
   `key_provider_info`, `vm_config`. **The bullet above saying `info` survives as `['tcb_info']` and
   `tcb_info` parses to `{}` is superseded by that line** — it was true until this commit.
+
+### [Measured] 2026-11-05 — **T-03**: our own verifier answers, and what it is willing to say
+
+`POST /api/verify` stopped being a 501. The handler (`lib/server/verify.ts` + `app/api/verify/route.ts`)
+takes `{report, nonce, signing_algo}`, re-runs the twelve dependency-free checks on the bytes it was
+given, and answers with **one** named check. Every number below is a real HTTP exchange with a running
+`next dev` server and the two recorded reports as the request bodies — not a unit-test call.
+
+| Request | HTTP | Body |
+|---|---|---|
+| `good-z-ai-glm-5.3-flash` + its recorded nonce | 200 | `status: "partial"`, `server_verification` `ran, passed`, detail `"…ran 12 of the report's own 12 checks and disagreed with none…"` (350 B, 1,714 ms cold / 79 ms warm) |
+| same report + a nonce it was never bound to | 200 | `status: "failed"`, detail `"disagreed with nonce_fresh, quote_binds_our_nonce"` |
+| `{model_attestations: []}` | 200 | `status: "failed"`, detail names `attestation_report`, `nonce_fresh`, `signing_address_shape`, `signing_public_key_shape` |
+| a body that is not JSON | 400 | `{"error":"invalid_request","item":"T-03"}` (41 B) |
+| the report plus a 5 MB pad | 413 | `{"error":"body_too_large","item":"T-03"}` — parsed after the length check, not before |
+
+1. **`partial` is the ceiling, and it is arithmetic rather than a promise.** The response carries no
+   path to `verified`: the four `QUOTE_CHECKS_THAT_CANNOT_RUN` are not answered here, and
+   `createTrustSession` requires both a fully-passing binding *and* `server.status === 'verified'`. The
+   word "verified" does not appear anywhere in any of the five responses above, and a test asserts that
+   about the good one.
+2. **The client stopped inferring a verdict it was not given.** `verifyWithServer` used to fall back to
+   "`verified` if everything you sent me passed"; with a one-check answer that inference was a bug, so an
+   absent `status` is now `partial`. Pinned by `verify_route.test.ts`.
+3. **What the agreement is worth, stated on the receipt.** The handler is *told* the session nonce — it
+   does not mint one and cannot know it — so its line reads "a second opinion on the same arithmetic,
+   not new proof about the machine", and the count of what it could read is in the sentence, so a
+   quote-less report says `ran 4 of the report's own 12 checks` rather than "agreed with all of them".
+4. **The halt that used to arrive by accident now arrives on purpose.** While the route was a 501, a
+   report with no readable quote was stopped by the *absence* of a verifier. With the route answering,
+   the gate stops it because `quote_is_tdx` carries `ran: false`, which means the debug bit is
+   unreadable (AGENTS.md §4 rules 4 and 6). Measured end to end with the real handler behind
+   `createTrustSession`'s own fetch: good report → `partial`, thirteen passes, four gaps still unrun,
+   one name each; quote-less report → `failed`.
+5. **The route is not a relay and not a paid path.** It makes no upstream call, so it needs no key,
+   spends no credit, and cannot be pointed at a host by whatever posted to it. The two things it could
+   have grown into — forwarding `nvidia_payload` to NRAS, or taking a client-supplied URL — are refused
+   by §4 rule 9 and are **B-12**'s decision, not a free consequence of the measurement in the block
+   above this one.
+
+Cost of all of this: nothing external. The five exchanges were to `localhost`, and the fixtures were
+already on disk from **T-08**. Held by `tests/verification/verify_route.test.ts` (27 tests, including
+the size cap measured in **bytes** rather than characters — a caller that picks a two-byte alphabet
+gets a 413, and the guard fails its own test when written as `raw.length`) and by
+`attestation-fixtures.test.ts` › the T-14 README test, which now pins the published check list against
+the **real route** rather than a refusing stand-in.
 
 ## 4. Model catalog — the flags we need are NOT on `/v1/models`
 

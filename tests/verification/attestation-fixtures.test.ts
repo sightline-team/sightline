@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ed25519 } from '@noble/curves/ed25519.js';
+import { POST } from '@/app/api/verify/route';
 import { attestationReportSchema, bindReport, createTrustSession, newNonce } from '@/lib/near-ai/attestation';
 import type { AttestationReport, SigningAlgo } from '@/lib/near-ai/attestation';
 import { checkSignature, createSignatureVerifier, sha256Hex } from '@/lib/near-ai/signatures';
@@ -30,8 +31,10 @@ import type { CheckResult } from '@/types';
  * - A `verified` status from `bindReport` is *four shape-and-binding checks*, not proof an enclave made
  *   the report. The `foreign_key` case below is the demonstration: a report naming a key we invented
  *   passes every check the browser half can run.
- * - The gate is `failed` for every case here, good included, because `/api/verify` answers 501. The last
- *   block asserts that, because "fail closed" has to be shown to still hold when the report is real.
+ * - The gate is `failed` for every case here, good included, because the gate block below injects a
+ *   verifier that answers 501. **T-03** has since built the real route, whose own contract is in
+ *   `verify_route.test.ts`; the injection stays because "fail closed" has to be shown to still hold on
+ *   real report bytes when the verifier says nothing.
  */
 
 // ------------------------------------------------------------------------ the fixtures
@@ -380,7 +383,16 @@ describe('device_id is not a device identity, in either report, on either half (
 
 // ------------------------------------------------------------------------ fail closed, on real bytes
 
-describe('the gate refuses every shape of report while /api/verify answers 501 (T-06, rule 6)', () => {
+/**
+ * The app's own `/api/verify` handler behind a `fetch` signature, so a gate call in these tests runs
+ * the route that actually ships (**T-03**) rather than a stand-in for it.
+ */
+const realRouteFetch: typeof fetch = (input, init) => {
+  const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://localhost');
+  return Promise.resolve(POST(new Request(url, { method: 'POST', body: typeof init?.body === 'string' ? init.body : null })));
+};
+
+describe('the gate refuses every shape of report when the verifier refuses (T-06, rule 6)', () => {
   const refusedFetch: typeof fetch = async () => new Response(JSON.stringify({ error: 'not_implemented', item: 'T-03' }), { status: 501, headers: { 'content-type': 'application/json' } }) as Response;
 
   const gateWith = async (client: NearClient, model: string) => {
@@ -464,13 +476,25 @@ describe('the gate refuses every shape of report while /api/verify answers 501 (
     // a real gate call over a recorded report and compared with the page in both directions: every name
     // the gate emitted must be on the page, under the column its own `ran`/`passed` puts it in, and every
     // name on the page must be one the gate emitted.
+    //
+    // **T-03** changed which gate call this has to be. While `/api/verify` was a 501 stub the honest list
+    // came from a refusing verifier; the route now answers, so the published list is pinned against the
+    // *real handler* behind the client's own fetch. The refusing-verifier columns stay on the page as a
+    // case of their own (`verify_route.test.ts`), never as what this build does.
     const f = fixtures[0]!;
-    const { outcome } = await gateWith(livingClient(f.raw), f.meta.model);
+    const session = createTrustSession({ client: livingClient(f.raw), fetchImpl: realRouteFetch, ttlMs: 0 });
+    const outcome = await session.gate({ model: f.meta.model, signal: new AbortController().signal });
+    expect(outcome.status, 'a good recorded report with the route answering is the shape the page describes').toBe('partial');
     const readme = readFileSync(path.join(__dirname, '..', '..', 'README.md'), 'utf8');
     const line = (label: string): string[] => {
       const hit = readme.match(new RegExp(`^- \\*\\*${label}:\\*\\* (.+)$`, 'm'));
       if (hit === null) throw new Error(`README has no "- **${label}:**" line — T-14's list is that line`);
-      return hit[1]!.split(',').map((token) => token.trim().replace(/^`|`$/g, ''));
+      const text = hit[1]!.trim();
+      // An em dash is the page saying out loud that nothing belongs in the column. Silence from a
+      // heading that exists is not the same as a heading that says "none", and only the second one
+      // survives being read aloud.
+      if (text === '—') return [];
+      return text.split(',').map((token) => token.trim().replace(/^`|`$/g, ''));
     };
     const byColumn = {
       ranAndPassed: line('Ran, and passed'),
@@ -496,7 +520,7 @@ interface Asked {
  * A client that behaves the way the service was measured to behave (§3): it echoes back the nonce it
  * was just asked for, in both places the model attestation carries it — the `request_nonce` string and
  * the 32 bytes of `report_data` the enclave wrote (docs/SPIKE_RESULTS.md §3). Used to show that even a
- * *fully* cooperative service cannot get a document out of this build while `/api/verify` answers 501.
+ * *fully* cooperative service cannot get a document out of this build while the verifier refuses.
  */
 function livingClient(source: unknown, asked?: Asked[]): NearClient {
   return replayClient(source, asked, (report, nonce) => {
