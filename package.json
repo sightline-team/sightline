@@ -17,6 +17,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:e2e:live": "node --env-file-if-exists=.env node_modules/@playwright/test/cli.js test browser-cors",
     "spike": "tsx --env-file-if-exists=.env scripts/spike.ts",
     "fixtures:record": "tsx --env-file-if-exists=.env scripts/record-fixtures.ts",
     "golden": "tsx --env-file-if-exists=.env scripts/run-golden.ts",

@@ -15,7 +15,8 @@ every **[Measured]** row in here, stage by stage, through the same client, schem
 the app uses.
 
 What the key settled: the model catalog and its TEE flags (§4), the shape of a real attestation report
-(§3), a response signature verified against an attested key (§5), a live CORS preflight (§6), first
+(§3), a response signature verified against an attested key (§5), a live CORS preflight (§6) and the
+**browser round trip that preflight stood in for** (§6, second measured block), first
 latency and cost numbers (§4, §1 of the measurement notes), and — on 2026-11-05 — the **inside of the
 TDX quote**, which opened with arithmetic and `@noble/hashes` alone (§3's third measured block). What it
 did **not** settle, and the reading should not be mistaken for it: E2EE from a browser (a dependency
@@ -1079,6 +1080,63 @@ completed the round trip and the signature verified", which is the S-01/T-13 bro
 derived from this table. Recorded as a follow-up rather than as a closed item, and §1 of this file says
 the same thing in one clause.
 
+### [Measured] 2026-11-05 — the navigation itself, in Chromium
+
+`npm run test:e2e:live` (`tests/e2e/browser-cors.spec.ts`) bundles the **production modules** — not a
+hand-rolled `fetch` — into the page and runs them there: `createNearClient` in Mode A, `fetchReport`,
+`bindReport`, `checkQuote`, `createSignatureVerifier`. A page at `http://localhost:3100`, authenticated
+with a bearer key, completed the round trip and read its own answer back.
+
+| Call | Status | Bytes | Time | `access-control-allow-origin` |
+|---|---|---|---|---|
+| `GET /v1/attestation/report` | 200 | 318,256 | 1,803 ms | echoes the page origin |
+| `POST /v1/chat/completions` | 200 | 710 | 1,634 ms | echoes the page origin |
+| `GET /v1/signature/33782e…` | 200 | 444 | 583 ms | echoes the page origin |
+
+Fourteen checks ran in the browser and **all fourteen passed**: the four of `bindReport`, the eight of
+`checkQuote` (T-16), and the two of the signature verifier. The completion came back 9 characters with
+`finish_reason: stop`, and it verified `signed by the enclave serving the model, over the exact bytes of
+this request and response`. That is the assertion the 2026-11-03 table could only predict.
+
+**Six things only a navigation could tell us.**
+
+1. The base URL must **include `/v1`**. Asked as `https://cloud-api.near.ai` + `attestation/report`, the
+   service answers **404**; the `/v1` is part of the base, which is how `scripts/spike.ts` builds it.
+2. **The preflight is not observable from the test.** Playwright surfaced **0** `OPTIONS` events while the
+   three real calls went through. What a browser run proves is that the responses were **readable by the
+   page**, which is the thing that actually mattered; "a preflight was seen" was dropped rather than
+   asserted, because it could not be measured.
+3. **A mocked response is not CORS evidence.** The planned negative control — `page.route` the service and
+   `route.fulfill` it with the `access-control-allow-origin` header stripped — returned **"answered 200"**:
+   Chromium does not run its CORS check against a Playwright-fulfilled response. The control was deleted
+   and the reason written into the file, rather than left in as a check that could never fail.
+4. **Our own production CSP refuses the test harness.** On `next start`, `page.evaluate` throws
+   `EvalError: Evaluating a string as JavaScript violates … script-src 'self' 'unsafe-inline'` — we do not
+   ship `'unsafe-eval'`, and the app is better for it. So the round trip runs against `next dev` (which
+   serves no CSP header at all, `next.config.ts` gating it on `NODE_ENV`), and the CSP question moved to a
+   separate **key-free, eval-free** probe: an inline `<script>` — which `'unsafe-inline'` admits — that
+   writes its answer into a `<pre>` the test then reads from the DOM.
+5. `GET https://cloud-api.near.ai/v1/models` from a production page returned **200 with no credential**.
+   The model catalog is public; the prediction in the paragraph above that an unauthenticated call would
+   answer 401 was wrong, and is corrected here rather than left in the doc.
+6. **Matching a host inside a CSP violation message is a trap.** Chromium's refusal text quotes the
+   *entire* directive, and our directive *names* `https://cloud-api.near.ai` — so the refusal of
+   `example.com` matched a search for the NEAR host. Only the URL after `Connecting to '<url>'` is the
+   host that was blocked; the test now extracts that and nothing else.
+
+The CSP probe's own result, on the production build: `connect-src 'self' https://cloud-api.near.ai
+https://*.completions.near.ai` admitted the NEAR host (**reached 200**) and refused `https://example.com/`
+with the violation named in the browser console. So the policy that ships does not lock Mode A out of its
+own endpoint, and it is not open.
+
+What this closes: **the browser half of S-06, and unknown item 4 below.** `T-13` (the relay-vs-browser
+cut) stays un-cut on measured ground rather than on a header dump. What it does **not** close: AGENTS.md
+rule 2 stays exactly where it was — this round trip puts a bearer key in a browser header and gets no
+E2EE, so the strongest privacy claim is still unreachable from a page (**B-07**/T-10), and the gate still
+answers `501` server-side. A live key was used inside the browser for this run; `trace` is switched off in
+that file precisely because a retained trace records the `authorization` header, and the run directory was
+checked for the credential afterwards.
+
 ## 7. Reference verifier — TypeScript exists, so the heavy checks can ship
 
 `github.com/nearai/nearai-cloud-verifier` **[Verified]**: **MIT** ("Copyright (c) 2025 nearai-cloud"),
@@ -1159,8 +1217,11 @@ Still open, with what each one now waits on:
    sends** — input `$0.00020288` per C-01-prepared page and output `$0.00097080` (§4), ten measured pages
    averaging **$0.00087275 / 25.8 s**. What is still not produced is a price for the *fixture recording*
    run (see 8), and a spread across document lengths, which is S-03's. (S-09 **closed** 2026-11-04)
-4. The **browser** half of CORS: a Chromium round trip with the signature verified. The preflight
-   headers say yes; a header dump is not a navigation. (S-06, T-13)
+4. ~~The **browser** half of CORS~~ — **closed 2026-11-05** by §6's second measured block: a page in
+   Chromium completed the authenticated round trip and the signature verified against the attested key.
+   The preflight headers turned out to be a fair prediction; what only a navigation could add was the
+   `/v1` 404, the un-observable preflight, the un-fakeable CORS control, and our own `script-src` refusing
+   `page.evaluate`. (S-06, T-13 **closed**)
 5. Host execution-time limits for a 5-page upload on the plan we deploy to. **Size is measured and is
    not the problem** — 726,910 bytes of body against F-05's 8 MiB cap (§4). A 45-second hang from a live
    model is the hint that a *time* cap exists and is not the one our timeout assumes. (S-08)
