@@ -81,23 +81,39 @@ made. It is deliberately not quoted in this README: a copy here is how a claim d
 code that earns it (AGENTS.md §4 rule 1). Read the current ladder in `docs/PRD.md` §8 and the
 selection logic in `claims.ts`.
 
-**Which attestation checks ran and which did not** (the list AGENTS.md §9 requires here, to be
-filled by T-14 when `CheckResult` output is real):
+**Which attestation checks ran and which did not** (the list AGENTS.md §9 requires here; the names
+below are pinned by `tests/verification/attestation-fixtures.test.ts` › "the README names exactly the
+checks the gate emits", which compares this list with a real gate call in both directions):
 
 | Check | Ran? | Passed? | Why |
 |---|---|---|---|
-| Nonce binding | Not in an app run | — | T-01's `bindReport` passed **4/4 against the first real report** on 2026-11-03 and the service echoed the nonce this session minted (`docs/SPIKE_RESULTS.md` §3) — measured by `npm run spike`, not by the app, because live modes still refuse to send (F-04, F-05). **It ran again on 2026-11-04 with a fresh nonce per model** while `npm run fixtures:record` was fetching the demo's photographed replies (**S-11**): two reports, two nonces, and nothing sent until each `bindReport` had passed. **And on 2026-11-05 two live reports are on disk** (`fixtures/attestation/`, one per attested model, **T-08**), so this check is now asserted by `tests/verification/attestation-fixtures.test.ts` against recorded bytes — including the negative: the same report refused by a freshly minted nonce, and a *replayed* genuine report failing the gate's nonce check |
-| GPU/NRAS verdict | Not yet | — | T-03's heavy half. The GPU payload is measured in hand — a **98,222-character JSON string** of 8 per-GPU evidence entries (§3; the "49,111 bytes of hex" this table and SPIKE carried until 2026-11-05 was a character count misread as hex) — and what is missing is the `dcap-qvl-node` decision (**B-12**), not access. **A second gap the recording found:** every `device_id` in both reports holds `SHA-256("")`, so the device facts are only inside that payload, and a check reading the field would pass on a report naming no device |
-| Intel TDX quote | Not yet | — | T-03, same blocker (**B-12**); the quote itself is 5,006 bytes and in hand (§3). Port plan in `src/lib/near-ai/verifier/`. **Freshness/expiry is this check's, not the browser's:** a live report carries no `issuedAt`, no `exp`, nothing a clock could be compared to — its only plaintext times are NEAR's own compose action log — so an expired report binds exactly like a fresh one until the quote is parsed (pinned by T-08's `stale` case) |
+| Nonce binding | Not in an app run | — | T-01's `bindReport` passed **4/4 against the first real report** on 2026-11-03 and the service echoed the nonce this session minted (`docs/SPIKE_RESULTS.md` §3) — measured by `npm run spike`, not by the app, because live modes still refuse to send (F-04, F-05). **It ran again on 2026-11-04 with a fresh nonce per model** while `npm run fixtures:record` was fetching the demo's photographed replies (**S-11**): two reports, two nonces, and nothing sent until each `bindReport` had passed. **And on 2026-11-05 two live reports are on disk** (`fixtures/attestation/`, one per attested model, **T-08**), so this check is now asserted by `tests/verification/attestation-fixtures.test.ts` against recorded bytes — including the negative: the same report refused by a freshly minted nonce, and a *replayed* genuine report failing the gate's nonce check. **Since ADR-32 the binding is checked twice:** `quote_binds_our_nonce` reads the same 32 bytes *inside the quote*, where writing them means the enclave re-ran its attestation rather than the service editing a JSON field — measured on both live reports, and proven as a refusal by "a service that re-echoes the JSON field but cannot rewrite the quote is caught by the quote" |
+| GPU/NRAS verdict | Not in an app run | — | **Measured 2026-11-05 and it needs no dependency:** one unauthenticated POST of the report's `nvidia_payload` to NVIDIA's attestation service answered **HTTP 200 in 1.6 s with the overall verdict `true`** (`npm run spike -- --stage=gpu`, `docs/SPIKE_RESULTS.md` §3). So this check is blocked by a *decision* — a server that is allowed to speak to a second host (**B-12**, AGENTS.md §4 rule 9) — and not by `dcap-qvl-node`. Until then `gpu_evidence_verdict` is listed on the receipt as a check that did not run. **A gap the recording found earlier stays:** every `device_id` in both reports holds `SHA-256("")`, so a check reading that field would pass on a report naming no device |
+| Intel TDX quote | Yes — in the production gate, over live bytes; not yet in a browser run | 8/8 on both live reports and on both recordings | **This row reversed on 2026-11-05 (ADR-32).** The quote's bytes open with arithmetic and the `@noble/hashes` already in the repo, and `lib/near-ai/quote.ts` runs the eight **inside `createTrustSession`** — `quote_is_tdx`, `td_not_debug`, `td_attributes_allowed`, `quote_binds_our_nonce`, `quote_binds_attested_key`, `quote_binds_compose_hash`, `quote_matches_report_measurements`, `event_log_replays_rtmr0_to_2` — `npm run spike` showing all eight passing on two live reports (5,006-byte quote, 35 and 30 boot events). Two things it does **not** mean: that Intel's signature over those bytes was checked — `quote_signed_by_hardware` and `platform_still_trusted` are the `dcap-qvl-node` decision (**B-12**) and ship as checks that did not run — and that the documented **RTMR3** replay works; it does not reproduce on four quotes and eighteen framings, so the eighth check is named for what it does and its receipt line says register 3 was left out. **Freshness/expiry stays unrunnable and is named as `report_expiry`:** a live report carries no `issuedAt`, no `exp`, nothing a clock could be compared to |
 | Response signature | Not in an app run | — | T-02 verified **one live non-streamed completion** (`provider_tee`, against the key the gate bound, §5), and **every one of the six replies the fixture recording stored** — three pages, one reading, two answers, all `provider_tee` ed25519 over the exact bytes, verified by this repo's own `checkSignature` before a file was written (**S-11**, SPIKE §4). A *streamed* reply is signed by the gateway enclave instead, which is why the app does not stream (ADR-22) |
 | End-to-end encryption to the enclave | Not yet | — | T-10; documented by NEAR, never demonstrated from a browser (ADR-16). The report carries the key such a call would encrypt to (§3), so what is left is `@noble/ciphers` (**B-07**) and a device |
 | Quote consistency (the only check fixture mode runs) | Yes, in fixture mode | Per fact: a quote that is not in the transcript is shown **flagged**, never as sourced | P-02; it proves consistency with our transcript, not correctness against the page. **On the recorded case it is the model's own quote against the model's own transcript** — 86 facts, all consistent, which says nothing about whether any of them matches the page (**S-03**) |
 
-**None of the NEAR AI verification checks above has been run *by the app*,** and the two that have run at
-all — nonce binding and response signature — ran from a script (`npm run spike`, `npm run fixtures:record`)
-through this repo's own verification code, without `/api/verify` (T-03's heavy checks, **B-12**) and
-without end-to-end encryption. Until the app itself runs them, Sightline has no verification claim to
-make — which is why the receipt in fixture mode states the demo-data sentence from `claims.ts` instead of a
+**The names, as the gate's `CheckResult[]` emits them** — one call of `createTrustSession` over a
+recorded live report, with `/api/verify` answering 501 as it does in this build (2026-11-05):
+
+- **Ran, and passed:** `attestation_report`, `nonce_fresh`, `signing_address_shape`, `signing_public_key_shape`, `quote_is_tdx`, `td_not_debug`, `td_attributes_allowed`, `quote_binds_our_nonce`, `quote_binds_attested_key`, `quote_binds_compose_hash`, `quote_matches_report_measurements`, `event_log_replays_rtmr0_to_2`
+- **Ran, and did not pass:** `server_verification`
+- **Did not run:** `quote_signed_by_hardware`, `platform_still_trusted`, `gpu_evidence_verdict`, `report_expiry`
+
+A run that reaches this gate in a browser has never happened (F-04, F-05 refuse first), and in fixture
+mode no report is fetched at all, so what a person sees on the receipt there is the demo sentence, not
+this list. The signature step adds two more names when a completion is answered — `response_signature`
+and `signed_by_model_enclave` (**T-02**) — and neither is an attestation check.
+
+**None of the NEAR AI verification checks above has been run *by the app in a browser*,** and the three
+that have run at all — nonce binding, response signature, and since 2026-11-05 the eight quote checks —
+ran from a script (`npm run spike`, `npm run fixtures:record`) **through the code the app itself uses**
+(`attestationReportSchema`, `bindReport`, `checkQuote`, `createTrustSession`, `checkSignature`), without
+`/api/verify` (**B-12**) and without end-to-end encryption. That is a stronger sentence than it used to
+be and still not the one a user needs: a browser run has never reached them, because F-04's allowlist
+and F-05's relay refuse at the door. Until one does, Sightline has no verification claim to make —
+which is why the receipt in fixture mode states the demo-data sentence from `claims.ts` instead of a
 list of checks that passed, and why every recorded fixture carries `"e2ee": false`.
 
 ## Forgetting a document

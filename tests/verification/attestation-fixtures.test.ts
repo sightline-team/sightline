@@ -21,8 +21,12 @@ import type { CheckResult } from '@/types';
  * directory exists to distrust.
  *
  * Three things this file is careful not to claim:
- * - It does **not** verify a TDX quote or a GPU verdict. Those are T-03's, and they need `dcap-qvl-node`
- *   and fresh evidence (**B-12**). A stored quote is stale by construction.
+ * - It does **not** check Intel's signature over a TDX quote, and so cannot say the platform is still
+ *   trusted or that the GPU was ever looked at. Those four gaps are T-03's remaining half, they need
+ *   `dcap-qvl-node` and fresh evidence (**B-12**), and the gate now names them as gaps rather than
+ *   quietly omitting them. A stored quote is stale by construction, which is why `report_expiry` is one
+ *   of the four. What *does* run here — since T-03's dependency-free half landed — is the quote's own
+ *   bytes: see the `QUOTE_CHECKS` list in the gate block below.
  * - A `verified` status from `bindReport` is *four shape-and-binding checks*, not proof an enclave made
  *   the report. The `foreign_key` case below is the demonstration: a report naming a key we invented
  *   passes every check the browser half can run.
@@ -107,6 +111,20 @@ function flipLastHex(hex: string): string {
 
 const check = (checks: CheckResult[], name: string): CheckResult | undefined => checks.find((c) => c.name === name);
 
+/** T-03's dependency-free half, named here in order so the gate assertions below are a contract, not a count. */
+const QUOTE_CHECKS = [
+  'quote_is_tdx',
+  'td_not_debug',
+  'td_attributes_allowed',
+  'quote_binds_our_nonce',
+  'quote_binds_attested_key',
+  'quote_binds_compose_hash',
+  'quote_matches_report_measurements',
+  'event_log_replays_rtmr0_to_2',
+];
+/** The half that needs `dcap-qvl-node` and fresh collateral (**B-12**): stated by name so the receipt says the gap. */
+const GAPS = ['quote_signed_by_hardware', 'platform_still_trusted', 'gpu_evidence_verdict', 'report_expiry'];
+
 // ------------------------------------------------------------------------ the recording itself
 
 describe('the good fixture is a real report, and the app can still read it (T-08)', () => {
@@ -143,12 +161,21 @@ describe('the good fixture is a real report, and the app can still read it (T-08
       const redacted = new Set(f.meta.redacted.map((r) => r.path.split('.').at(-1)));
       expect(droppedNow).toEqual(f.meta.schemaDrops.modelAttestation.filter((name) => !redacted.has(name)));
       expect([...redacted]).toContain('compose_manager_attestation');
-      // `info` survives as exactly one key, and after the redaction that key is empty. Stated because it
-      // is how little of the report the browser half can see: the compose body T-03 must hash is kept by
-      // digest only, in _meta.redacted.
+      // `info` is the one place T-03 widened the schema, and this is the assertion that makes it a
+      // decision rather than drift: the kept keys are exactly the measurements the quote is compared
+      // against — the registers on `tcb_info`, `compose_hash` and `device_id` on both levels — in the
+      // order the schema names them. Nothing else came back. `app_cert`, `instance_id`, `app_id`,
+      // `mr_aggregated`, `key_provider_info` and `vm_config` are still stripped, and the compose body
+      // T-03 must hash is still kept by digest only, in `_meta.redacted`.
       const modelInfo = keptModel.info as Record<string, unknown>;
-      expect(Object.keys(modelInfo)).toEqual(['tcb_info']);
-      expect(Object.keys(modelInfo.tcb_info as Record<string, unknown>)).toEqual([]);
+      expect(Object.keys(modelInfo)).toEqual(['compose_hash', 'device_id', 'tcb_info']);
+      expect(Object.keys(modelInfo.tcb_info as Record<string, unknown>)).toEqual([
+        'mrtd', 'rtmr0', 'rtmr1', 'rtmr2', 'rtmr3', 'os_image_hash', 'compose_hash', 'device_id',
+      ]);
+      const keptJson = JSON.stringify(keptModel.info);
+      for (const banned of ['app_cert', 'instance_id', 'mr_aggregated', 'key_provider_info', 'vm_config', 'event_log']) {
+        expect(keptJson, `${f.slug}: ${banned} came back through a schema that was only meant to see measurements`).not.toContain(banned);
+      }
     }
   });
 
@@ -361,13 +388,16 @@ describe('the gate refuses every shape of report while /api/verify answers 501 (
     return { outcome: await session.gate({ model, signal: new AbortController().signal }), session };
   };
 
-  it('a service that echoes our fresh nonce still cannot send: four passes and one loud failure', async () => {
+  it('a service that echoes our fresh nonce in every place it is carried still cannot send: twelve passes and one loud failure', async () => {
     const f = fixtures[0]!;
     const { outcome } = await gateWith(livingClient(f.raw), f.meta.model);
     expect(outcome.status).toBe('failed');
-    expect(outcome.checks.filter((c) => !c.passed).map((c) => c.name)).toEqual(['server_verification']);
-    expect(outcome.checks.filter((c) => c.ran && c.passed).map((c) => c.name)).toEqual(f.meta.shouldPass);
-    expect(outcome.checks).toHaveLength(5);
+    expect(outcome.checks.filter((c) => c.ran && !c.passed).map((c) => c.name)).toEqual(['server_verification']);
+    expect(outcome.checks.filter((c) => c.ran && c.passed).map((c) => c.name)).toEqual([...f.meta.shouldPass, ...QUOTE_CHECKS]);
+    expect(outcome.checks.filter((c) => !c.ran).map((c) => c.name)).toEqual(GAPS);
+    // 4 from bindReport, 8 from the quote, 4 that need a verifier this build may not depend on yet
+    // (B-12), 1 from `/api/verify`. The receipt has to carry all seventeen; rule 5.
+    expect(outcome.checks).toHaveLength(4 + QUOTE_CHECKS.length + GAPS.length + 1);
     // The signing key the app would pin a response signature to exists here — and the run is still
     // refused. That is the difference between "we have a key" and "we are allowed to send".
     expect(outcome.signingKey).toEqual({ algo: 'ed25519', keyOrAddress: f.modelAttestation.signing_public_key });
@@ -379,8 +409,22 @@ describe('the gate refuses every shape of report while /api/verify answers 501 (
     const f = fixtures[0]!;
     const { outcome } = await gateWith(replayClient(f.raw), f.meta.model);
     expect(outcome.status).toBe('failed');
-    expect(outcome.checks.filter((c) => !c.passed).map((c) => c.name).sort()).toEqual(['nonce_fresh', 'server_verification']);
+    expect(outcome.checks.filter((c) => c.ran && !c.passed).map((c) => c.name).sort()).toEqual(['nonce_fresh', 'quote_binds_our_nonce', 'server_verification']);
     expect(check(outcome.checks, 'nonce_fresh')?.detail).toMatch(/different nonce/);
+  });
+
+  it('a service that re-echoes the JSON field but cannot rewrite the quote is caught by the quote', async () => {
+    // `request_nonce` is a string the service types. The nonce in `report_data` is bytes the enclave wrote
+    // into a quote Intel then signed. Rebinding only the first is the shape of a lie about a report — and
+    // this case is what makes T-03's byte half worth running in the browser at all.
+    const f = fixtures[0]!;
+    const fieldOnly = replayClient(f.raw, undefined, (report, nonce) => {
+      ((report as { model_attestations: Record<string, unknown>[] }).model_attestations?.[0] ?? {}).request_nonce = nonce;
+    });
+    const { outcome } = await gateWith(fieldOnly, f.meta.model);
+    expect(outcome.status).toBe('failed');
+    expect(check(outcome.checks, 'nonce_fresh')?.passed, 'the field claims freshness, and that half is fooled').toBe(true);
+    expect(outcome.checks.filter((c) => c.ran && !c.passed).map((c) => c.name)).toEqual(['quote_binds_our_nonce', 'server_verification']);
   });
 
   it('a tampered echo and a replayed recording are the same refusal — one line of defence, two ways to trip it', async () => {
@@ -391,7 +435,7 @@ describe('the gate refuses every shape of report while /api/verify answers 501 (
     const { outcome } = await gateWith(replayClient(tampered), f.meta.model);
     const replayed = await gateWith(replayClient(f.raw), f.meta.model);
     expect(outcome.status).toBe(replayed.outcome.status);
-    expect(outcome.checks.filter((c) => !c.passed).map((c) => c.name)).toEqual(replayed.outcome.checks.filter((c) => !c.passed).map((c) => c.name));
+    expect(outcome.checks.filter((c) => c.ran && !c.passed).map((c) => c.name)).toEqual(replayed.outcome.checks.filter((c) => c.ran && !c.passed).map((c) => c.name));
   });
 
   it('the gate asks for the report of the model it was given, with the session nonce in the query', async () => {
@@ -413,6 +457,34 @@ describe('the gate refuses every shape of report while /api/verify answers 501 (
     expect(asked).toHaveLength(2);
     expect(asked[0]?.query?.nonce).toBe(asked[1]?.query?.nonce); // one nonce per session (rule 4), re-checked
   });
+
+  it('the README names exactly the checks the gate emits, under the heading each one belongs to (T-14)', async () => {
+    // AGENTS.md §9 puts a "checks that ran / did not" list in the README and requires it to *match*
+    // `CheckResult` output. A hand-copied list drifts the day a check is added, so the list is taken from
+    // a real gate call over a recorded report and compared with the page in both directions: every name
+    // the gate emitted must be on the page, under the column its own `ran`/`passed` puts it in, and every
+    // name on the page must be one the gate emitted.
+    const f = fixtures[0]!;
+    const { outcome } = await gateWith(livingClient(f.raw), f.meta.model);
+    const readme = readFileSync(path.join(__dirname, '..', '..', 'README.md'), 'utf8');
+    const line = (label: string): string[] => {
+      const hit = readme.match(new RegExp(`^- \\*\\*${label}:\\*\\* (.+)$`, 'm'));
+      if (hit === null) throw new Error(`README has no "- **${label}:**" line — T-14's list is that line`);
+      return hit[1]!.split(',').map((token) => token.trim().replace(/^`|`$/g, ''));
+    };
+    const byColumn = {
+      ranAndPassed: line('Ran, and passed'),
+      ranAndFailed: line('Ran, and did not pass'),
+      didNotRun: line('Did not run'),
+    };
+    const published = [...byColumn.ranAndPassed, ...byColumn.ranAndFailed, ...byColumn.didNotRun];
+    expect(new Set(published).size, 'a check named under two headings is not one check').toBe(published.length);
+    expect(published.sort(), 'the README and the gate disagree about which checks exist').toEqual(outcome.checks.map((c) => c.name).sort());
+    for (const c of outcome.checks) {
+      const column = c.ran ? (c.passed ? byColumn.ranAndPassed : byColumn.ranAndFailed) : byColumn.didNotRun;
+      expect(column, `${c.name} is listed under the wrong heading`).toContain(c.name);
+    }
+  });
 });
 
 interface Asked {
@@ -422,13 +494,27 @@ interface Asked {
 
 /**
  * A client that behaves the way the service was measured to behave (§3): it echoes back the nonce it
- * was just asked for. Used to show that a *cooperative* service still cannot get a document out of this
- * build while T-03 is a 501.
+ * was just asked for, in both places the model attestation carries it — the `request_nonce` string and
+ * the 32 bytes of `report_data` the enclave wrote (docs/SPIKE_RESULTS.md §3). Used to show that even a
+ * *fully* cooperative service cannot get a document out of this build while `/api/verify` answers 501.
  */
 function livingClient(source: unknown, asked?: Asked[]): NearClient {
   return replayClient(source, asked, (report, nonce) => {
-    ((report as { model_attestations: Record<string, unknown>[] }).model_attestations[0] ?? {}).request_nonce = nonce;
+    const model0 = (report as { model_attestations?: Record<string, unknown>[] }).model_attestations?.[0] ?? {};
+    model0.request_nonce = nonce;
+    writeQuoteNonce(model0, nonce);
   });
+}
+
+/**
+ * Overwrite `report_data[32..64]` inside a v4 TDX quote: bytes 600..631 of the whole quote, which is
+ * hex characters 1200..1263. Only the model attestation's quote is rewritten because only that quote is
+ * read by the gate today.
+ */
+function writeQuoteNonce(model0: Record<string, unknown>, nonce: string): void {
+  const quote = String(model0.intel_quote ?? '');
+  if (quote.length < 1264) return;
+  model0.intel_quote = `${quote.slice(0, 1200)}${nonce}${quote.slice(1264)}`;
 }
 
 /** A client that hands back the recorded bytes unchanged: a replay, or a cache that never revalidated. */

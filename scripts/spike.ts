@@ -16,16 +16,19 @@
  *    `attestationReportSchema`, `bindReport`, `modelCatalogRowSchema`, `isAllowed`. A number that
  *    came from a private fetch double in this file would say nothing about the path users take.
  *
- * Stages: `catalog` (S-02, S-07), `attestation` (T-01 against a real report), `complete`
- * (S-05, S-09 — one probe completion and its signature), `image` (S-09 per page — a synthetic page run
- * through C-01's real `prepareImage` in Chromium, then billed), `document` (S-09 per **document** — the
- * structure step priced over transcripts of the length the photo path produces). `--stage=attestation`
- * implies the gate it needs. Default is the first three; `image` and `document` are explicit because the
- * first needs a browser and the second spends real money twice; `all` runs every stage.
+ * Stages: `catalog` (S-02, S-07), `attestation` (T-01 against a real report, and T-03's browser half over
+ * the live quote bytes), `complete` (S-05, S-09 — one probe completion and its signature), `image`
+ * (S-09 per page — a synthetic page run through C-01's real `prepareImage` in Chromium, then billed),
+ * `document` (S-09 per **document** — the structure step priced over transcripts of the length the photo
+ * path produces), `gpu` (T-01's NRAS question — one POST of the report's GPU evidence to NVIDIA, free).
+ * `--stage=attestation` implies the gate it needs. Default is the first three; `image`, `document`, `qa`,
+ * `pages` and `gpu` are explicit because the first needs a browser, `document` and `qa` spend real money,
+ * and `gpu` talks to a host that is not NEAR's; `all` runs every stage.
  */
 import { z } from 'zod';
 import { chromium } from '@playwright/test';
 import { attestationReportSchema, bindReport, newNonce } from '@/lib/near-ai/attestation';
+import { checkQuote } from '@/lib/near-ai/quote';
 import { createNearClient, NearError, type CallPurpose, type NearClient } from '@/lib/near-ai/client';
 import { completionEnvelopeSchema, contentOf, refusalOf, truncated } from '@/lib/near-ai/envelope';
 import { REPAIR_NOTE, type CompletionResult } from '@/lib/near-ai/completion';
@@ -69,11 +72,13 @@ const STAGES: Stage[] = ['catalog', 'attestation', 'complete'];
  * `image` is not in the default run because it drives Chromium as well as the network: the page is
  * drawn and prepared by the real `lib/image/prepare.ts` (C-01), which needs a browser. `document` is
  * not in it because it sends a whole synthetic document twice — the most expensive exchanges in this
- * script, and the ones that only need re-measuring when a price or a prompt changes. Ask for either
- * with `--stage=image`, `--stage=pages`, `--stage=document`, or `--stage=all`.
+ * script, and the ones that only need re-measuring when a price or a prompt changes. `gpu` is not in it
+ * because it posts to NVIDIA rather than to NEAR — one request, free, and the only place in this repo
+ * that touches a third-party attestation service. Ask for any of them with `--stage=image`,
+ * `--stage=pages`, `--stage=document`, `--stage=gpu`, or `--stage=all`.
  */
-const EXPLICIT_STAGES: Stage[] = ['image', 'pages', 'document', 'qa'];
-type Stage = 'catalog' | 'attestation' | 'complete' | 'image' | 'pages' | 'document' | 'qa';
+const EXPLICIT_STAGES: Stage[] = ['image', 'pages', 'document', 'qa', 'gpu'];
+type Stage = 'catalog' | 'attestation' | 'complete' | 'image' | 'pages' | 'document' | 'qa' | 'gpu';
 
 function arg(name: string): string | undefined {
   const hit = process.argv.slice(2).find((a) => a.startsWith(`--${name}=`));
@@ -240,12 +245,19 @@ interface Attested {
   keyOrAddress?: string;
   /** `gateway_attestation` — the cloud-api gateway TEE. Proves who proxied the bytes. */
   gatewayKeyOrAddress?: string;
+  /**
+   * The live `model_attestations[0]`, held in memory only so the `gpu` stage can read the evidence
+   * inside it. Nothing that prints this is allowed to print it: it carries a GPU's own signed words.
+   */
+  attestation?: Record<string, unknown>;
+  /** The nonce this report was asked with — the same number the quote and the GPU evidence have to carry. */
+  askedWith?: string;
 }
 
 // ------------------------------------------------------------------------ attestation (T-01 live)
 
 async function stageAttestation(near: NearClient, model: string): Promise<Attested> {
-  console.log(`== attestation — GET /v1/attestation/report?model=${model} (first real report)`);
+  console.log(`== attestation — GET /v1/attestation/report?model=${model} (a live report)`);
   const nonce = newNonce();
   const { value: response, ms } = await timed(() =>
     near.get('attestation/report', { query: { model, nonce, signing_algo: 'ed25519' } }),
@@ -262,6 +274,10 @@ async function stageAttestation(near: NearClient, model: string): Promise<Attest
 
   const bound = bindReport({ report: parsed.data, nonce, signingAlgo: 'ed25519' });
   report('bindReport', bound.checks);
+  // **T-03**'s dependency-free half, over bytes that left the service seconds ago rather than out of a
+  // recording: `@noble/hashes` and arithmetic, no verifier, no `dcap-qvl-node`. This is the line that
+  // decides whether B-12's "ship the subset" answer is worth anything.
+  report('checkQuote (browser half)', checkQuote({ attestation: parsed.data.model_attestations?.[0], nonce, label: 'the model enclave', expectedKey: bound.signingKey?.keyOrAddress }));
 
   const model0 = (response.json as { model_attestations?: Record<string, unknown>[] }).model_attestations?.[0] ?? {};
   fieldInventory('model_attestations[0]', model0);
@@ -284,7 +300,77 @@ async function stageAttestation(near: NearClient, model: string): Promise<Attest
     ok: bound.status !== 'failed' && bound.checks.every((c) => c.ran && c.passed),
     ...(bound.signingKey !== undefined ? { keyOrAddress: bound.signingKey.keyOrAddress } : {}),
     ...(gatewayKey !== undefined ? { gatewayKeyOrAddress: gatewayKey } : {}),
+    attestation: model0,
+    askedWith: nonce,
   };
+}
+
+// --------------------------------------------------------------- gpu evidence (T-01's NRAS half, B-12)
+
+/** The one host the reference verifier asks about GPU evidence, and the only host this stage contacts. */
+const NRAS_GPU_ENDPOINT = 'https://nras.attestation.nvidia.com/v3/attest/gpu';
+
+/**
+ * Ask NVIDIA whether the GPU evidence in a live report is trusted — the question
+ * `gpu_evidence_verdict` in `quote.ts` currently answers with `ran: false`, and the reason it is a
+ * measurement rather than a feature is that asking needs *no* dependency: one POST and one base64url
+ * decode, the same two steps `nearai/nearai-cloud-verifier`'s `checkGpu` takes.
+ *
+ * Printed: the HTTP status, whether the evidence names our nonce, how many evidence blobs were sent and
+ * the verdict word. Never printed: the payload, the response, the JWT inside it (a GPU's serial number
+ * and measurements live in there).
+ */
+async function stageGpu(attested: Attested): Promise<void> {
+  console.log('== gpu — the NRAS question `gpu_evidence_verdict` says this build cannot answer');
+  const raw = attested.attestation?.nvidia_payload;
+  if (typeof raw !== 'string' || raw.length === 0) {
+    console.log(`  FAIL  this report carries no GPU evidence to ask with (typeof ${typeof raw}, ${raw === undefined ? 'absent' : `${String(raw).length} chars`})`);
+    return;
+  }
+  let evidence: unknown;
+  try {
+    evidence = JSON.parse(raw) as unknown;
+  } catch {
+    console.log(`  FAIL  nvidia_payload is ${raw.length} characters that do not parse as JSON`);
+    return;
+  }
+  // Shape inventory, field names only — what is inside the entries is never printed.
+  const keysOf = (node: unknown): string => (node !== null && typeof node === 'object' ? Object.keys(node as Record<string, unknown>).join(', ') : typeof node);
+  const shape = Array.isArray(evidence) ? `array(${evidence.length}) of {${keysOf(evidence[0])}}` : `object {${keysOf(evidence)}}`;
+  const embedded = Array.isArray(evidence) ? (evidence[0] as Record<string, unknown> | undefined)?.nonce : (evidence as Record<string, unknown>).nonce;
+  console.log(`  ${raw.length} characters of evidence · ${shape}`);
+  console.log(`  nonce the service asked the GPU to sign matches ours: ${String(embedded).toLowerCase() === String(attested.askedWith).toLowerCase()} (${typeof embedded === 'string' ? `${embedded.length} chars` : 'no nonce field at that level'})`);
+  const { value: result, ms } = await timed(() =>
+    fetch(NRAS_GPU_ENDPOINT, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(evidence) }),
+  );
+  const text = await result.text();
+  console.log(`  POST ${NRAS_GPU_ENDPOINT} → HTTP ${result.status} in ${ms} ms · ${text.length} bytes of answer`);
+  if (!result.ok) {
+    // The body of an NRAS error is prose about the request, not about the machine; still, print only
+    // the first line, because a failure page can carry a token or a trace.
+    console.log(`  FAIL  ${text.split('\n')[0]!.slice(0, 160)}`);
+    return;
+  }
+  const verdict = nvidiaVerdict(text);
+  console.log(verdict === undefined ? '  FAIL  the answer is not the [ [ …, jwt ] ] shape the reference verifier reads' : `  verdict: ${verdict}`);
+}
+
+/** `body[0][1]` is a JWT whose payload carries `x-nvidia-overall-att-result` (reference verifier, `checkGpu`). */
+function nvidiaVerdict(text: string): string | undefined {
+  try {
+    const body = JSON.parse(text) as unknown[];
+    const jwt = Array.isArray(body?.[0]) ? (body[0] as unknown[])[1] : undefined;
+    if (typeof jwt !== 'string') return undefined;
+    const claims = jwt.split('.')[1];
+    if (claims === undefined) return undefined;
+    const padded = claims.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (claims.length % 4)) % 4);
+    const decoded = JSON.parse(Buffer.from(padded, 'base64').toString('utf8')) as Record<string, unknown>;
+    const verdict = decoded['x-nvidia-overall-att-result'];
+    const certChain = decoded['x-nvidia-cert-chain-id'];
+    return `${String(verdict)} (verifier ${String(decoded['x-nvidia-ver'])}, evidence ${String(decoded['x-nvidia-eat-nonce'] === undefined ? 'nonce claim absent' : 'nonce claim present')}${typeof certChain === 'string' ? `, cert chain id ${certChain.length} chars` : ''})`;
+  } catch {
+    return undefined;
+  }
 }
 
 // ------------------------------------------------------------------- complete + signature (S-05/S-09)
@@ -1303,7 +1389,7 @@ async function stageQa(near: NearClient, model: string, attested: Attested): Pro
  * `complete` rides the page model because it is the probe prompt, not a document step; `catalog` and
  * `attestation` make no completion, so they are not keys.
  */
-const COMPLETION_STAGES: Record<Exclude<Stage, 'catalog' | 'attestation'>, {
+const COMPLETION_STAGES: Record<Exclude<Stage, 'catalog' | 'attestation' | 'gpu'>, {
   plan: StepPlan;
   run: (near: NearClient, model: string, attested: Attested) => Promise<void>;
 }> = {
@@ -1338,14 +1424,19 @@ async function main(): Promise<void> {
       continue;
     }
     // `attestation` has no row of its own — it asks for the report the next stage will check against, so
-    // it rides the page model's row unless `--model=` says otherwise.
-    const entry = stage === 'attestation' ? undefined : COMPLETION_STAGES[stage];
+    // it rides the page model's row unless `--model=` says otherwise. `gpu` is the same: it is a question
+    // about that report, not a completion.
+    const entry = stage === 'attestation' || stage === 'gpu' ? undefined : COMPLETION_STAGES[stage];
     const model = forced ?? (entry?.plan ?? STEP_PLANS.transcribe).model;
     // The report has to belong to the model that answers. A completion checked against another model's
     // attested key fails for the wrong reason, and rule 6 will not count that as a measurement.
     if (attested.keyOrAddress === undefined || attestedFor !== model) {
       attested = await stageAttestation(near, model);
       attestedFor = model;
+    }
+    if (stage === 'gpu') {
+      await stageGpu(attested);
+      continue;
     }
     if (entry === undefined) continue;
     await entry.run(near, model, attested);

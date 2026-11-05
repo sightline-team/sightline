@@ -16,10 +16,12 @@ the app uses.
 
 What the key settled: the model catalog and its TEE flags (§4), the shape of a real attestation report
 (§3), a response signature verified against an attested key (§5), a live CORS preflight (§6), first
-latency and cost numbers (§4, §1 of the measurement notes). What it did **not** settle, and the
-reading should not be mistaken for it: E2EE from a browser (a dependency decision, T-10/B-06), the
-heavy verifier checks inside `/api/verify` (T-03, and `dcap-qvl-node` is not installed), and accuracy
-on bad photographs (S-03 needs the golden set run against a live model).
+latency and cost numbers (§4, §1 of the measurement notes), and — on 2026-11-05 — the **inside of the
+TDX quote**, which opened with arithmetic and `@noble/hashes` alone (§3's third measured block). What it
+did **not** settle, and the reading should not be mistaken for it: E2EE from a browser (a dependency
+decision, T-10/B-06), Intel's **signature** over those quote bytes and the collateral that says whether
+a platform is still trusted (T-03, and `dcap-qvl-node` is not installed), and accuracy on bad
+photographs (S-03 needs the golden set run against a live model).
 
 Four findings **contradicted the reading**, and each is marked where it lands: `attestationSupported:
 true` does not imply a NEAR-side upstream; a model can be `isReady: true` and never answer; a streamed
@@ -37,6 +39,9 @@ Primary sources read:
 - `https://github.com/nearai/inference-sdk` (official TS/JS SDK)
 - `https://github.com/nearai/nearai-cloud-verifier` (reference verifier, Python **and** TypeScript)
 - `https://github.com/near-examples/nearai-cloud-verification-example` (minimal Node example)
+- `Phala-Network/dcap-qvl`, `src/quote.rs` (the `TDReport10` layout that `@phala/dcap-qvl-node` — the
+  package NEAR's verifier calls — decodes; read 2026-11-05 to index a quote without adding the
+  dependency)
 - `https://near.ai/models` (catalog page, embedded model objects)
 
 ---
@@ -258,6 +263,73 @@ is T-03's 501, `createTrustSession` ANDs the local binding with it, so **every c
 against a service that echoes the session nonce correctly: four local passes, one loud failure,
 nothing sent. `verified` from `bindReport` means "these bytes are well-shaped and bound to our
 nonce", never "an enclave was verified" (**ADR-22**'s distinction, now with a live report behind it).
+
+### [Measured] 2026-11-05 — the quote opens with no new dependency, and NRAS answers on the first ask
+
+The claim this run tested was B-12's premise: that T-03's checks are unreachable without
+`dcap-qvl-node`. They are not — **eight of them are byte reading and SHA-384**, and `@noble/hashes` is
+already in `package.json`. `npm run spike -- --stage=attestation` now runs
+`checkQuote` (`src/lib/near-ai/quote.ts`) through the production schema on whatever the service returns:
+
+| Call | HTTP | ms | Live bytes | Quote | `event_log` | `bindReport` | `checkQuote` |
+|---|---|---|---|---|---|---|---|
+| `z-ai/glm-5.3-flash` | 200 | 1,697 | 308,101 | 10,012 hex chars = **5,006 B** | 35 entries | 4/4 | **8/8** |
+| `Qwen/Qwen3.8-27B` | 200 | 2,379 | 162,852 | 5,006 B | 30 entries | 4/4 | **8/8** |
+
+- **The layout is `TDReport10`, and it is not a guess.** Transcribed from
+  `Phala-Network/dcap-qvl/src/quote.rs` — the struct `nearai-cloud-verifier` obtains from
+  `@phala/dcap-qvl-node`, so the same one NEAR's verifier reads: a **48-byte header and then the
+  584-byte report, with no `body_size` prefix** (that prefix belongs to version 5; reading it here put
+  every field four bytes out). Quote-absolute offsets, all six quotes (four in the recorded fixtures,
+  two live today) agreeing at every one: `tee_tcb_svn` 48, `mr_seam` 64, `mr_signer_seam` 112,
+  `seam_attributes` 160, `td_attributes` 168, `xfam` 176, `mr_td` 184, `mr_config_id` 232, `mr_owner`
+  280, `mr_owner_config` 328, `rt_mr0..3` 376 / 424 / 472 / 520, `report_data` 568. Header says
+  version 4, `attestation_key_type` 2, `tee_type` 0x81.
+- **What the bytes say, per quote:** `td_attributes` is `0000001000000000` — SEPT_VE_DISABLE, **debug
+  bit clear**, no Intel-reserved MBZ bit set. `report_data[0..32]` equals `signing_public_key` for a
+  model attestation (and equals `signing_address` for the gateway, which publishes no
+  `signing_public_key`), `report_data[32..64]` equals the raw request nonce we minted. `mr_config_id`
+  is `0x01 ‖ compose_hash(32 B) ‖ 15 zero bytes` — so the compose-binding check **survives our own
+  redaction**, because `info.compose_hash` is kept even though `app_compose` was dropped. `mr_td` and
+  `rt_mr0..3` equal `info.tcb_info.mrtd/rtmr0..3`, which is the self-check that makes a wrong layout
+  impossible to miss.
+- **`event_log` replays registers 0, 1 and 2, and not 3.** `acc = SHA-384(acc ‖ digest)` in log order
+  from 48 zero bytes reproduces `rt_mr0..2` exactly on every quote measured (13 / 5 / 2 events for the
+  recorded glm log; 35 and 30 events live). **RTMR3 does not reproduce**: dstack logs its boot events
+  with the meaning in `event_payload` and an *empty* `digest`, so there is nothing to extend, and
+  eighteen uniform framings of `event`/`event_payload` (hashed, concatenated, length-prefixed, padded)
+  all failed on both recorded files. That contradicts the documented procedure (§3 above, step
+  "replay IMR-3 entries … match `rt_mr3`"), so it is recorded as a **measured correction**: the check
+  ships named `event_log_replays_rtmr0_to_2` and its receipt line says register 3 was not reproduced.
+  Nothing may claim an RTMR3 replay until somebody finds the framing dstack actually used.
+- **The service does write our nonce into the quote, not only into the JSON.** `quote_binds_our_nonce`
+  passes on both live reports with the fresh nonce the script minted seconds earlier. So the
+  cooperative-service model in T-08's tests (`livingClient`, which used to rewrite only
+  `request_nonce`) was *less* cooperative than the real service: a service that echoes the field has to
+  re-run the attestation to do it, and a report that echoes the field while the quote still carries the
+  old number is a lie this build can now see.
+- **NRAS answers, free, with no dependency.** `npm run spike -- --stage=gpu` posts
+  `JSON.parse(nvidia_payload)` to `https://nras.attestation.nvidia.com/v3/attest/gpu` with
+  `content-type`/`accept: application/json` and no auth header. Live: **HTTP 200 in 1,608 ms, 17,220
+  bytes**, response shaped `[["JWT", "…"], …]` exactly as §3's doc reading said, and the
+  `x-nvidia-overall-att-result` claim in `body[0][1]`'s payload is **`true`** with `x-nvidia-ver`
+  `2.0`. One correction to the doc reading: that JWT carries **no `x-nvidia-eat-nonce` claim**, so the
+  nonce comparison has to be made against `nvidia_payload.nonce` (top level, `{nonce, evidence_list,
+  arch}` — 98,222 chars, matching ours on both live reports), not against a nonce claim in the answer.
+  Nothing from the payload or the answer is printed or stored; a GPU's serial and measurements live in
+  there.
+- **What `dcap-qvl-node` is therefore still buying, and nothing else:** Intel's signature over the
+  quote (its code path is `js_get_collateral("https://api.trustedservices.intel.com/tdx/certification/v4",
+  quote)` then `js_verify(quote, collateral, now)`), and TCB/collateral freshness — i.e. checks 1 and 2
+  of `QUOTE_CHECKS_THAT_CANNOT_RUN`. The GPU verdict and the debug-bit abort are **not** in that set;
+  they need no dependency, and the debug bit is now gated in the browser regardless.
+- **Cost of all of this: two free report calls and one POST to NVIDIA.** The production schema had to
+  widen — `info.tcb_info`'s measurements and `info.compose_hash` used to be *stripped* by
+  `modelAttestationSchema`, so `checkQuote` had nothing to compare the quote against (8 failing tests
+  were the finding). The widening is pinned by name in `attestation-fixtures.test.ts`, and the fields
+  that stayed stripped are listed there too: `app_cert`, `instance_id`, `app_id`, `mr_aggregated`,
+  `key_provider_info`, `vm_config`. **The bullet above saying `info` survives as `['tcb_info']` and
+  `tcb_info` parses to `{}` is superseded by that line** — it was true until this commit.
 
 ## 4. Model catalog — the flags we need are NOT on `/v1/models`
 
@@ -1095,10 +1167,13 @@ Still open, with what each one now waits on:
 6. Whether `spendLimit` is reachable on the account type we ended up with, and how much of the `$10`
    grant is left. The credits arrived and were spent on measurements; the cap itself has not been set,
    because setting it is an action on a shared account rather than a read. (S-10)
-7. Intel TDX collateral fetch mechanics, delegated to `dcap-qvl-node` by the verifier — and the whole
-   heavy-check half of `/api/verify`. The quote is in hand (5,006 bytes, measured), so this is now
-   blocked on a **dependency approval** (AGENTS.md §5) rather than on data. Until it ships, live mode's
-   gate reports `failed` and refuses to send. (T-03)
+7. Intel TDX **collateral** fetch mechanics and the revocation answer, delegated to `dcap-qvl-node` by
+   the verifier. This line used to cover "the whole heavy-check half"; it no longer does — the quote's
+   *bytes* were opened on 2026-11-05 with the two hashes already in `package.json`, eight checks now run
+   in the browser and pass on both live reports, and NRAS answers a GPU payload with a plain POST. What
+   stays unknown is whether Intel's signature over those bytes verifies, whether this platform has been
+   revoked, and whether an NRAS `true` is stable across calls. Until those ship, the four named gaps
+   hold live mode's gate at `failed` and rule 6 refuses to send. (T-03, **B-12**)
 8. **What the 2026-11-04 23:22 UTC recording run cost.** Its six calls were billed; the recorder cannot
    say how much, because `completionEnvelopeSchema` does not name `usage` and `readCompletion` therefore
    never passes the block to anything that could store it (§4's S-11 block). Either the recording reads

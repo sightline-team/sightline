@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { appError } from '@/lib/errors';
 import { createSignatureVerifier, decodeHex } from '@/lib/near-ai/signatures';
+import { QUOTE_CHECKS_THAT_CANNOT_RUN, checkQuote } from '@/lib/near-ai/quote';
 import { RunHalt } from '@/lib/near-ai/verification';
 import type { GateOutcome, SignatureVerifier } from '@/lib/near-ai/verification';
 import type { NearClient } from '@/lib/near-ai/client';
@@ -40,6 +41,26 @@ const ADDRESS_BYTES: Record<SigningAlgo, number> = { ecdsa: 20, ed25519: 32 };
  * either reject a real report we have not seen yet or, worse, be relaxed later to make a test
  * pass. Absent fields are *reported as absent* by the checks instead.
  */
+/**
+ * The measurements a quote is checked *against*: the report's own published description of the machine
+ * and of the software stack inside it. Stripping these is what the loose schema used to do, and then T-03's
+ * quote checks had nothing to compare the bytes to — so the fields the checks read are named here
+ * explicitly, all optional, still fail-closed (an absent one is reported as unreadable by `checkQuote`,
+ * never as a pass). `tcb_info` is typed as `string | object` because NEAR's own reference verifier types it
+ * that way (`ts/model_verifier.ts`'s `AttestationBaseInfo`), and the recorded reports are objects.
+ */
+const tcbInfoSchema = z.object({
+  app_compose: z.string().optional(),
+  mrtd: z.string().optional(),
+  rtmr0: z.string().optional(),
+  rtmr1: z.string().optional(),
+  rtmr2: z.string().optional(),
+  rtmr3: z.string().optional(),
+  os_image_hash: z.string().optional(),
+  compose_hash: z.string().optional(),
+  device_id: z.string().optional(),
+});
+
 export const modelAttestationSchema = z.object({
   intel_quote: z.string().optional(),
   event_log: z.unknown().optional(),
@@ -49,7 +70,13 @@ export const modelAttestationSchema = z.object({
   signing_algo: z.enum(['ecdsa', 'ed25519']).optional(),
   signing_public_key: z.string().optional(),
   nvidia_payload: z.unknown().optional(),
-  info: z.object({ tcb_info: z.object({ app_compose: z.string().optional() }).optional() }).optional(),
+  info: z
+    .object({
+      compose_hash: z.string().optional(),
+      device_id: z.unknown().optional(),
+      tcb_info: z.union([z.string(), tcbInfoSchema]).optional(),
+    })
+    .optional(),
 });
 
 export const attestationReportSchema = z.object({
@@ -231,12 +258,28 @@ export function createTrustSession(deps: { client: NearClient; ttlMs?: number; f
   const run = async (model: string, signal: AbortSignal): Promise<GateOutcome> => {
     const report = await fetchReport(deps.client, { model, nonce, signingAlgo: algo, signal });
     const local = bindReport({ report, nonce, signingAlgo: algo });
+    // T-03's dependency-free half, decided here rather than on our server: a browser that reads the
+    // quote itself trusts its own arithmetic, a browser that asks `/api/verify` trusts our verdict.
+    const quote = checkQuote({ attestation: report.model_attestations?.[0], nonce, label: 'the model enclave', expectedKey: local.signingKey?.keyOrAddress });
     const server = await verifyWithServer(report, nonce, { fetchImpl: deps.fetchImpl, signal });
-    const checks = [...local.checks, ...server.checks];
+    // Rule 5 in its structural form: a check that never ran has to stop the word `verified`, not merely
+    // annotate it. The four gaps count against the status until `/api/verify` answers one of them — when
+    // it does, its own entry replaces the placeholder by name and nothing here has to be re-argued.
+    // Today the route answers 501, so all four stand and `verified` is unreachable on purpose.
+    const answered = new Set(server.checks.map((c) => c.name));
+    const gaps = QUOTE_CHECKS_THAT_CANNOT_RUN.filter((c) => !answered.has(c.name));
+    const checks = [...local.checks, ...quote, ...gaps, ...server.checks];
     // Required checks are the ones that must pass to send anything: a report that is not bound to
-    // us, or a verifier that said no. Everything else lowers the rung without stopping the run.
-    const requiredFailed = checks.some((c) => c.ran && !c.passed && ['nonce_fresh', 'server_verification', 'attestation_report'].includes(c.name));
-    const status: AttestationStatus = requiredFailed ? 'failed' : local.status === 'verified' && server.status === 'verified' ? 'verified' : 'partial';
+    // us, a verifier that said no, and a quote that says the enclave is in debug mode — in which
+    // state the machine's operator can read its memory, so nothing here would be private.
+    const required = ['nonce_fresh', 'server_verification', 'attestation_report', 'td_not_debug'];
+    const requiredFailed = checks.some((c) => c.ran && !c.passed && required.includes(c.name));
+    const binding = [...local.checks, ...quote, ...gaps];
+    const status: AttestationStatus = requiredFailed
+      ? 'failed'
+      : binding.every((c) => c.ran && c.passed) && server.status === 'verified'
+        ? 'verified'
+        : 'partial';
     const outcome: GateOutcome = { status, checks, nonce, signingAlgo: algo, fetchedAt: server.fetchedAt, signingKey: local.signingKey };
     cached = { outcome, at: Date.now() };
     current = outcome;
