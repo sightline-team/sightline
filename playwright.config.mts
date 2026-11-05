@@ -10,7 +10,10 @@ import { defineConfig, devices } from '@playwright/test';
  * honestly in tests/a11y/manual-checklist.md and docs/ACCESSIBILITY_REPORT.md
  * (AGENTS.md §8: never claim a platform unless it was tested).
  */
-const PORT = 3100;
+// The port is overridable because `scripts/clean-checkout.ts` (R-03) boots a second dev server
+// from a throwaway clone while a developer's own server may still hold 3100; two fixed-port
+// servers cannot coexist, and a proof that only runs on an idle machine is a proof nobody re-runs.
+const PORT = Number(process.env.E2E_PORT ?? 3100);
 
 // `localhost`, not `127.0.0.1`. Next 16 blocks a dev resource request whose origin host differs
 // from the host the dev server was reached as, and that block stops the client bootstrap from

@@ -32,6 +32,13 @@ model, and it always shows the demo-data banner — that sentence is defined in
 `src/features/trust/claims.ts` and is deliberately not repeated here, so a README edit cannot make
 it disagree with the app (requirement R9, `docs/PRD.md` §7).
 
+Those two commands are themselves a test. `npm run release:clean-checkout` clones this repository
+anonymously into a temporary folder, refuses a checkout that contains a `.env`, installs with
+`npm ci` from the lockfile alone, and runs the committed browser suite against a dev server booted
+**from that checkout** — no key, so every reply is replayed from `fixtures/`. Takes about five
+minutes and spends nothing. It proves the repository is self-sufficient; it proves nothing about a
+live model, a real phone or a screen reader (**R-03**, `docs/ARCHITECTURE.md` ADR-38).
+
 **What that runs today:** **photographing** — add the three pictures this repo ships at
 `public/sample-docs/photographs/page-{1,2,3}.jpg`, see each one as the app will send it, press *Read
 these photographs*, and the whole flow completes with no key in about a second: the page loop, the join,

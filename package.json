@@ -22,6 +22,7 @@
     "fixtures:record": "tsx --env-file-if-exists=.env scripts/record-fixtures.ts",
     "golden": "tsx --env-file-if-exists=.env scripts/run-golden.ts",
     "crosscheck": "tsx --env-file-if-exists=.env scripts/crosscheck.ts",
+    "release:clean-checkout": "tsx scripts/clean-checkout.ts",
     "roadmap:check": "tsx scripts/roadmap-check.ts",
     "hooks:install": "git config core.hooksPath .githooks"
   },
