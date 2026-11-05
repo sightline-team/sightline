@@ -3,6 +3,7 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import Link from 'next/link';
 import { TrustReceipt } from '@/features/trust/TrustReceipt';
+import { planFactList } from '@/features/analysis/facts';
 import { appLimitationNotices, safetyNotices } from '@/features/safety/notices';
 import { useSessionStore } from '@/lib/session/store';
 import type { DocType, KeyFact, Transcript } from '@/types';
@@ -22,10 +23,12 @@ import type { DocType, KeyFact, Transcript } from '@/types';
  * arrives the same way, for the same reason: what it speaks comes from the reading *and* from
  * `features/safety`, so `app/_flow/ReadAloud.tsx` joins them and this file only places the result.
  *
- * Two rules this file is written against:
+ * Three rules this file is written against:
  *  - a fact whose `quoteFound` is false is shown **flagged**, never as sourced (rule 8);
  *  - no privacy sentence is written here (rule 1) — the claim comes from `claims.ts` through
- *    `TrustReceipt`, computed from the record the pipeline emitted.
+ *    `TrustReceipt`, computed from the record the pipeline emitted;
+ *  - the fact list a person hears is a **decided size** (P-16): `analysis/facts.ts` says how many and
+ *    which, this file only renders what it is given and states the count out loud.
  */
 
 const DOC_TYPE_WORDS: Record<DocType, string> = {
@@ -125,6 +128,9 @@ export function ResultsView({ ask, speak }: { ask: ReactNode; speak: ReactNode }
 
   const transcript = session.transcript;
   const facts = analysis.facts;
+  // P-16: a long list is collapsed by kind, never cut off at the end. `planFactList` leaves a short
+  // list untouched, so this is invisible in the normal case.
+  const { shown, held } = planFactList(facts);
   const ungrounded = facts.filter((fact) => !fact.quoteFound);
 
   return (
@@ -152,11 +158,30 @@ export function ResultsView({ ask, speak }: { ask: ReactNode; speak: ReactNode }
         {facts.length === 0 ? (
           <p>Sightline found no facts it could name in this text.</p>
         ) : (
-          <dl className="fact-list">
-            {facts.map((fact, index) => (
-              <Fact key={`${fact.label}-${index}`} fact={fact} />
-            ))}
-          </dl>
+          <>
+            {held.length > 0 ? (
+              <p data-testid="fact-count">
+                Sightline found {facts.length} facts. That is too many to read one by one, so{' '}
+                {shown.length} are listed here and the other {held.length} are behind the “Show the other{' '}
+                {held.length} facts” control at the end of this list.
+              </p>
+            ) : null}
+            <dl className="fact-list">
+              {shown.map((fact, index) => (
+                <Fact key={`${fact.label}-${index}`} fact={fact} />
+              ))}
+            </dl>
+            {held.length > 0 ? (
+              <details data-testid="more-facts">
+                <summary>Show the other {held.length} facts</summary>
+                <dl className="fact-list">
+                  {held.map((fact, index) => (
+                    <Fact key={`${fact.label}-rest-${index}`} fact={fact} />
+                  ))}
+                </dl>
+              </details>
+            ) : null}
+          </>
         )}
         {ungrounded.length > 0 ? (
           <p data-testid="ungrounded-count">

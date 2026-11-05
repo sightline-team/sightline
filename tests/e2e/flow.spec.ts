@@ -185,6 +185,11 @@ test.describe('the demo flow, with no credentials (F-09 done-when)', () => {
     await expect(page.getByTestId('fact-flagged')).toHaveCount(0);
     await expect(page.locator('.fact-list dt', { hasText: 'Amount due' })).toBeVisible();
     await expect(page.locator('.fact-list dd').filter({ hasText: '£840' }).first()).toBeVisible();
+    // **P-16 stays out of the way when the reading is short.** Four facts is not a wall of audio, so this
+    // screen must show no count sentence and no disclosure — the 86-fact case is
+    // `photo-fixtures.spec.ts`, and both have to be deliberate rather than one code path that always talks.
+    await expect(page.getByTestId('fact-count')).toHaveCount(0);
+    await expect(page.getByTestId('more-facts')).toHaveCount(0);
 
     // The pasted words stay reachable, so the user can check the reading themselves.
     await expect(page.locator('.transcript')).toHaveText(text);

@@ -94,7 +94,18 @@ test.describe('the three photographs the demo ships (S-11 → C-13)', () => {
     // count is pinned to the recording rather than to a hope.
     await expect(page.getByTestId('fact-flagged')).toHaveCount(0);
     await expect(page.getByTestId('ungrounded-count')).toHaveCount(0);
-    expect(await page.locator('dt').count(), 'the recorded reading lists a fact per line item').toBeGreaterThan(80);
+
+    // **P-16 on the very recording that made it an item.** Eighty-six facts arrive from the enclave, 84 of
+    // them line items, and every one of them quotes the transcript, so grounding sees nothing. The screen
+    // must say what it is listing before the list, keep the reference that a first-twelve cut would have
+    // spent a slot on, and put the other 81 behind one native control.
+    const factsSection = page.locator('section[aria-labelledby="facts-heading"]');
+    await expect(page.getByTestId('fact-count')).toHaveText(
+      'Sightline found 86 facts. That is too many to read one by one, so 5 are listed here and the other 81 are behind the “Show the other 81 facts” control at the end of this list.',
+    );
+    await expect(factsSection.locator('.fact-list').first().locator('dt')).toHaveCount(5);
+    await expect(factsSection.locator('dt').filter({ hasText: 'Reference' })).toBeVisible();
+    expect(await factsSection.locator('dt').count(), 'the 81 held facts are in the document, folded').toBe(86);
 
     // Rule 11: a demo that finishes is still a demo. The photo path leaves one receipt per replayed call —
     // three pages and the reading — so the claim is checked across all of them: none of them may say more
@@ -104,6 +115,30 @@ test.describe('the three photographs the demo ships (S-11 → C-13)', () => {
 
     expect(claims.length, 'a receipt per photographed page and one for the reading').toBeGreaterThanOrEqual(4);
     expect(new Set(claims)).toEqual(new Set(['Demo data. No real privacy guarantee.']));
+  });
+
+  /**
+   * **P-16's second half: the held facts are reachable, and nothing about them is hidden in a way a
+   * listener cannot undo.** The control is a native `<details>`, which is what AGENTS.md §8 asks for
+   * before any JS disclosure, and the point of this test is the pair: the repetition is out of the
+   * default reading, and one press puts all of it back — with its quotes, because a fact behind the
+   * control is not a less-checked fact.
+   */
+  test('the rest of the 86-fact reading is one press away, with its quotes intact', async ({ page }) => {
+    await readTheDemoSet(page);
+
+    const lastLine = page.locator('dt').filter({ hasText: 'Line 084' });
+    await expect(lastLine).toBeHidden();
+
+    await page.getByTestId('more-facts').locator('summary').click();
+    await expect(lastLine).toBeVisible();
+    await expect(lastLine.locator('+ dd')).toContainText('Line 084');
+    await expect(page.getByTestId('fact-flagged')).toHaveCount(0);
+
+    // Pressing it does not ask the model anything: 86 facts in the document is still 86 facts, and no
+    // new receipt appears, because a person expanding a list must not be charged for a second reading.
+    expect(await page.locator('section[aria-labelledby="facts-heading"] dt').count()).toBe(86);
+    await expect(page.getByTestId('announcer')).toHaveText('Done. Showing what Sightline read.');
   });
 
   test('the finished photograph answers the two questions that were asked of it', async ({ page }) => {

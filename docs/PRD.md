@@ -86,6 +86,9 @@ Not in scope: deaf and hard-of-hearing users.
 ### R3. Accessible reading (P0)
 - Output uses real headings in this order: Summary → Key facts → Actions → Warnings → Full text.
 - Key facts show the **exact source quote** next to each value.
+- **How many facts a person is offered is a decided quantity** (item **P-16**, ADR-36): at most 12 listed and
+  at most 3 of any one kind, short lists untouched, the count stated before the list and the remainder one
+  native disclosure control away with its quotes. A fact whose quote could not be matched is always listed.
 - "Read exactly what it says" shows the verbatim transcript only.
 - **Read aloud:** one button, play/stop, rate control, using on-device speech. Screen-reader users will mostly not use it, because it duplicates their own reader **[Likely]**. It exists mainly for low-vision users like Daniel.
 - **Acceptance:** everything is reachable in logical order by screen reader and by keyboard.

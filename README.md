@@ -52,11 +52,18 @@ piece — one page, or the section you need answered — rather than naming the 
 error is where your screen reader lands (`docs/ARCHITECTURE.md` §13, **ADR-29**). The flow itself: the
 pipeline answers, the results view shows Summary → Key facts →
 Actions → Warnings → Full text → Ask → Verification, questions about the letter are answered from its
-text or refused by name, and the receipt lists the checks that ran and the ones that did not. The
+text or refused by name, and the receipt lists the checks that ran and the ones that did not. **A long
+fact list is bounded on the way to the reader, not in the reading:** the screen lists at most 12 facts and
+at most three of any one kind, says how many it found before it lists them, and puts the rest behind one
+"Show the other n facts" control with their quotes. That is item **P-16** (**ADR-36**), and the reason is
+measured rather than stylistic — the same bill has come back with **33 facts for one page and 5 for five
+pages**, and the photographed document in this repo's own demo comes back with **86**, 84 of them line
+items. A list of 12 or fewer is left exactly as it is; a fact whose words could not be matched to the text
+is never put behind the control. The
 fourth letter exists to show the other ending: its reply is not the answer the app asked for, so the
 run makes its one repair retry and then shows the text you gave with no summary on it, which is the
 path most likely to meet a real user and the one `docs/ARCHITECTURE.md` §13 promises. Proved by
-`tests/e2e/flow.spec.ts` (72 of the suite's 119 Playwright tests) against exactly these two commands.
+`tests/e2e/flow.spec.ts` (72 of the suite's 120 Playwright tests) against exactly these two commands.
 Three of the four letters are **authored synthetic**; the fifth case is **recorded** traffic, and the two
 provenances are labelled separately everywhere they appear (`fixtures/README.md`, item **S-11**).
 
