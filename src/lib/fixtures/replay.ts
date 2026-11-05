@@ -1,6 +1,7 @@
 import { NearError, type NearClient, type NearPath, type NearResponse } from '@/lib/near-ai/client';
 import { appError } from '@/lib/errors';
 import { FIXTURE_CASES } from '@/lib/fixtures/cases';
+import { RECORDED_PAGES, type RecordedPage } from '@/lib/fixtures/recorded';
 
 /**
  * Fixture replay (item **F-09**) — the reason a reviewer or a screening agent with no
@@ -20,15 +21,23 @@ import { FIXTURE_CASES } from '@/lib/fixtures/cases';
  *    alternative — replaying the bill analysis over whatever the user pasted — would put an
  *    authored summary on screen that looks like it describes *their* document. Sequence-based
  *    replay (the shape this file had at scaffold time) cannot prevent that; content matching
- *    can. The same rule one level down: a question is answered only if that wording is prepared
+ *    can. A photographed page is matched by the SHA-256 of the file the person chose instead, because
+ *    its bytes arrive inside an `image_url` part no content match can read — **ADR-31** holds why that
+ *    digest is of the file as chosen, and why nothing fuzzier is acceptable here. The same rule one
+ *    level down: a question is answered only if that wording is prepared
  *    for that document (P-06), and anything else is refused with `no_fixture_for_question`.
  * 2. **Mode F answers no verification question.** The three GETs throw rather than replaying
  *    an attestation report or a signature, because a fabricated report is the one thing that
  *    could turn `claim: 'fixtures'` into a strong rung later.
  *
- * Provenance rule: until S-11 records real responses, everything in the corpus is
- * **authored synthetic** data and is described that way here, in each document's own text,
- * and in the README.
+ * Provenance rule: the corpus now has **two** provenances and they are never described as one thing. The
+ * three pasted demo letters, and the fourth case whose reply fails to be a reading (**P-11**), are
+ * **authored synthetic**: a person wrote their JSON and it has never been on the wire. The three
+ * photographed pages, their reading and their two answers are **recorded**: `npm run fixtures:record`
+ * (**S-11**) posted the app's own requests to the live service and stored each reply only after its
+ * signature verified against the attested enclave key. "Recorded" is a claim about where bytes came from,
+ * so each file carries its own `_provenance` sidecar with the time, model, completion id, usage and
+ * verdict behind it, and `fixtures/README.md` keeps the two words apart.
  */
 
 export interface PreparedReply {
@@ -51,6 +60,15 @@ export interface FixtureCaseFields {
   text: string;
   /** Prepared answers (P-06). A question that is not on this list is refused, not answered. */
   qa: PreparedReply[];
+  /**
+   * Whether the paste screen offers this document to be loaded (**P-05**). Default `true`.
+   *
+   * The recorded photographed document (**C-13**) is the one case that says `false`, and it is not a
+   * stylistic choice: its `text` is the transcript three photographs produced, so offering it as "a
+   * document you can load" would invite a reviewer to paste a page of line items and then credit the demo
+   * with having run the photo path. The photographs answer through `Page.fixtureKey` or not at all.
+   */
+  offered?: boolean;
 }
 
 /**
@@ -83,7 +101,18 @@ export function transportFor(mode: 'relay' | 'direct' | 'fixtures'): 'network' |
 }
 
 export function demoDocuments(): { name: string; title: string; text: string }[] {
-  return FIXTURE_CASES.map(({ name, title, text }) => ({ name, title, text }));
+  // `offered: false` cases stay out of the picker; see `FixtureCaseFields.offered` for why one of the two
+  // kinds of demo data is not a document a person is invited to paste.
+  return FIXTURE_CASES.filter((fixture) => fixture.offered !== false).map(({ name, title, text }) => ({ name, title, text }));
+}
+
+/**
+ * The photographs demo mode can answer for, and the file each one belongs to. A screen or a README that
+ * points a visitor at demo photographs reads them from here, so the list cannot drift from what was
+ * recorded (**C-13**).
+ */
+export function demoPhotographs(): { name: string; fixtureKey: string; imageFile: string }[] {
+  return RECORDED_PAGES.map(({ name, fixtureKey, imageFile }) => ({ name, fixtureKey, imageFile }));
 }
 
 /**
@@ -120,6 +149,20 @@ function qaEnvelopeFor(fixture: FixtureCase, reply: PreparedReply): Record<strin
   };
 }
 
+/**
+ * The same envelope again for a photograph, and the reason its id is still invented here: a recorded
+ * reply carries a **real** completion id, and putting it on screen would report a call this session never
+ * made. The content is the recorded text, verbatim; the identity is the fixture's. **ADR-31** keeps the
+ * distinction, `fixtures/responses/*` holds the true ids and provenance.
+ */
+function pageEnvelope(page: RecordedPage): Record<string, unknown> {
+  return {
+    id: `fixture-${page.name}`,
+    model: FIXTURE_MODEL,
+    choices: [{ message: { content: page.content } }],
+  };
+}
+
 function userContent(body: unknown): string | undefined {
   if (typeof body !== 'object' || body === null || !('messages' in body)) return undefined;
   const { messages } = body as { messages: { role: string; content: unknown }[] };
@@ -153,20 +196,24 @@ function findPreparedReply(body: unknown, fixture: FixtureCase): PreparedReply |
 export function createFixtureClient(): NearClient {
   return {
     mode: 'fixtures',
-    baseUrl: 'fixtures://authored-synthetic',
+    baseUrl: 'fixtures://authored-and-recorded',
 
     post: async (path, body, init): Promise<NearResponse> => {
       if (init?.purpose === 'transcribe') {
-        // A page image has no authored reply in Mode F. Returning `fixture.analysis` here would put
-        // hand-written prose on screen as though a model had read the photograph — the same
-        // dishonesty F-09 refuses for an unknown document, and the transcript is the input to
-        // everything downstream, so it is the worst place to invent one. Recording a real reply is
-        // S-11's job and the photo demo's half of it is C-09's; until then this path fails closed.
-        //
-        // Checked **before** the fixture lookup, not after: a transcription body carries its text as
-        // an `image_url` multipart array, which `findFixture` cannot read, so testing the lookup
-        // first would refuse it for the wrong reason ("no such document") instead of the right one.
-        throw new NearError(path, appError('no_fixture_for_input'));
+        // A page is recognised by digest rather than by content, and this branch comes **before** the
+        // corpus lookup for that reason: an image body carries its photograph as base64 inside an
+        // `image_url` part, which `findFixture` cannot read, so testing the lookup first would refuse a
+        // demo photograph for the wrong reason ("no such document") instead of the right one.
+        const page = RECORDED_PAGES.find((recorded) => recorded.fixtureKey === init.fixtureKey);
+        if (page === undefined) {
+          // The rule this path failed closed on is unchanged: there is no Mode F answer for a page the demo
+          // did not ship, and inventing one would put hand-written prose on screen as though a model had
+          // read the person's photograph — the transcript is the input to everything downstream, so it is
+          // the worst place to invent anything. **S-11** recorded the three pages that answer; it did not
+          // widen what may be answered, it made the demo's own files answerable.
+          throw new NearError(path, appError('no_fixture_for_page'));
+        }
+        return respond(path, body, pageEnvelope(page));
       }
 
       const fixture = findFixture(body);

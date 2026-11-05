@@ -1,0 +1,47 @@
+{
+  "_provenance": {
+    "recordedAt": "2026-11-04T23:22:36.034Z",
+    "recorder": "scripts/record-fixtures.ts",
+    "item": "S-11",
+    "purpose": "transcribe",
+    "endpoint": "https://cloud-api.near.ai/v1/chat/completions",
+    "requestedModel": "z-ai/glm-5.3-flash",
+    "servedModel": "z-ai/glm-5.3-flash",
+    "completionId": "29761709df7c498491c8bc4edbb8f78d",
+    "e2ee": false,
+    "requestBytes": 283328,
+    "requestSha256": "71fea30bb6fcc8cd4bb32e49b6b094cb8c155da7dc8ffeb94ecce0439edf689c",
+    "usage": {},
+    "ms": 16420,
+    "signature": {
+      "verified": true,
+      "origin": "provider_tee",
+      "algo": "ed25519",
+      "detail": "signed by the enclave serving the model, over the exact bytes of this request and response"
+    },
+    "synthetic": true,
+    "syntheticNote": "Drawn by scripts/page_sample.ts. This fixture describes an invented invoice and no real person, provider, account or debt.",
+    "fixtureKey": "e769e06ab04e9f2262348c8396eb1908048e0e17e40463f51946774eb4ec15f6",
+    "imageFile": "public/sample-docs/photographs/page-1.jpg",
+    "prepared": {
+      "bytes": 211378,
+      "width": 1200,
+      "height": 1600,
+      "sourceBytes": 897438,
+      "sourceWidth": 3024,
+      "sourceHeight": 4032
+    }
+  },
+  "envelope": {
+    "id": "29761709df7c498491c8bc4edbb8f78d",
+    "model": "z-ai/glm-5.3-flash",
+    "choices": [
+      {
+        "message": {
+          "content": "{\"text\": \"SYNTHETIC INVOICE - NOT A REAL DOCUMENT\\n\\nNorthgate Example Trust   Reference NC-0000-SYN   PAGE 1 OF 3\\n\\nLine 001 example service 2 GBP 107.13\\nLine 002 example service 3 GBP 114.26\\nLine 003 example service 4 GBP 121.39\\nLine 004 example service 1 GBP 128.52\\nLine 005 example service 2 GBP 135.65\\nLine 006 example service 3 GBP 142.78\\nLine 007 example service 4 GBP 149.91\\nLine 008 example service 1 GBP 156.04\\nLine 009 example service 2 GBP 163.17\\nLine 010 example service 3 GBP 170.30\\nLine 011 example service 4 GBP 177.43\\nLine 012 example service 1 GBP 184.56\\nLine 013 example service 2 GBP 191.69\\nLine 014 example service 3 GBP 198.82\\nLine 015 example service 4 GBP 205.95\\nLine 016 example service 1 GBP 212.08\\nLine 017 example service 2 GBP 219.21\\nLine 018 example service 3 GBP 226.34\\nLine 019 example service 4 GBP 233.47\\nLine 020 example service 1 GBP 240.60\\nLine 021 example service 2 GBP 247.73\\nLine 022 example service 3 GBP 254.86\\nLine 023 example service 4 GBP 261.99\\nLine 024 example service 1 GBP 268.12\\nLine 025 example service 2 GBP 275.25\\nLine 026 example service 3 GBP 282.38\\nLine 027 example service 4 GBP 289.51\\nLine 028 example service 1 GBP 296.64\", \"uncertain\": [], \"captureIssues\": [], \"pageLabel\": \"PAGE 1 OF 3\"}"
+        },
+        "finish_reason": "stop"
+      }
+    ]
+  }
+}

@@ -127,6 +127,16 @@ export interface ReadCompletionDeps<T> {
   buildRecord: TrustRecordBuilder;
   /** JSON.parse plus the feature's zod schema. Throwing is how "unreadable" is reported. */
   parse: (content: string) => T;
+  /**
+   * Which demo page this call is about (**C-13**, item **ADR-31**). Mode F replays a page answer only
+   * for the photograph file it shipped itself, and this is the only thing that identifies it: an image
+   * body carries its page as base64, which `findFixture`'s content match cannot read.
+   *
+   * **Local metadata, like `purpose`**: it goes to the transport's `init`, never into the body, so the
+   * bytes a live mode hashes and signs stay exactly the bytes it sent (ADR-19). `tests/unit/` asserts
+   * that, because a hash of someone's photograph arriving on the wire would be a new leak of their own.
+   */
+  fixtureKey?: string;
 }
 
 export async function readCompletion<T>(deps: ReadCompletionDeps<T>): Promise<CompletionResult<T>> {
@@ -199,40 +209,71 @@ async function attemptOnce<T>(deps: ReadCompletionDeps<T>, repair: boolean): Pro
 }
 
 /**
- * The request itself. The body is built **after** the gate returns, and carries nothing §1 of
- * `docs/SPIKE_RESULTS.md` does not document: no `stream`, no `response_format`, no sampling fields —
- * a request field nobody can point a source at is a field nobody can explain when it misbehaves.
- * The two exceptions are both measured there: the `image_url` part (S-02, §4) and `max_tokens`
- * (§1's 256-token probe), and both arrive only from a caller that asked for them.
+ * The body one document-derived call sends, assembled in exactly one place.
+ *
+ * Exported for **S-11**: `scripts/record-fixtures.ts` records a reply by posting *this* function's
+ * output through the production client, so a fixture's claim that it was recorded from the request the
+ * app makes is structural rather than a comment. Before this, the same shape was written out twice (a
+ * second copy in the spike runner), which is the drift the helper above exists to prevent.
+ *
+ * It carries nothing §1 of `docs/SPIKE_RESULTS.md` does not document: no `stream`, no
+ * `response_format`, no sampling fields — a request field nobody can point a source at is a field
+ * nobody can explain when it misbehaves. The two exceptions are both measured there: the `image_url`
+ * part (S-02, §4) and `max_tokens` (§1's 256-token probe), and both arrive only from a caller that
+ * asked for them.
+ */
+export function completionRequestBody(args: {
+  system: string;
+  /** The instruction-bearing user message, already carrying the repair note on a second attempt. */
+  user: string;
+  /** Set only by the photo path (**C-03**): the `data:` URL of the JPEG `lib/image/prepare.ts` made. */
+  imageUrl?: string;
+  model: string;
+  maxTokens?: number;
+}): Record<string, unknown> {
+  const user: unknown =
+    args.imageUrl === undefined
+      ? args.user
+      : [
+          { type: 'text', text: args.user },
+          { type: 'image_url', image_url: { url: args.imageUrl } },
+        ];
+  const body: Record<string, unknown> = {
+    model: args.model,
+    messages: [
+      { role: 'system', content: args.system },
+      { role: 'user', content: user },
+    ],
+  };
+  if (args.maxTokens !== undefined) body.max_tokens = args.maxTokens;
+  return body;
+}
+
+/**
+ * The request itself. The body is built **after** the gate returns, and its shape is
+ * `completionRequestBody`'s — the same function the fixture recorder posts, so a recorded reply
+ * describes the request this app sends and not a copy of it.
  */
 async function send<T>(deps: ReadCompletionDeps<T>, repair: boolean): Promise<Attempt> {
   try {
-    // The instruction-bearing user message, text-only or text-plus-page. The repair note joins the
-    // *text*, so the system prompt stays byte-identical across both attempts and the document's own
-    // words stay inside the user message (AGENTS.md §11).
+    // The repair note joins the *text*, so the system prompt stays byte-identical across both attempts
+    // and the document's own words stay inside the user message (AGENTS.md §11).
     const userText = repair ? `${deps.request.user}\n\n${REPAIR_NOTE}` : deps.request.user;
     const image = deps.request.image;
-    const user =
-      image === undefined
-        ? userText
-        : [
-            { type: 'text', text: userText },
-            // Awaited here, inside `send`, and therefore after the gate: this is the call's only
-            // route out, so a page's bytes cannot be encoded before the run is allowed to have them.
-            { type: 'image_url', image_url: { url: await image() } },
-          ];
-    const body: Record<string, unknown> = {
+    const body = completionRequestBody({
       model: deps.model,
-      messages: [
-        { role: 'system', content: deps.request.system },
-        { role: 'user', content: user },
-      ],
-    };
-    if (deps.maxTokens !== undefined) body.max_tokens = deps.maxTokens;
+      system: deps.request.system,
+      user: userText,
+      maxTokens: deps.maxTokens,
+      // Awaited here, inside `send`, and therefore after the gate: this is the call's only route out,
+      // so a page's bytes cannot be encoded before the run is allowed to have them.
+      ...(image === undefined ? {} : { imageUrl: await image() }),
+    });
 
     const response: NearResponse = await deps.transport.post('chat/completions', body, {
       signal: deps.signal,
       purpose: deps.purpose,
+      ...(deps.fixtureKey === undefined ? {} : { fixtureKey: deps.fixtureKey }),
     });
 
     return {

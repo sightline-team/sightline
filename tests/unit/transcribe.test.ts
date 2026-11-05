@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { transcribePage, TRANSCRIBE_MAX_TOKENS, type TranscribeDeps } from '@/features/capture/transcribe';
 import { TRANSCRIBE_SYSTEM_PROMPT, TRANSCRIBE_USER_PROMPT } from '@/features/capture/prompts';
-import { captureIssueSchema } from '@/features/capture/schemas';
+import { captureIssueSchema, transcribeSchema } from '@/features/capture/schemas';
 import { RunHalt, type AttestationGate, type GateOutcome, type SignatureOutcome, type SignatureVerifier } from '@/lib/near-ai/verification';
 import { type NearClient, type NearResponse } from '@/lib/near-ai/client';
 import { REPAIR_NOTE } from '@/lib/near-ai/completion';
-import { createFixtureClient } from '@/lib/fixtures/replay';
+import { createFixtureClient, FIXTURE_MODEL } from '@/lib/fixtures/replay';
+import { RECORDED_PAGES } from '@/lib/fixtures/recorded';
 import { appError } from '@/lib/errors';
 import type { AppError, CheckResult, ErrorCode, Mode, TrustRecord } from '@/types';
 
@@ -203,15 +204,35 @@ describe('nothing is encoded before the checks (AGENTS.md §4 rule 6)', () => {
     expect(h.page.reads()).toBe(1);
   });
 
-  it('refuses a page in Mode F, where no authored page reply exists', async () => {
+  it('refuses a page whose digest is not one the demo ships', async () => {
     const h = harness({ mode: 'fixtures' });
 
-    const error = await expectHalt(h, 'no_fixture_for_input');
+    const error = await expectHalt(h, 'no_fixture_for_page');
 
-    expect(error.userMessage).toBe(appError('no_fixture_for_input').userMessage);
+    expect(error.userMessage).toBe(appError('no_fixture_for_page').userMessage);
     // Mode F asked no enclave and got no receipt: the refusal is the transport's, before any body
     // could be recorded as a verified call.
     expect(h.records).toEqual([]);
+  });
+
+  it('answers the demo photograph the recording covers, and names it as a fixture', async () => {
+    // **C-13** at the layer that makes the call: `fixtureKey` is the only thing that turns a page from a
+    // refusal into a reply, so if it were dropped between here and the transport — a missing spread, a
+    // renamed field — this is where it shows. The answer comes from the real Mode F client reading the real
+    // recorded file, so nothing in it is imitated.
+    const recorded = RECORDED_PAGES[0]!;
+    const h = harness({ mode: 'fixtures' });
+    const fromFile = transcribeSchema.parse(JSON.parse(recorded.content) as unknown);
+
+    const outcome = await transcribePage({ ...h.deps, fixtureKey: recorded.fixtureKey }, h.page.blob);
+
+    expect(outcome.kind).toBe('ok');
+    if (outcome.kind !== 'ok') return;
+    expect(outcome.value.text).toBe(fromFile.text);
+    expect(outcome.value.pageLabel).toBe(fromFile.pageLabel);
+    // **ADR-31**: the recorded file carries a real completion id and a real served model, and neither may
+    // reach a receipt. This session made no live call, so the model named here has to be the fixture's.
+    expect(outcome.model).toBe(FIXTURE_MODEL);
   });
 });
 

@@ -160,6 +160,38 @@ describe('the bytes ADR-19 hashes are the bytes that were sent and received', ()
     expect(calls[0]!.init?.body).toBeUndefined();
     expect(calls[0]!.init?.method).toBe('GET');
   });
+
+  test('a call\'s local metadata stays off the wire in both network modes (ADR-31)', async () => {
+    // `purpose` chooses which Mode F reply to replay, and `fixtureKey` is the digest of somebody's
+    // photograph. Neither is request content: a live body carrying them would put the demo's bookkeeping on
+    // a public endpoint and name the file a person was matching against.
+    const body = { model: 'Qwen/Model', messages: [{ role: 'user', content: DOC_SENTINEL }] };
+    const key = 'a'.repeat(64);
+    const wires: string[] = [];
+
+    for (const [mode, base] of [['relay', RELAY_BASE], ['direct', DIRECT_BASE]] as const) {
+      const { calls, impl } = mockFetch([jsonResponse({ id: 'chat-1', choices: [] })]);
+      const c = client({
+        mode,
+        baseUrl: base,
+        fetchImpl: impl,
+        // Direct mode requires a key provider (ADR-17); relay mode must not be given one.
+        ...(mode === 'direct' ? { headers: () => ({ authorization: 'Bearer test-key' }) } : {}),
+      });
+
+      const res = await c.post('chat/completions', body, { purpose: 'transcribe', fixtureKey: key });
+
+      expect(res.sentBody).toBe(JSON.stringify(body));
+      const wire = String(calls[0]!.init?.body);
+      expect(wire).toBe(JSON.stringify(body));
+      expect(calls[0]!.url).not.toContain(key);
+      expect(JSON.stringify(calls[0]!.init?.headers ?? {})).not.toContain('fixtureKey');
+      wires.push(wire);
+    }
+
+    // The same body either way: a session's mode cannot change what the enclave signs (ADR-19).
+    expect(wires[0]).toBe(wires[1]);
+  });
 });
 
 describe('one retry, on transient failures only (fail closed, rule 6)', () => {

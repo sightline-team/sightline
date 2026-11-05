@@ -28,13 +28,13 @@ import type { AppError } from '@/types';
  * middle of the document, has to reach the person **before** the structure step is paid for.
  *
  * **Live modes refuse at the door**, the same sentence as the paste run (`refused_steps.ts`), and for
- * the same reason: what is missing is a service B-12 can reach, not a check. Demo mode is the mode
- * that gets further, and today it stops one step later — `transcribePage` has no authored page reply
- * for an image body, so a photographed document raises `no_fixture_for_input` and this hook announces
- * it. **S-11** records the real page fixtures that make that path complete; until then nothing after
- * the page loop is reachable from a browser, which is why the loop itself is tested as a pure function
- * (`tests/unit/read-pages.test.ts`) instead of the branches below being asserted on a screen they
- * cannot reach.
+ * the same reason: what is missing is a service B-12 can reach, not a check. Demo mode gets all the way
+ * through: **S-11** recorded the three photographs this demo ships, so a run started from those files
+ * reaches the page loop, the structure step and the Ask section in a browser with no key (**C-13**,
+ * `tests/e2e/photo-fixtures.spec.ts`), while any other photograph is refused at the first page
+ * (`no_fixture_for_page`) instead of being answered with somebody else's transcription. The loop is
+ * *also* tested as a pure function (`tests/unit/read-pages.test.ts`), because a screen can only show the
+ * one page order the browser happens to run in.
  *
  * `verification_passed` is deliberately **not** dispatched. It exists in the reducer to move the
  * status to `transcribing`, and the status is not what the person hears — progress here is the

@@ -76,6 +76,9 @@ export async function readPages(pages: readonly Page[], deps: ReadPagesDeps): Pr
         verifySignature: deps.verifySignature,
         signal: deps.signal,
         onTrustRecord: deps.onTrustRecord,
+        // Present only for a photograph the demo ships (ADR-31); live transports never see it and Mode F
+        // refuses a page without it, exactly as it refused every page before this item.
+        ...(record.fixtureKey === undefined ? {} : { fixtureKey: record.fixtureKey }),
       },
       record.blob,
     );

@@ -2,6 +2,7 @@
 
 import { useCallback, useRef } from 'react';
 import { prepareImage } from '@/lib/image/prepare';
+import { pageFixtureKey } from '@/lib/fixtures/page_key';
 import { appError } from '@/lib/errors';
 import { MAX_PAGES, newId } from '@/lib/session/reducer';
 import { useSessionStore } from '@/lib/session/store';
@@ -121,6 +122,9 @@ export function useCapture(): CaptureApi {
           width: prepared.width,
           height: prepared.height,
           previewUrl: url,
+          // Of the file as it was chosen, not of `prepared.blob`: see **ADR-31** for why the demo's
+          // identity has to be the bytes we ship and not the bytes this browser re-encodes.
+          fixtureKey: await pageFixtureKey(file),
         };
 
         if (target !== undefined) {

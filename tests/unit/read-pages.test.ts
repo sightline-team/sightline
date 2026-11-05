@@ -4,6 +4,8 @@ import { PAGE_JOINER } from '@/features/capture/assemble';
 import { TRANSCRIBE_USER_PROMPT } from '@/features/capture/prompts';
 import { RunHalt, type AttestationGate, type GateOutcome, type SignatureOutcome, type SignatureVerifier } from '@/lib/near-ai/verification';
 import { type NearClient, type NearResponse } from '@/lib/near-ai/client';
+import { createFixtureClient } from '@/lib/fixtures/replay';
+import { RECORDED_PAGES, RECORDED_TRANSCRIPT } from '@/lib/fixtures/recorded';
 import type { AppError, ID, Mode, Page, TrustRecord } from '@/types';
 
 /**
@@ -53,7 +55,7 @@ interface Reply {
  * body names which page it is: a loop that asked for pages out of order would be answered out of
  * order, and a test would see it.
  */
-function makePage(index: number): Page {
+function makePage(index: number, fixtureKey?: string): Page {
   const id = `page-${index}` as ID;
   return {
     id,
@@ -61,15 +63,16 @@ function makePage(index: number): Page {
     blob: { type: 'image/jpeg', size: 1, arrayBuffer: async () => new Uint8Array([index + 1]).buffer } as unknown as Blob,
     width: 1_200,
     height: 1_600,
+    ...(fixtureKey === undefined ? {} : { fixtureKey }),
   };
 }
 
-function harness(replies: Reply[], opts: { mode?: Mode; pageCount?: number; gate?: GateOutcome } = {}) {
+function harness(replies: Reply[], opts: { mode?: Mode; pageCount?: number; gate?: GateOutcome; keys?: string[]; transport?: NearClient } = {}) {
   const mode = opts.mode ?? 'relay';
-  const pages = Array.from({ length: opts.pageCount ?? replies.length }, (_, i) => makePage(i));
+  const pages = Array.from({ length: opts.pageCount ?? replies.length }, (_, i) => makePage(i, opts.keys?.[i]));
 
   const log: string[] = [];
-  const posts: { body: unknown; sent: string }[] = [];
+  const posts: { body: unknown; sent: string; init?: { purpose?: string; fixtureKey?: string } }[] = [];
   const records: TrustRecord[] = [];
   const started: string[] = [];
   const controller = new AbortController();
@@ -77,9 +80,9 @@ function harness(replies: Reply[], opts: { mode?: Mode; pageCount?: number; gate
   const transport: NearClient = {
     mode,
     baseUrl: '/api/relay/v1',
-    post: async (path, body) => {
+    post: async (path, body, init) => {
       const sent = JSON.stringify(body);
-      posts.push({ body, sent });
+      posts.push({ body, sent, init });
       const reply = replies[Math.min(posts.length - 1, replies.length - 1)]!;
       const message: Record<string, unknown> = { role: 'assistant', content: reply.content ?? null };
       if ('refusal' in reply) message.refusal = reply.refusal;
@@ -107,7 +110,7 @@ function harness(replies: Reply[], opts: { mode?: Mode; pageCount?: number; gate
   const deps: ReadPagesDeps = {
     mode,
     model: MODEL,
-    transport,
+    transport: opts.transport ?? transport,
     gate,
     verifySignature,
     signal: controller.signal,
@@ -265,5 +268,51 @@ describe('what stops the loop', () => {
     expect(out.error.code).toBe('verification_failed');
     expect(h.posts).toEqual([]);
     expect(h.records).toEqual([]);
+  });
+});
+
+/**
+ * **C-13**'s identity passing through the loop. `tests/unit/fixtures.test.ts` proves the replay client
+ * answers a digest and refuses any other, and `tests/unit/page_key.test.ts` proves the digest is the file;
+ * what only this layer can prove is that the digest travels with *its own page* — three pages, three keys,
+ * in capture order — because a loop that sent page 2's key with page 1's bytes would be answered with the
+ * wrong transcription and nothing downstream would notice.
+ */
+describe('a page carries its Mode F identity to the transport (ADR-31)', () => {
+  it('threads each page\'s own digest into that page\'s call, and sends none for a page without one', async () => {
+    const keys = ['a'.repeat(64), 'b'.repeat(64)];
+    const h = harness([pageReply('one'), pageReply('two')], { keys });
+
+    await run(h);
+
+    expect(h.posts.map((post) => post.init?.purpose)).toEqual(['transcribe', 'transcribe']);
+    expect(h.posts.map((post) => post.init?.fixtureKey)).toEqual(keys);
+
+    // The default: a page nobody shipped a recording for. Absent, not empty — an empty string would be a
+    // digest claim about a file that has none.
+    const plain = harness([pageReply('one')]);
+    await run(plain);
+    expect(plain.posts[0]!.init?.fixtureKey).toBeUndefined();
+    expect(Object.hasOwn(plain.posts[0]!.init ?? {}, 'fixtureKey')).toBe(false);
+  });
+
+  it('the three shipped photographs run the whole loop keylessly and land on the recorded transcript', async () => {
+    // The chain **C-13** exists for, in one assertion: `Page.fixtureKey` → the digest `recorded.ts`
+    // publishes → the real Mode F client's recorded reply → the real joiner. If a link were a page index
+    // instead of a digest, or **C-11**'s join rules had moved since the recording, this fails.
+    // `tests/e2e/photo-fixtures.spec.ts` is the same claim in a browser.
+    const h = harness([], {
+      mode: 'fixtures',
+      pageCount: 3,
+      keys: RECORDED_PAGES.map((page) => page.fixtureKey),
+      transport: createFixtureClient(),
+    });
+
+    const out = await run(h);
+
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.assembled.usable).toBe(true);
+    expect(out.assembled.transcript.text).toBe(RECORDED_TRANSCRIPT);
   });
 });

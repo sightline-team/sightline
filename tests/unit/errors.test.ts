@@ -34,6 +34,7 @@ const ALL_CODES: Record<ErrorCode, true> = {
   relay_disabled: true,
   unsupported_language: true,
   no_fixture_for_input: true,
+  no_fixture_for_page: true,
   no_fixture_for_question: true,
   unknown: true,
 };
@@ -74,8 +75,8 @@ const BANNED = [
 ];
 
 describe('every error code has a plain-language message', () => {
-  it('covers all 22 codes with a non-empty message and a decided retryable flag', () => {
-    expect(codes).toHaveLength(22);
+  it('covers all 23 codes with a non-empty message and a decided retryable flag', () => {
+    expect(codes).toHaveLength(23);
     for (const code of codes) {
       const err = appError(code);
       expect(err.code, code).toBe(code);

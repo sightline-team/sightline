@@ -1,0 +1,39 @@
+{
+  "_provenance": {
+    "recordedAt": "2026-11-04T23:22:36.034Z",
+    "recorder": "scripts/record-fixtures.ts",
+    "item": "S-11",
+    "purpose": "qa",
+    "endpoint": "https://cloud-api.near.ai/v1/chat/completions",
+    "requestedModel": "z-ai/glm-5.3-flash",
+    "servedModel": "z-ai/glm-5.3-flash",
+    "completionId": "5181fac88bea43a28e0bca1c7b1c4e02",
+    "e2ee": false,
+    "requestBytes": 4134,
+    "requestSha256": "045e0474d9988be9585724862b706b9faf53949d9d50b8eda226e4187e0e7d29",
+    "usage": {},
+    "ms": 2118,
+    "signature": {
+      "verified": true,
+      "origin": "provider_tee",
+      "algo": "ed25519",
+      "detail": "signed by the enclave serving the model, over the exact bytes of this request and response"
+    },
+    "synthetic": true,
+    "syntheticNote": "Drawn by scripts/page_sample.ts. This fixture describes an invented invoice and no real person, provider, account or debt.",
+    "question": "Is there a payment deadline in this document?",
+    "transcriptSha256": "bc52434e3c5b7a70a3f9dfe74910c02ace41908b80fca3d918ee796fe5281eca"
+  },
+  "envelope": {
+    "id": "5181fac88bea43a28e0bca1c7b1c4e02",
+    "model": "z-ai/glm-5.3-flash",
+    "choices": [
+      {
+        "message": {
+          "content": "{\"answer\": \"No. The document is a synthetic invoice containing only line items with service descriptions and GBP amounts across three pages. There is no payment deadline, due date, or payment terms mentioned anywhere in the transcript.\", \"notInDocument\": true}"
+        },
+        "finish_reason": "stop"
+      }
+    ]
+  }
+}

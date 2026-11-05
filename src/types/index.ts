@@ -64,6 +64,18 @@ export interface Page {
    * a stale string is harmless, because revoking an already-revoked URL does nothing.
    */
   previewUrl?: string;
+  /**
+   * The SHA-256 of the file as the person chose it, computed in the tab (**C-13**, **ADR-31**).
+   *
+   * It exists for one purpose: demo mode has no way to recognise a *page* from its request, because an
+   * image body carries the page as base64 rather than as words to match against the corpus. This is the
+   * handle that lets `lib/fixtures/replay.ts` answer for the three photographs the demo ships and refuse
+   * every other file, which is F-09's rule with a page-sized hole in it until now.
+   *
+   * It never leaves the tab: `CallInit` metadata only, never a request body, never a log (AGENTS.md §4
+   * rule 7). Live modes do not read it.
+   */
+  fixtureKey?: string;
 }
 
 /**
@@ -225,6 +237,7 @@ export type ErrorCode =
   | 'relay_disabled'
   | 'unsupported_language'
   | 'no_fixture_for_input'
+  | 'no_fixture_for_page'
   | 'no_fixture_for_question'
   | 'unknown';
 

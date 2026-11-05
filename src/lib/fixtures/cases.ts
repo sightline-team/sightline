@@ -1,13 +1,20 @@
 import type { FixtureCase } from '@/lib/fixtures/replay';
+import { RECORDED_ANALYSIS, RECORDED_QUESTIONS, RECORDED_TRANSCRIPT } from '@/lib/fixtures/recorded';
 
 /**
- * The Mode F demo corpus (item **F-09**).
+ * The Mode F demo corpus (item **F-09**, extended by **S-11** and **C-13**).
  *
- * These are **authored synthetic** documents, not recordings of real calls: no session has
- * crossed the network yet (blocker B-05), so calling them "recorded" would claim a pipeline
- * was exercised when it was not. Every document here states in its own text that it is
- * synthetic, and `tests/unit/fixtures.test.ts` enforces that — a fixture that could be
- * mistaken for a real person's bill cannot enter the set.
+ * The first four documents are **authored synthetic**: a person wrote the text and the JSON, and neither
+ * has been on the wire. Calling them "recorded" would claim a pipeline was exercised when it was not, and
+ * `tests/unit/fixtures.test.ts` enforces the labelling — every one of them states in its own text that it
+ * is synthetic, so a fixture that could be mistaken for a real person's bill cannot enter the set.
+ *
+ * The fifth is **recorded**: three photographed pages, the reading a TEE-hosted model made of them, and
+ * two answers about that reading, all stored by `npm run fixtures:record` after each reply's signature
+ * verified against the attested enclave key. Its `text` is therefore not written here — it is the
+ * transcript the app's own joiner assembled on the day, read from `fixtures/responses/document.json`
+ * through `recorded.ts`, and it is offered to the paste screen as `false`. The two provenances are never
+ * described as one thing (**ADR-31**, `fixtures/README.md`).
  *
  * Two of the three readable letters are deliberately imperfect, because a demo that only shows the
  * easy case teaches the reviewer nothing about the product:
@@ -29,7 +36,8 @@ import type { FixtureCase } from '@/lib/fixtures/replay';
  * the flagged state is shown for answers as well as for facts.
  *
  * Every other quote is a literal excerpt, checked by the test that runs the real pipeline
- * against the real replay client.
+ * against the real replay client — the recorded case included, whose facts the enclave model
+ * grounded in its own transcript and the suite re-checks rather than assumes.
  */
 
 const NORTHGATE_TEXT = `NORTHGATE CARE NHS TRUST
@@ -248,5 +256,20 @@ export const FIXTURE_CASES: FixtureCase[] = [
     // an answer for the letter whose own answer failed would be the opposite of that. A question asked
     // here is refused by name (`no_fixture_for_question`), which the e2e asserts.
     qa: [],
+  },
+  {
+    // **S-11**'s recording, used by **C-13**: the photographed document, seen end to end with no key.
+    // Nothing in this object is written by hand. `text` is the transcript `assembleDocument` joined from
+    // the three recorded pages, `analysis` is the reading the attested model returned for exactly that
+    // transcript, and `qa` is what it said when asked the two questions below — each stored verbatim in
+    // `fixtures/responses/` with its own `_provenance`, its own completion id and its own verified
+    // signature. Re-recording replaces all three files, and this case follows them.
+    name: 'photographed-invoice',
+    // Not shown to anyone (`offered: false`), so this title is only ever read by a developer or a test.
+    title: 'Recorded photograph set: three pages of a synthetic invoice',
+    text: RECORDED_TRANSCRIPT,
+    analysis: RECORDED_ANALYSIS,
+    qa: RECORDED_QUESTIONS,
+    offered: false,
   },
 ];

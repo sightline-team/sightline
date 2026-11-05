@@ -32,14 +32,22 @@ model, and it always shows the demo-data banner — that sentence is defined in
 `src/features/trust/claims.ts` and is deliberately not repeated here, so a README edit cannot make
 it disagree with the app (requirement R9, `docs/PRD.md` §7).
 
-**What that runs today:** paste text — or choose one of four synthetic demo letters — and the whole
-flow completes in the browser. **Photographing** is on the same screen (**C-02**): add up to five
-pictures, see each one as the app will send it, remove or retake the last, and press *Read these
-photographs* — which runs the page loop and, in this mode, stops at demo mode's own door, because
-fixture mode has no recorded reply for a photograph (**S-11**). Nothing here claims a photographed
-document has been read end to end; the screen is proved as far as the door, and the sentence you hear is
-the catalogue's. A paste over **20,000 characters** is refused on the spot, in the words
-of `paste_too_long`, before Sightline asks anything of the service: the sentence offers the smaller
+**What that runs today:** **photographing** — add the three pictures this repo ships at
+`public/sample-docs/photographs/page-{1,2,3}.jpg`, see each one as the app will send it, press *Read
+these photographs*, and the whole flow completes with no key in about a second: the page loop, the join,
+the reading, the results view, two questions answered, the receipt. That is **S-11** and **C-13** — the
+replies beside those three files came out of a TEE-hosted model on 2026-11-04 and are replayed, not
+generated. **A different photograph is a different document:** any other file — or one of these with a
+single byte changed — is refused at the first page by `no_fixture_for_page`, because a demo that answered
+your own letter with somebody else's reading would be the opposite of what this app is for. Choosing
+**two** of the three is also refused: the reading belongs to the document those three pages join into,
+not to a subset of it. Proved in a browser by `tests/e2e/photo-fixtures.spec.ts` (6 tests).
+
+**Pasting** is the other half of the same screen: paste text, or choose one of four synthetic demo
+letters, and the flow completes the same way. The corpus is matched by *content*, so pasting your own
+document gets a refusal explaining that demo answers belong to demo documents — never an authored summary
+presented as a reading of your letter. A paste over **20,000 characters** is refused on the spot, in the
+words of `paste_too_long`, before Sightline asks anything of the service: the sentence offers the smaller
 piece — one page, or the section you need answered — rather than naming the number, and the field's own
 error is where your screen reader lands (`docs/ARCHITECTURE.md` §13, **ADR-29**). The flow itself: the
 pipeline answers, the results view shows Summary → Key facts →
@@ -48,12 +56,11 @@ text or refused by name, and the receipt lists the checks that ran and the ones 
 fourth letter exists to show the other ending: its reply is not the answer the app asked for, so the
 run makes its one repair retry and then shows the text you gave with no summary on it, which is the
 path most likely to meet a real user and the one `docs/ARCHITECTURE.md` §13 promises. Proved by
-`tests/e2e/flow.spec.ts` (72 of the suite's 94 Playwright tests) against exactly these two commands. The corpus is
-**authored synthetic**, never recorded — no fixture has ever been on the wire (`fixtures/README.md`,
-item S-11) — and it is matched by content, so pasting your own document gets a refusal explaining that
-demo answers belong to demo documents, never an authored summary presented as a reading of your letter.
+`tests/e2e/flow.spec.ts` (72 of the suite's 119 Playwright tests) against exactly these two commands.
+Three of the four letters are **authored synthetic**; the fifth case is **recorded** traffic, and the two
+provenances are labelled separately everywhere they appear (`fixtures/README.md`, item **S-11**).
 
-**What it does not do:** read a photo (C-01…C-06), or run in relay/direct mode. The live modes still
+**What it does not do:** read *your* photo, or run in relay/direct mode. The live modes still
 refuse at the door, and since 2026-11-03 the reason is precise rather than general: the model
 allowlist has no transport yet (F-04) and the relay forwards nothing (F-05), and even with both, the
 attestation gate would report `failed` because `/api/verify` is T-03's unimplemented route — so no
@@ -79,16 +86,19 @@ filled by T-14 when `CheckResult` output is real):
 
 | Check | Ran? | Passed? | Why |
 |---|---|---|---|
-| Nonce binding | Not in an app run | — | T-01's `bindReport` passed **4/4 against the first real report** on 2026-11-03 and the service echoed the nonce this session minted (`docs/SPIKE_RESULTS.md` §3) — measured by `npm run spike`, not by the app, because live modes still refuse to send (F-04, F-05) |
+| Nonce binding | Not in an app run | — | T-01's `bindReport` passed **4/4 against the first real report** on 2026-11-03 and the service echoed the nonce this session minted (`docs/SPIKE_RESULTS.md` §3) — measured by `npm run spike`, not by the app, because live modes still refuse to send (F-04, F-05). **It ran again on 2026-11-04 with a fresh nonce per model** while `npm run fixtures:record` was fetching the demo's photographed replies (**S-11**): two reports, two nonces, and nothing sent until each `bindReport` had passed |
 | GPU/NRAS verdict | Not yet | — | T-03's heavy half. The GPU payload is measured in hand (49,111 bytes, §3); what is missing is the `dcap-qvl-node` decision (**B-12**), not access |
 | Intel TDX quote | Not yet | — | T-03, same blocker (**B-12**); the quote itself is 5,006 bytes and in hand (§3). Port plan in `src/lib/near-ai/verifier/` |
-| Response signature | Not in an app run | — | T-02 verified **one live non-streamed completion** (`provider_tee`, against the key the gate bound, §5). A *streamed* reply is signed by the gateway enclave instead, which is why the app does not stream (ADR-22) |
+| Response signature | Not in an app run | — | T-02 verified **one live non-streamed completion** (`provider_tee`, against the key the gate bound, §5), and **every one of the six replies the fixture recording stored** — three pages, one reading, two answers, all `provider_tee` ed25519 over the exact bytes, verified by this repo's own `checkSignature` before a file was written (**S-11**, SPIKE §4). A *streamed* reply is signed by the gateway enclave instead, which is why the app does not stream (ADR-22) |
 | End-to-end encryption to the enclave | Not yet | — | T-10; documented by NEAR, never demonstrated from a browser (ADR-16). The report carries the key such a call would encrypt to (§3), so what is left is `@noble/ciphers` (**B-07**) and a device |
-| Quote consistency (the only check fixture mode runs) | Yes, in fixture mode | Per fact: a quote that is not in the transcript is shown **flagged**, never as sourced | P-02; it proves consistency with our transcript, not correctness against the page |
+| Quote consistency (the only check fixture mode runs) | Yes, in fixture mode | Per fact: a quote that is not in the transcript is shown **flagged**, never as sourced | P-02; it proves consistency with our transcript, not correctness against the page. **On the recorded case it is the model's own quote against the model's own transcript** — 86 facts, all consistent, which says nothing about whether any of them matches the page (**S-03**) |
 
-None of the NEAR AI verification checks above has been run. Until it is, Sightline has no
-verification claim to make — which is why the receipt in fixture mode states the demo-data sentence
-from `claims.ts` instead of a list of checks that passed.
+**None of the NEAR AI verification checks above has been run *by the app*,** and the two that have run at
+all — nonce binding and response signature — ran from a script (`npm run spike`, `npm run fixtures:record`)
+through this repo's own verification code, without `/api/verify` (T-03's heavy checks, **B-12**) and
+without end-to-end encryption. Until the app itself runs them, Sightline has no verification claim to
+make — which is why the receipt in fixture mode states the demo-data sentence from `claims.ts` instead of a
+list of checks that passed, and why every recorded fixture carries `"e2ee": false`.
 
 ## Forgetting a document
 
@@ -127,11 +137,16 @@ No accuracy number exists. The golden set is item C-09 with its cases designed i
 `public/sample-docs/README.md`. The photo path is now a screen as well as modules — **C-01** prepares a
 page, **C-03** transcribes one against the live service, **C-11** joins five into one transcript,
 **C-05** warns when the page numbers printed on those pages disagree with each other or with how many
-photographs were given, and **C-02** is the screen and the run that call them — but **no photographed
-document has been read end to end inside this app, so there is no photo accuracy number either.** What a
-browser does reach is the door each mode answers at: demo mode has no recorded reply for a photograph
-(**S-11**) and live modes refuse before a request exists (**B-12**). The transcription numbers that do
-exist are measured against the *spike's* synthetic page rasters, not against this app's screen
+photographs were given, **C-02** is the screen and the run that call them, and **C-13** is the first
+photographed document that runs **to the end** anywhere in this app — three pages, one reading, two
+answers, in Demo mode, with no key, proved in a browser. **That sentence is about the flow, not the
+facts.** Nothing has been checked against what is on the page, by anyone, so there is still **no photo
+accuracy number**: the recorded reading is the model's own answer replayed, and the only thing measured
+about it is internal consistency. What is left of the path to prove is **C-04/C-06** (a *bad* photograph
+and what it costs the person), **C-07**/`S-08` (a device, host limits), **C-09/C-10** and **S-03** (the
+golden set, and the misread count that decides **T-11**); **live modes still refuse before a request
+exists** (**B-12**), so no real user's photograph has been read anywhere. The transcription numbers that
+do exist are measured against the *spike's* synthetic page rasters, not against this app's screen
 (`docs/SPIKE_RESULTS.md` §4). Two statements will be required there and are stated now so they cannot be
 quietly dropped later:
 
@@ -158,7 +173,14 @@ an attestation report or a signature is free and non-billable. What dominates al
 tokens**, not the answer: the measured page spent 1,008 of its 1,492 completion tokens thinking, and glm's
 five-page repair thought 8,193 times before writing 679 tokens of answer. These are synthetic-document
 figures at one length each; the spread across real documents is **S-03**, which is an accuracy run and not
-a cost run, and no per-page figure is published here that has not been sent to the service.
+a cost run, and no per-page figure is published here that has not been sent to the service. **The run that
+recorded the demo's photographed replies is deliberately not priced anywhere in this repo**: the app's
+completion schema does not carry `usage`, so the recorder stored the timings and the signature verdicts and
+had nothing to store for cost (`docs/SPIKE_RESULTS.md` §4's S-11 block, and item 8 of "What is still
+unknown"). Total spend against the demo key is not published as a number: the only arithmetic this repo can do is add
+up §4's measured exchanges, which comes to a little over a cent, and the recording run above sits on top of
+that with no figure of its own. What would make the real total knowable — the organisation balance, and a
+`spendLimit` on the key — is still open (**B-11**, **S-10**).
 
 ## Accessibility
 

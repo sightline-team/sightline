@@ -12,9 +12,9 @@ import AxeBuilder from '@axe-core/playwright';
  *
  * Fixture mode is what `playwright.config.mts` starts, with no key and no relay, so every test below runs
  * against the same deployment a reviewer gets. **No test here claims a photographed document was read**:
- * demo mode has no recorded page replies (S-11), so the run stops at the first page and that stop is what
- * the last test asserts. The four-minute wait a live run would take is not reachable from this file, and
- * nothing here pretends it is.
+ * every image these tests draw is the person's own, and demo mode answers only for the three photographs it
+ * ships (**S-11**, **C-13**), so a run started from here stops at the first page — that stop is what the last
+ * test asserts, and `tests/e2e/photo-fixtures.spec.ts` is where the shipped files are read all the way.
  *
  * The images are drawn on a `<canvas>` in the page and handed back as bytes: they are synthetic
  * rectangles, not documents (AGENTS.md §5, "never do" real documents and photos).
@@ -238,10 +238,11 @@ test.describe('the run from the screen (C-02 → C-03, in demo mode)', () => {
     await page.getByRole('button', { name: 'Read these photographs' }).click();
 
     // Not a stub: the run got as far as `transcribePage`, which is where demo mode says it has no
-    // recorded answer for a photograph. The message is the catalogue's, copied here so a paraphrase
-    // written for the screen cannot pass for it.
+    // recorded answer for *this* photograph — a canvas rectangle the demo never shipped. The message is the
+    // catalogue's, copied here so a paraphrase written for the screen cannot pass for it, and it is the
+    // page-specific one (**ADR-31**): a person who just photographed a letter must not be told about text.
     await expect(page.getByTestId('announcer')).toHaveText(
-      'These are demo answers from demo documents. Your own text has no demo answer, so there is nothing to show for it.',
+      'Demo mode answers for the three photographs it ships with. Your own photograph has no demo answer, so there is nothing to show for it.',
     );
     // A-06: the failure is moved to, and it is the capture screen's own summary.
     await expect(page.locator('#capture-error')).toBeFocused();

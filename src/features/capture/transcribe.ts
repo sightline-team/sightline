@@ -83,6 +83,13 @@ export interface TranscribeDeps {
   verifySignature: SignatureVerifier;
   signal: AbortSignal;
   onTrustRecord: (record: TrustRecord) => void;
+  /**
+   * Mode F's identity for the page being read (**C-13**, **ADR-31**): the SHA-256 of the photograph file
+   * as the person chose it, which `lib/fixtures/replay.ts` matches against the files the demo ships.
+   * Absent means "this page is not one the demo shipped", and demo mode answers that with a refusal, as
+   * it always has. Never sent: it is `CallInit` metadata, not body content (ADR-19).
+   */
+  fixtureKey?: string;
 }
 
 export async function transcribePage(deps: TranscribeDeps, jpeg: Blob): Promise<CompletionResult<TranscribeOutput>> {
@@ -111,5 +118,6 @@ export async function transcribePage(deps: TranscribeDeps, jpeg: Blob): Promise<
       image: imageDataUrl,
     },
     parse: (content) => transcribeSchema.parse(JSON.parse(content) as unknown),
+    ...(deps.fixtureKey === undefined ? {} : { fixtureKey: deps.fixtureKey }),
   });
 }

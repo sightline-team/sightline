@@ -88,6 +88,17 @@ export interface CallInit {
    * (ADR-19) and the relay allowlist is untouched.
    */
   purpose?: CallPurpose;
+  /**
+   * Which demo photograph a page call is about (**C-13**, **ADR-31**): the SHA-256 of the file as the
+   * person chose it, computed in the tab by `lib/fixtures/page_key.ts`. Mode F needs it because an image
+   * body carries its page as base64, which the corpus's content match cannot read — so without a key the
+   * honest answer for any photograph is the refusal this item inherited (`no_fixture_for_input`).
+   *
+   * **Local metadata, exactly like `purpose`**: no transport puts it in a body, a log line or a relay
+   * query, because a hash of somebody's letter is still information about their letter (AGENTS.md §4
+   * rule 7). Live modes never read it. `tests/unit/` asserts the wire body stays free of it.
+   */
+  fixtureKey?: string;
 }
 
 export type CallPurpose = 'analyse' | 'qa' | 'transcribe';

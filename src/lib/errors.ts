@@ -126,6 +126,16 @@ const ERRORS: Record<ErrorCode, ErrorSpec> = {
     retryable: false,
   },
   /**
+   * Mode F only (**ADR-31**, item **C-13**). A page is matched by the digest of the file the person chose
+   * (**S-11** recorded the demo's three), so anything else is refused here. Its own code rather than
+   * `no_fixture_for_input` because that message talks about *text*: somebody who has just photographed a
+   * letter would be told about words they never typed.
+   */
+  no_fixture_for_page: {
+    userMessage: 'Demo mode answers for the three photographs it ships with. Your own photograph has no demo answer, so there is nothing to show for it.',
+    retryable: false,
+  },
+  /**
    * Mode F only (item P-06). A demo letter answers the questions written for it and nothing
    * else, so an unprepared wording gets this rather than an invented reply. Separate from
    * `no_fixture_for_input` because the document *was* recognised — it is the question that has

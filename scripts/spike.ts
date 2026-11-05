@@ -24,9 +24,7 @@
  * first needs a browser and the second spends real money twice; `all` runs every stage.
  */
 import { z } from 'zod';
-import { chromium, type Page } from '@playwright/test';
-import { buildSync } from 'esbuild';
-import path from 'node:path';
+import { chromium } from '@playwright/test';
 import { attestationReportSchema, bindReport, newNonce } from '@/lib/near-ai/attestation';
 import { createNearClient, NearError, type CallPurpose, type NearClient } from '@/lib/near-ai/client';
 import { completionEnvelopeSchema, contentOf, refusalOf, truncated } from '@/lib/near-ai/envelope';
@@ -46,10 +44,12 @@ import { qaSchema } from '@/features/qa/schemas';
 import { appError } from '@/lib/errors';
 import { isAllowed, isNearUpstreamHost, modelCatalogRowSchema, STEP_PLANS, toModelMetadata, type ModelCatalogRow, type StepPlan } from '@/lib/near-ai/models';
 import { checkSignature, fetchSignature, signatureRecordSchema, type SignatureRecord } from '@/lib/near-ai/signatures';
+// S-11 moved the synthetic-page harness out of this file so `scripts/record-fixtures.ts` could draw the
+// same page from the same code. `drawPage` and its types arrive from there, not from a copy.
+import { drawPage, PAGE_INPUT, PREPARE_BUNDLE, type PageSample } from './page_sample';
 import type { CheckResult } from '@/types';
 
 const DIRECT_BASE_URL = 'https://cloud-api.near.ai/v1';
-const SRC = path.join(__dirname, '..', 'src');
 
 /** No document text here: this prompt exists to make one cheap, checkable round trip. */
 const PROBE_PROMPT = 'Reply with exactly: OK';
@@ -456,13 +456,6 @@ async function stageStream(near: NearClient, model: string, attested: Attested):
 // ------------------------------------------------------------- image (S-09 per page, C-03's request shape)
 
 /**
- * A photographed page at the resolution a phone gives when the page fills the frame: 3024×4032 is a
- * 4:3 sensor, portrait. This is the input C-02 gets from a camera, and it is synthetic — a canvas this
- * file draws, not anybody's letter (AGENTS.md §5, "never do" real documents and photos).
- */
-const PAGE_INPUT = { width: 3024, height: 4032 };
-
-/**
  * The probe asks for a line count, not a transcription. S-09's per-page figure is the **input** half of
  * the cost (`prompt_tokens`, of which `image_tokens` is the page) and that half does not depend on the
  * instruction; the output half — a full transcription plus its reasoning — belongs to S-03's golden set
@@ -476,30 +469,6 @@ const PAGE_INPUT = { width: 3024, height: 4032 };
 const PAGE_PROMPT = 'This is a photograph of one page of printed text. Reply with the number of separate lines of text you can see, as digits only.';
 const PAGE_MAX_TOKENS = 256;
 
-/** `prepare.ts` bundled for the page — the same method `tests/e2e/image-prepare.spec.ts` uses for C-01's proof. */
-const PREPARE_BUNDLE = buildSync({
-  entryPoints: [path.join(SRC, 'lib', 'image', 'prepare.ts')],
-  bundle: true,
-  write: false,
-  format: 'iife',
-  globalName: 'SightlinePrepare',
-  platform: 'browser',
-  target: 'esnext',
-  alias: { '@': SRC },
-}).outputFiles[0]!.text;
-
-interface PageSample {
-  sourceB64: string;
-  sourceBytes: number;
-  preparedB64: string;
-  /** The app's own `toDataUrl` output for the prepared page — the exact string C-03 puts in a body. */
-  preparedDataUrl: string;
-  preparedBytes: number;
-  preparedWidth: number;
-  preparedHeight: number;
-  prepareMs: number;
-}
-
 interface ProbeResult {
   usage: Usage;
   chatId: string;
@@ -511,77 +480,6 @@ interface ProbeResult {
   envelopeOk: boolean;
   /** Set only by the C-03 probe: the `transcribeSchema` verdict, as a count summary. */
   transcribeContract?: string;
-}
-
-/** Draws the page, then prepares it with C-01's real module inside the browser. */
-async function drawPage(page: Page, label?: { pageNumber: number; totalPages: number }): Promise<PageSample> {
-  return page.evaluate(async ({ w, h, label }) => {
-    const toB64 = async (blob: Blob): Promise<string> => {
-      const view = new Uint8Array(await blob.arrayBuffer());
-      let bin = '';
-      for (let i = 0; i < view.length; i += 0x8000) bin += String.fromCharCode(...Array.from(view.subarray(i, i + 0x8000)));
-      return btoa(bin);
-    };
-
-    const canvas = new OffscreenCanvas(w, h);
-    const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = '#9a9a9a';
-    ctx.fillRect(0, 0, w, h);
-    ctx.save();
-    ctx.translate(w / 2, h / 2);
-    ctx.rotate(-0.011); // a slightly crooked page, because that is what a hand-held shot looks like
-    ctx.fillStyle = '#f6f4ef';
-    ctx.fillRect(-w * 0.47, -h * 0.485, w * 0.94, h * 0.97);
-    // Real glyphs, not bars. A first run drew grey rectangles as "text", which is enough to count
-    // lines and to price a page, but not enough to ask a vision model for a transcript: C-03's probe
-    // needs the reply to be a *reading of something*, or `transcribeSchema` would be judged on a page
-    // with no words in it. Everything here is synthetic — an invented reference, invented line items
-    // (AGENTS.md §5: never a real document).
-    ctx.fillStyle = '#1d1d1d';
-    ctx.textBaseline = 'top';
-    const left = -w * 0.47 + w * 0.09;
-    const lineH = h * 0.011;
-    let y = -h * 0.485 + h * 0.06;
-    ctx.font = `${Math.round(lineH * 1.9)}px sans-serif`;
-    ctx.fillText('SYNTHETIC INVOICE - NOT A REAL DOCUMENT', left, y);
-    y += lineH * 3.2;
-    ctx.font = `${Math.round(lineH * 1.5)}px sans-serif`;
-    // Each page carries its own printed label and its own line numbers, because C-11's whole question is
-    // whether an offset still points at the page it came from. Five identical pages would let a shifted
-    // offset look correct: the string would be found in the joined transcript either way.
-    const tag = label === undefined ? '' : `   PAGE ${label.pageNumber} OF ${label.totalPages}`;
-    ctx.fillText(`Northgate Example Trust   Reference NC-0000-SYN${tag}`, left, y);
-    y += lineH * 2.4;
-    const first = label === undefined ? 1 : (label.pageNumber - 1) * 28 + 1;
-    for (let i = 0; i < 28; i++) {
-      const n = first + i;
-      ctx.fillText(`Line ${n.toString().padStart(3, '0')}  example service ${(n % 4) + 1}  GBP ${String(100 + ((n * 7) % 900))}.${String((n * 13) % 100).padStart(2, '0')}`, left, y);
-      y += lineH * 2.15;
-    }
-    ctx.restore();
-    const source = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.93 });
-
-    const api = (window as unknown as {
-      SightlinePrepare: {
-        prepareImage: (b: Blob, o?: object) => Promise<{ blob: Blob; width: number; height: number }>;
-        toDataUrl: (b: Blob) => Promise<string>;
-      };
-    }).SightlinePrepare;
-    const at = performance.now();
-    const prepared = await api.prepareImage(source);
-    return {
-      sourceB64: await toB64(source),
-      sourceBytes: source.size,
-      preparedB64: await toB64(prepared.blob),
-      // The app's own helper, in the app's own browser, on the app's own prepared page — so the URL in
-      // the probe's body is the string `transcribePage` would send, chunking and all.
-      preparedDataUrl: await api.toDataUrl(prepared.blob),
-      preparedBytes: prepared.blob.size,
-      preparedWidth: prepared.width,
-      preparedHeight: prepared.height,
-      prepareMs: Math.round(performance.now() - at),
-    };
-  }, { w: PAGE_INPUT.width, h: PAGE_INPUT.height, label });
 }
 
 /**

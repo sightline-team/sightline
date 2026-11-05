@@ -720,7 +720,11 @@ Five pages, 211,296–212,798 bytes prepared at 1200×1600 each:
   stands: fixture mode still has nothing to assemble, because `transcribePage` refuses an image body
   (`no_fixture_for_input`) until **S-11** records page replies keyed by the prepared JPEG's hash — which is
   what the last of those 19 tests asserts, and no test in this repo claims a photographed document was read
-  end to end.)*
+  end to end.)* *(Closed 2026-11-05, item **C-13**, run recorded 2026-11-04 23:22 UTC — see the S-11 section
+  below. Both halves of that sentence are now false, deliberately: the key is the file **as chosen** rather
+  than the prepared JPEG's hash (**ADR-31**, for a reason measured in that section), and a photographed
+  document **is** read end to end in Demo mode, proved by 6 browser tests in
+  `tests/e2e/photo-fixtures.spec.ts`.)*
 
 ### `--stage=pages`, second run — the page-label check on live labels (**C-05**, measured 2026-11-04 19:30 UTC)
 
@@ -762,6 +766,62 @@ five requests, all accepted, **5 of 5 signatures `provider_tee`**, no repair:
   **range across two measured runs, ≈$0.0085–$0.0091 and ≈235–260 s**, not one number.
   `rotated` came off **2 of these 5 pages**, which makes it **4 of 11** measured pages: **C-04**'s nagging
   problem is now the majority case, not a risk.
+
+### [Measured] 2026-11-04 23:22 UTC — **S-11**: the photographed document recorded, and Demo mode finishes it (**C-13**)
+
+`npm run fixtures:record -- --confirm`. Not a spike stage: the recorder is a caller of the production
+path (`createNearClient` → `readCompletion`'s own request builder → `fetchSignature` + `checkSignature`),
+and it stores a reply only if that path accepted it. One attestation per answering model, a fresh nonce
+per attestation, `bindReport` passing before any document byte was sent, and `die()` on any signature that
+did not verify — a reply nobody attested is not a fixture. Six calls, all HTTP 200, all `finish_reason:
+"stop"`, all `provider_tee` ed25519 **verified**, requested model == served model on every one.
+**269,448 ms of model time in total.**
+
+| Call | Model | ms | Request bytes | What came back |
+|---|---|---|---|---|
+| page 1 | `z-ai/glm-5.3-flash` | 16,420 | 283,328 | 1,167 chars, no `captureIssues`, label `PAGE 1 OF 3` |
+| page 2 | `z-ai/glm-5.3-flash` | 27,612 | 284,884 | 1,163 chars, `rotated`, label `PAGE 2 OF 3` |
+| page 3 | `z-ai/glm-5.3-flash` | 19,934 | 285,272 | 1,223 chars, `rotated`, label `PAGE 3 OF 3` |
+| `analyse` on the joined transcript | `Qwen/Qwen3.8-27B` | 200,402 | 4,929 | **86 facts, all grounded · 0 actions · 1 warning** |
+| `qa` "What reference number is on these pages?" | `z-ai/glm-5.3-flash` | 2,962 | 4,129 | answered, with a 61-char `sourceQuote` |
+| `qa` "Is there a payment deadline?" | `z-ai/glm-5.3-flash` | 2,118 | 4,134 | `notInDocument: true`, **no** quote |
+
+- **The pages are three 1200×1600 JPEGs prepared by the app's own `prepareImage`** from 3024×4032 sources
+  (211,378 / 212,546 / 212,836 bytes out of 897,438 / 903,809 / 906,587) — the same call a browser makes,
+  run in Node through the spike's canvas shim, so the bytes in the request are the bytes C-01 produces.
+  **They join to a 3,557-character transcript with 0 unplaceable spans**, offsets `[0, 1169, 2334]`, and all
+  three print a label: `PAGE 1 OF 3` … `PAGE 3 OF 3`. **C-05** over that join, re-run from the recorded
+  files: `{"findings":[],"parsed":3,"unparsed":0,"pageCount":3}` — the second correctly photographed set
+  that says nothing, and now the same silence is reachable in Demo mode rather than only in a spike log.
+- **`rotated` is now the majority over 14 measured pages, not 11.** These three page images are drawn with
+  `ctx.rotate(-0.011)` — **0.63°**, the same deliberate crookedness the spike's single-page raster had —
+  and two of the three came back `rotated` for a page whose text is perfectly legible. That makes it
+  **6 of 14** live pages. **C-04**'s retake loop cannot fire on this signal; the finding is now
+  load-bearing, not a caution.
+- **86 facts for a three-page invoice, every one of them grounding.** That is **P-16** measured again and
+  worse than the number that opened it (32–33 for one page, 5–7 for five pages of a bill): the model
+  reads a line-item table as one fact per line, `sourceQuote` and all. Grounding cannot see it — the
+  quotes are real — so a screen reader gets an 86-item wall with no guard anywhere between the schema
+  (`facts` is `.max()`-free) and the results view. Still unhandled, and now it has a photographed sample.
+- **Zero actions on an invoice with a payment reference in it.** `actions: []` is schema-valid and the
+  results section renders its "nothing found" line, so nothing broke — but a bill is exactly the document
+  where an action belongs, and one sample says the prompt's action half is **S-03**'s to test rather than
+  this run's to assume.
+- **No cost figure exists for this run, and the reason is ours, not the service's.** `completionEnvelopeSchema`
+  does not name `usage` (§1: "the envelope schema does not carry `usage` at all"), so `readCompletion`
+  never sees the block the raw body contains and the recorder stored `"usage": {}` — *nothing to record*,
+  not *nothing billed*. The signatures are unaffected: `checkSignature` was handed `response.rawText`, the
+  untouched bytes. Follow-up in §"What is still unknown": a recording that wants its own price has to read
+  usage off the raw JSON the way `scripts/spike.ts` does, and until then no fixture's `_provenance` may be
+  quoted as a cost.
+- **What the recording does *not* contain, and why S-11 stays `[~]`:** no `uncertain` span came off any of
+  the three pages (all three were clean synthetic renders), so **the live `uncertain` path — and with it
+  C-11's remapping and clamping — has still never processed a real span**; no page was truncated; no reply
+  was a refusal; and **no attestation report was stored** (the recorder keeps the *verdict*, not the
+  report), so **T-08**'s good/tampered/expired fixtures are still owed. Report retrieval is documented as
+  **"free and non-billable"** (§5's quote from NEAR's own docs) and it is not a completion, which makes
+  that half the cheapest remaining item here — one free call for the good report, and the tampered and
+  expired ones derived from it.
 
 
 ## 5. Response signatures — [Verified], and they are not what our docs assumed
@@ -949,10 +1009,10 @@ Still open, with what each one now waits on:
    dependency decision (T-10) and a real browser, not a key alone. (S-01)
 2. How badly the chosen vision model misreads **numbers on bad photographs**. A key and a model are not
    the missing thing here; the golden set run against the live service is. (S-03)
-3. **Price per page**, as opposed to price per probe exchange. The **input half is measured**:
-   `$0.00020288` per C-01-prepared page, `$0.00063784` unprepared (§4). What has not been produced is the
-   output half — the completion tokens a real transcription costs — because that needs the golden set.
-   (S-09, `[~]` not `[x]`)
+3. **Price per page**, as opposed to price per probe exchange. **Closed for the pages `npm run spike`
+   sends** — input `$0.00020288` per C-01-prepared page and output `$0.00097080` (§4), ten measured pages
+   averaging **$0.00087275 / 25.8 s**. What is still not produced is a price for the *fixture recording*
+   run (see 8), and a spread across document lengths, which is S-03's. (S-09 **closed** 2026-11-04)
 4. The **browser** half of CORS: a Chromium round trip with the signature verified. The preflight
    headers say yes; a header dump is not a navigation. (S-06, T-13)
 5. Host execution-time limits for a 5-page upload on the plan we deploy to. **Size is measured and is
@@ -965,3 +1025,9 @@ Still open, with what each one now waits on:
    heavy-check half of `/api/verify`. The quote is in hand (5,006 bytes, measured), so this is now
    blocked on a **dependency approval** (AGENTS.md §5) rather than on data. Until it ships, live mode's
    gate reports `failed` and refuses to send. (T-03)
+8. **What the 2026-11-04 23:22 UTC recording run cost.** Its six calls were billed; the recorder cannot
+   say how much, because `completionEnvelopeSchema` does not name `usage` and `readCompletion` therefore
+   never passes the block to anything that could store it (§4's S-11 block). Either the recording reads
+   usage off the raw JSON the way `scripts/spike.ts` does, or the figure comes from the organisation's
+   balance endpoint. Until one of those happens, **no `_provenance` block in `fixtures/` may be quoted as
+   a cost**, and the only prices this repo publishes are §4's. (S-11, S-10)

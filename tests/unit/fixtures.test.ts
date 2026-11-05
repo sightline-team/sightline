@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createFixtureClient, demoDocuments, FIXTURE_MODEL, fixtureModeAvailable, preparedQuestions, transportFor } from '@/lib/fixtures/replay';
 import { FIXTURE_CASES } from '@/lib/fixtures/cases';
+import { RECORDED_PAGES } from '@/lib/fixtures/recorded';
 import { NearError } from '@/lib/near-ai/client';
 import { appError } from '@/lib/errors';
 import { analysisSchema } from '@/features/analysis/schemas';
@@ -92,10 +93,10 @@ function readableCases() {
 }
 
 describe('the demo corpus is labelled and valid before anything runs', () => {
-  it('has four distinct documents, three of them with an authored reading', () => {
-    expect(FIXTURE_CASES).toHaveLength(4);
-    expect(new Set(FIXTURE_CASES.map((c) => c.name)).size).toBe(4);
-    expect(readableCases()).toHaveLength(3);
+  it('has five distinct documents, four of them with a reading', () => {
+    expect(FIXTURE_CASES).toHaveLength(5);
+    expect(new Set(FIXTURE_CASES.map((c) => c.name)).size).toBe(5);
+    expect(readableCases()).toHaveLength(4);
     expect(FIXTURE_CASES.filter((c) => c.unreadableReply !== undefined).map((c) => c.name)).toEqual(['ferney-bus-pass']);
   });
 
@@ -104,8 +105,17 @@ describe('the demo corpus is labelled and valid before anything runs', () => {
     // the data, not of the UI, so it is checked in the data.
     for (const fixture of FIXTURE_CASES) {
       expect(fixture.text.toLowerCase()).toContain('synthetic');
+    }
+    for (const fixture of FIXTURE_CASES.filter((c) => c.offered !== false)) {
+      // The authored letters go further and name the project, so a reader can see who wrote them.
       expect(fixture.text).toContain('Sightline');
     }
+    // The recorded case is held to its own wording instead, and the difference is not a relaxation:
+    // its `text` is what an enclave model said about the pixels the demo ships, and editing it to add an
+    // attribution line would make "recorded" false. What it must carry is the page's own disclaimer —
+    // drawn into the photograph by `scripts/page_sample.ts`, so it travels with the image.
+    const recorded = FIXTURE_CASES.find((c) => c.offered === false)!;
+    expect(recorded.text.toUpperCase()).toContain('NOT A REAL DOCUMENT');
   });
 
   it('each authored analysis satisfies the schema the real mode output is validated against', () => {
@@ -122,17 +132,34 @@ describe('the demo corpus is labelled and valid before anything runs', () => {
     expect(fixture.qa).toEqual([]);
   });
 
-  it('carries exactly one deliberate misquote in the whole corpus, and it is the bank letter', () => {
-    const ungrounded = readableCases().flatMap((fixture) => {
-      const { facts, actions } = fixture.analysis as { facts: { sourceQuote: string }[]; actions: { sourceQuote: string }[] };
-      return [...facts, ...actions]
-        .filter((item) => !quoteFound(fixture.text, item.sourceQuote))
-        .map((item) => ({ name: fixture.name, sourceQuote: item.sourceQuote }));
-    });
+  it('carries exactly one deliberate misquote in the authored corpus, and it is the bank letter', () => {
+    // Scoped to the authored cases (**C-13** split them from the recorded one): a quote in the recorded
+    // reading is not a choice anybody made, so counting it here would mix the two provenances the corpus
+    // is careful to keep apart.
+    const ungrounded = readableCases()
+      .filter((fixture) => fixture.offered !== false)
+      .flatMap((fixture) => {
+        const { facts, actions } = fixture.analysis as { facts: { sourceQuote: string }[]; actions: { sourceQuote: string }[] };
+        return [...facts, ...actions]
+          .filter((item) => !quoteFound(fixture.text, item.sourceQuote))
+          .map((item) => ({ name: fixture.name, sourceQuote: item.sourceQuote }));
+      });
 
     // Every other quote is literal, so the demo shows "sourced" as the normal case and
     // "flagged" exactly once — the realistic model behaviour, not a strawman.
     expect(ungrounded).toEqual([{ name: 'riverside-statement', sourceQuote: 'Closing balance is £1,204.55' }]);
+  });
+
+  it('grounds every quote the recorded reading makes — which is what the service actually did', () => {
+    // Measured, not authored. **S-11** asked an attested model to read the joined transcript, and every one
+    // of its quotes came back a literal excerpt of it, so the photo demo shows the sourced state for all
+    // of them and the flag stays where it was put on purpose. This assertion is a tripwire, not a
+    // celebration: if a re-recording ever returns a paraphrase, it fails here, and the e2e that reads the
+    // flagged state off the screen has to be re-checked rather than assumed.
+    const recorded = FIXTURE_CASES.find((c) => c.offered === false)!;
+    const { facts, actions } = recorded.analysis as { facts: { sourceQuote: string }[]; actions: { sourceQuote: string }[] };
+
+    expect([...facts, ...actions].filter((item) => !quoteFound(recorded.text, item.sourceQuote))).toEqual([]);
   });
 });
 
@@ -174,13 +201,31 @@ describe('the replay client answers demo documents and nothing else', () => {
     expect(JSON.stringify(error)).not.toContain('metastatic');
   });
 
+  it('answers a demo photograph by its digest, and keeps the recording\'s identity off the receipt', async () => {
+    // **C-13**'s matching rule, and the half of **ADR-31** that a test can hold: the *content* is the
+    // recorded reply, byte for byte, while the *identity* is the fixture's. The recorded file carries a real
+    // completion id from a call this session never made, and putting it on screen would be a receipt that
+    // lies about provenance.
+    const client = createFixtureClient();
+    const recorded = RECORDED_PAGES[0]!;
+    const body = { model: 'fixtures/demo-model', messages: [{ role: 'user', content: [{ type: 'text', text: 'transcribe this page' }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,AAAA' } }] }] };
+
+    const response = await client.post('chat/completions', body, { purpose: 'transcribe', fixtureKey: recorded.fixtureKey });
+
+    const envelope = completionEnvelopeSchema.parse(response.json);
+    expect(envelope.id).toBe(`fixture-${recorded.name}`);
+    expect(envelope.model).toBe(FIXTURE_MODEL);
+    expect(contentOf(envelope)).toBe(recorded.content);
+    // The digest is local metadata, and it must not have ridden along in what was "sent".
+    expect(response.sentBody).not.toContain(recorded.fixtureKey);
+  });
+
   it('refuses a page call even when the body names a document it does have answers for', async () => {
-    // The discriminating direction of C-03's guard in `replay.ts`. This body carries a real demo
-    // document, so a missing guard would answer it with that fixture's *analysis* — authored prose
-    // presented as a reading of a photograph. And the guard has to sit **before** the document
-    // lookup: a transcription body carries its text as an `image_url` multipart array, which
-    // `findFixture` cannot read, so the lookup would refuse for the wrong reason ("unknown document")
-    // while the true reason is that Mode F has no page replies at all (S-11 records them).
+    // The discriminating direction of the guard in `replay.ts`: this body carries a real demo document, so
+    // a missing guard would answer it with that fixture's *analysis* — authored prose presented as a reading
+    // of a photograph. And the guard has to sit **before** the document lookup: a transcription body carries
+    // its page as an `image_url` multipart array, which `findFixture` cannot read, so the lookup would refuse
+    // for the wrong reason ("no such document") when the true reason is that no demo photograph has this digest.
     const client = createFixtureClient();
     const fixture = FIXTURE_CASES[0]!;
 
@@ -192,7 +237,26 @@ describe('the replay client answers demo documents and nothing else', () => {
       );
 
     expect(failure).toBeInstanceOf(NearError);
-    expect((failure as NearError).error.code).toBe('no_fixture_for_input');
+    expect((failure as NearError).error.code).toBe('no_fixture_for_page');
+  });
+
+  it('refuses a photograph whose digest is not one the demo ships', async () => {
+    // Somebody's own page. There is a recorded reply for *a* page, and it must not be given for this one —
+    // that is F-09's rule restated at the level of pixels, and the reason **ADR-31** rejects any near-match
+    // on this digest.
+    const client = createFixtureClient();
+
+    const failure = await client
+      .post('chat/completions', { model: 'fixtures/demo-model', messages: [{ role: 'user', content: [] }] }, { purpose: 'transcribe', fixtureKey: 'f'.repeat(64) })
+      .then(
+        () => undefined,
+        (cause: unknown) => cause,
+      );
+
+    expect(failure).toBeInstanceOf(NearError);
+    expect((failure as NearError).error.code).toBe('no_fixture_for_page');
+    // Rule 7: the digest of a person's photograph is not echoed back at them.
+    expect((failure as NearError).message).not.toContain('f'.repeat(64));
   });
 
   it('refuses a partial document: containment is exact, not similar', async () => {    const client = createFixtureClient();
