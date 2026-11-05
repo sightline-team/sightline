@@ -29,13 +29,17 @@ mistaken for real traffic, the demo becomes an unearned claim.
 ```
 fixtures/
 ├─ responses/       # recorded: 3 pages, their structure reply, 2 answers (+ _provenance each)
-└─ attestation/     # EMPTY — the good/tampered/expired reports T-08 needs are not recorded yet
+└─ attestation/     # recorded (redacted): 2 live model reports, one per attested model, + README.md
 ```
 
 `responses/` is read by `src/lib/fixtures/recorded.ts`, which pulls the reply text out and decides
-nothing. `attestation/` is still empty, and that is the accurate state: **S-11**'s "Done when" also
-names those three reports and this recording did not produce them, so the item stays in progress and
-T-08 stays unmet.
+nothing. `attestation/` is **not replay material** — nothing in `src/lib/fixtures/` reads it — it is
+input to the verification tests and to `/api/verify` (**T-03**): two live reports fetched free on
+2026-11-05, each `bindReport` 4/4 `verified`, each with five of NEAR's own infrastructure paths
+redacted and declared in `_meta.redacted`. **S-11**'s "Done when" named both kinds of file and both
+now exist; the item stays in progress because the *failure shapes* it also describes — an `uncertain`
+span, a truncation, a refusal — have still never come off the service, and no `_provenance` block may
+be quoted as a cost until the recorder reads `usage`.
 
 ## How a request is matched
 
@@ -67,4 +71,6 @@ demo summary dressed up as an answer about your document. `tests/e2e/flow.spec.t
 `src/lib/fixtures/recorded.ts` → `src/lib/fixtures/replay.ts` (F-09) in fixture mode, `cases.ts` for
 the authored documents, `tests/unit/recorded-fixtures.test.ts` for what the recorded files are claimed
 to be, and `tests/unit/` wherever a test needs a model payload without a network. `tests/verification/`
-(T-08) will read `attestation/` when it exists.
+(T-08) reads `attestation/` now: `tests/verification/attestation-fixtures.test.ts` parses every file
+through the production `attestationReportSchema` before binding it, and derives its tampered,
+foreign-key and stale cases in test code rather than storing edited copies.

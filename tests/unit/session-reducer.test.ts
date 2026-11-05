@@ -264,7 +264,12 @@ describe('session reducer (F-07)', () => {
     expect(forgotten.error).toBeUndefined();
     expect(forgotten.degraded).toBeUndefined();
     expect(forgotten.id).not.toBe(used.id);
-    expect(JSON.stringify(forgotten)).not.toContain('840');
+    // The sentinel is the money on the page, never a bare digit run: `id` and `createdAt` are fresh
+    // on every call, and a substring check over the whole JSON was tripped by a session whose
+    // timestamp happened to contain "840". What must be absent is the document's words.
+    for (const derived of ['£840', 'Invoice 42', 'Payment due']) {
+      expect(JSON.stringify(forgotten)).not.toContain(derived);
+    }
   });
 
   it('never mutates the previous state object', () => {

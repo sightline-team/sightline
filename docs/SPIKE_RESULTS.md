@@ -101,7 +101,7 @@ is incompatible with `signingAlgo: 'ecdsa'`, and the SDK states plainly that "Au
 headers sent on the outer request, along with the client's network address, are **not** hidden by
 OHTTP". OHTTP is not a substitute for E2EE-to-the-model for our purpose.
 
-## 3. Attestation report — [Verified] shapes, [Unverified] model inner fields
+## 3. Attestation report — [Verified] shapes, [Measured 2026-11-03/05] model inner fields
 
 | Endpoint | Auth | Parameters |
 |---|---|---|
@@ -160,7 +160,7 @@ Two things the reading had as **[Unverified by openapi]** are now settled:
 - The inner field names are exactly the ones `model-attestations.md` listed. `model_attestations[0]`,
   measured, in order: `model_name`(str 30) · `signing_address`(64 hex) · `signing_algo`("ed25519") ·
   `signing_public_key`(64 hex) · `request_nonce`(64 hex) · `intel_quote`(**10,012 hex = 5,006 bytes**)
-  · `nvidia_payload`(**98,222 hex = 49,111 bytes**) · `event_log`(**array of 30–32 objects**, 5 keys
+  · `nvidia_payload`(**98,222 hex = 49,111 bytes** — *misread; corrected 2026-11-05: 98,222 characters of* **JSON**, not hex, so its byte count is 98,222 and not half of it. The line above counted characters and then assumed hex because every neighbour on that list was hex.) · `event_log`(**array of 30–32 objects**, 5 keys
   each) · `info`(11 keys) · `ohttp_attestation`(4 keys) · `compose_manager_attestation`(8 keys) ·
   `ohttp_key_config`(90 hex).
 - `report_data` is **absent from the model attestation and present on `gateway_attestation`** (128 hex
@@ -190,6 +190,74 @@ for the TDX quote, is not a dependency of this repo (`package.json` has `@noble/
 `@noble/hashes` only), which is a human decision (AGENTS.md §5) rather than a task. Relaxing the gate
 to call a 501 "not run" instead of "failed" would make live mode work *and* weaken the claim; that
 trade is not ours to make silently.
+
+### [Measured] 2026-11-05 — T-08: two reports recorded to disk, and what a report does not say
+
+`npm run fixtures:record -- --attestation --confirm`, one run at **2026-11-05 00:27:08 UTC**, both
+calls free (report retrieval is non-billable, §5). Both now live in `fixtures/attestation/`, one per
+model this app actually asks of the service — because the app attests **per model** (`fetchReport`
+sends `model` in the query), so a fixture for one deployment cannot stand in for the other:
+
+| File | Live bytes | Stored bytes | ms | `bindReport` |
+|---|---|---|---|---|
+| `good-z-ai-glm-5.3-flash.json` | 318,885 | 90,457 | 1,845 | 4/4 → `verified` |
+| `good-Qwen-Qwen3.8-27B.json` | 269,710 | 87,977 | 419 | 4/4 → `verified` |
+
+`_meta.reportSha256` covers the **live** response (`a17b31b0…`, `4a4ad03a…`); the file on disk is
+smaller because five paths were dropped before writing, each declared in `_meta.redacted` with its
+own byte count and sha256. Those are the things this run settled:
+
+- **Report size is not a stable quantity.** The same model returned 162,856 bytes on an earlier call
+  and 318,885 here; §3's 2026-11-03 figure was 265,925. The event log grows, so nothing may treat a
+  byte count as a fixture identity — `C-13`'s ADR-31 hash-matched *responses* are stable because the
+  service signs them, a report is not.
+- **The two models are two enclaves.** Different `signing_public_key` (`5a0210f2…` / `89154a43…`),
+  different `info.tcb_info.rtmr3` (`b6efde77…` / `b0dfe156…`), different `event_log` length (32 / 30
+  entries) — while `gateway_attestation` is byte-identical between them. So "the deployment" is a
+  per-model fact, exactly as **ADR-24** decided for the request side.
+- **The redaction loses no verifiability, and that is measurable.** `SHA-256(app_compose) ===
+  info.compose_hash` for all four compose bodies in both files (model `a0e3c6f4…`, gateway
+  `c579aade…` — the gateway one identical across both reports). The dropped bodies were NEAR's own
+  `docker compose` file (18,212 B / 37,799 B, 448 lines with `${VAR}` token names, `INSTANCE_LABEL=gpu03`,
+  `cvm3.near.ai`), the compose-manager launch log (87,029 B / 39,904 B), the per-GPU evidence
+  (`nvidia_payload`, 98,222 B) and `gateway_attestation.vpc` (121 B — `cloud-api-prod-*.dstack.internal`).
+  The first two are NEAR's infrastructure, not the app's inputs; the third is the only place the GPU
+  facts live, which T-03 cannot read without **B-12** anyway; the fourth is an internal hostname.
+  `info.compose_hash` survives, so a future verifier can still check that a compose file hashes to
+  what the report claims — it just cannot check *which* file. That limit is stated here rather than
+  discovered later.
+- **`nvidia_payload` is a JSON string, not hex** (correcting the line above): 98,222 characters,
+  `{"nonce":…,"evidence_list":[…],"arch":"HOPPER"}`, 8 per-GPU entries each carrying a base64 PEM
+  chain, and every entry echoing the nonce we sent.
+- **The nonce is echoed four times, not once**: `model_attestations[0].request_nonce`,
+  `gateway_attestation.request_nonce`, `compose_manager_attestation.nonce` (with `nonce_source:
+  "client"` and its own 64-byte `report_data`), and inside `nvidia_payload` at the top level and per
+  device. `bindReport` compares the first only — which is correct for binding, but a future
+  "the nonce is bound everywhere" claim would be true of the service and false of this code.
+- **`device_id` is a placeholder in all four places** (model and gateway, `info` and `info.tcb_info`),
+  holding exactly `SHA-256("")` (`e3b0c442…b855`). A check written as "does the report name a device?"
+  passes on a report carrying no device identity. This is what T-01's NRAS todo is actually waiting
+  for, and it is a *content* gap, not only the dependency gap.
+- **`info.app_cert` is a demo certificate.** 10,756-character PEM; Node's `X509Certificate` reads
+  subject `CN=demo-cert`, issuer `O=Dstack; CN=Dstack App CA`, valid 1975 → **2036**. So "the app
+  certificate is within its validity window" is a check that passes today on a certificate naming
+  nothing. Recorded in `_meta.appCerts` so no receipt can imply otherwise.
+- **There is no plaintext expiry anywhere.** The scan (`timeFields`, capped at 80 lines, both files
+  fill it) found time-shaped keys only in the compose action log — 226 and 82 actions, newest
+  2026-11-04T04:14Z and 2026-11-04T19:33Z, i.e. ~5–20 h *before* the fetch — plus the nonces and
+  `tcb_info` objects. No `issuedAt`, no `exp`. So **T-08's `expired` case is not a fixture**: it is
+  the good report, unchanged, and the finding is that the browser half cannot tell. The real windows
+  are inside `intel_quote` and `nvidia_payload`, which is **B-12**'s to open.
+- **`info` survives the production schema as exactly `['tcb_info']`**, and after our own redaction
+  `tcb_info` parses down to `{}` — the quote, the measurements and the compose hash are all *outside*
+  what `bindReport` is handed. Pinned by a test, so widening the schema is a decision.
+
+**What is still not decided by any of this, and is now the sharpest line in the repo:** `/api/verify`
+is T-03's 501, `createTrustSession` ANDs the local binding with it, so **every case in
+`fixtures/attestation/` — including `good` — ends the gate at `failed`.** The tests assert that too,
+against a service that echoes the session nonce correctly: four local passes, one loud failure,
+nothing sent. `verified` from `bindReport` means "these bytes are well-shaped and bound to our
+nonce", never "an enclave was verified" (**ADR-22**'s distinction, now with a live report behind it).
 
 ## 4. Model catalog — the flags we need are NOT on `/v1/models`
 
@@ -1000,6 +1068,12 @@ is callable and which is not (§4), the first attestation report and its field n
 response signature (§5), the direct-completions host question (S-07: the attested models we can use are
 served from **one** host, `cloud-api.near.ai`, so the CSP needs no per-model wildcard) and the server
 half of the CORS question (§6).
+
+Closed by the two free report calls on 2026-11-05 (§3's second measured block) — and it closed a
+*file*, not an unknown: two live attestation reports are now in the repo with their nonce echo
+proved, and what that run established is that the two facts a verifier most wants are **not in a
+report at all**. Expiry lives inside `intel_quote` and `nvidia_payload`, and every `device_id` field
+holds `SHA-256("")`. So neither becomes item 9; both stay where they already are, under 7.
 
 Still open, with what each one now waits on:
 

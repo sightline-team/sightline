@@ -16,10 +16,11 @@ import type { NearClient, NearResponse } from '@/lib/near-ai/client';
  *
  * T-01 and T-02 now exist, so what they can be held to is what they can actually decide: byte
  * binding, key shapes, nonce freshness, and reading a refused verifier as a failure. What they
- * cannot decide without a key (B-05) stays listed below as `it.todo` rather than being faked into
- * a pass — the honest ceiling in `src/lib/near-ai/attestation.ts` says a `verified` status needs a
- * live report that echoes our own nonce, and no synthetic fixture in this repo is allowed to
- * claim otherwise (`fixtures/attestation/README.md`).
+ * cannot decide stays listed below as `it.todo` rather than being faked into a pass — and since
+ * 2026-11-05 the missing thing is not access: a key arrived (B-05 closed) and two live reports are
+ * recorded (`fixtures/attestation/`, **T-08**, asserted in `attestation-fixtures.test.ts`). What is
+ * missing is the verifier: the TDX quote and the NRAS verdict need **B-12**, and `/api/verify`
+ * answering 501 is read as `failed`, never as silence.
  */
 
 /** A refusal may be synchronous (a stub) or a rejected promise (a real async implementation). */
@@ -305,10 +306,13 @@ describe('the signed text is rebuilt from the exact wire bytes (ADR-19, T-02)', 
   });
 });
 
-describe('decided verification set (ARCH §10) — what still needs a live service', () => {
-  it.todo('nonce binding against a real report: the echo we compare to has never been measured (T-01, needs B-05)');
-  it.todo('NRAS GPU verdict: an unattested device fingerprint fails the check (T-01)');
-  it.todo('TDX quote: valid passes, tampered tcb fails, expired fails — fixtures from T-08 (gated on B-05)');
+describe('decided verification set (ARCH §10) — what still needs a live verifier', () => {
+  // Two of these stopped being todos when T-08 put real service bytes in the repo: nonce binding
+  // against a recorded report, and the fact that `device_id` holds `SHA-256("")`, are now asserted
+  // with those bytes in `attestation-fixtures.test.ts`. What is left is what no fixture can decide,
+  // because reading a quote or a GPU verdict needs the dependency in B-12 — not a key, not a file.
+  it.todo('NRAS GPU verdict: the device facts live inside nvidia_payload, which this build cannot open (T-01, gated on B-12)');
+  it.todo('TDX quote: valid passes, tampered tcb fails, expired fails — the fixtures exist, the verifier does not (T-03, gated on B-12)');
   it.todo('partial status is rendered as the ran/passed list and never as "verified" (T-05, needs T-04 claimFor)');
   it.todo('attestation changed mid-session: re-fetch once, then stop with attestation_changed (T-07)');
   it.todo('e2ee_enclave is selected only when TrustRecord.e2ee is true and the flag is proven (T-04)');
