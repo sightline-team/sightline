@@ -321,3 +321,17 @@ roadmap:check` verifies it (item F-11), `npm run hooks:install` puts that check 
 local commit, and CI (F-12) runs it on the commits each push adds. The gate itself is tested in
 `tests/unit/roadmap-check.test.ts` against ledgers that break one rule each, because a gate only
 ever run against the one file it guards has never been *observed* to reject anything.
+
+The same rule is why the release checks are scripts with mutation proofs rather than checklists.
+`npm run release:clean-checkout` (**R-03**) proves README's two commands from an anonymous clone of
+the pushed `main`. `npm run release:secrets` (**R-06**) reads **every object in the object
+database** — reachable or not, text or JPEG — and reports a match as rule, path, commit and length
+only, never as the matched text. Both were run against a throwaway repository holding a planted
+synthetic key that was committed and then deleted, plus one staged but never committed: the scan
+named both, and refused. It has refused **this repository's own test fixture** too — the first
+version spelled nine credential shapes out in full, and both GitHub's push protection and this scan
+said so before anything was published — which is why those planted values are assembled at runtime
+and a test asserts the fixture file's own bytes are clean. `.env` is ignored and has never been
+added; CI takes no credential. What
+neither can see is the key that once crossed into a conversation log, which is a rotation task
+(**B-11**) rather than a git finding.
