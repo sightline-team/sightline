@@ -18,7 +18,9 @@ What the key settled: the model catalog and its TEE flags (§4), the shape of a 
 (§3), a response signature verified against an attested key (§5), a live CORS preflight (§6) and the
 **browser round trip that preflight stood in for** (§6, second measured block), first
 latency and cost numbers (§4, §1 of the measurement notes), and — on 2026-11-05 — the **inside of the
-TDX quote**, which opened with arithmetic and `@noble/hashes` alone (§3's third measured block). What it
+TDX quote**, which opened with arithmetic and `@noble/hashes` alone (§3's third measured block), and the
+**relay's four allowlisted paths against the live service**, which closed the last `%2F` assumption
+(§10). What it
 did **not** settle, and the reading should not be mistaken for it: E2EE from a browser (a dependency
 decision, T-10/B-06), Intel's **signature** over those quote bytes and the collateral that says whether
 a platform is still trusted (T-03, and `dcap-qvl-node` is not installed), and accuracy on bad
@@ -1243,6 +1245,30 @@ behaviour rather than ours. We implement the crypto with `@noble/*` (auditable, 
 in ARCH §3) and keep the SDK as a **cross-checking tool** in `scripts/` — a second opinion we can run
 against our own verifier output. The reference verifier's `ts/` directory is the port source for the
 heavy checks (§10 of ARCH).
+
+---
+
+## 10. The relay in front of the live service — what the four allowlisted paths answer, and what `%2F` actually does [Measured 2026-11-05]
+
+**How this was run, and what it cost.** `RELAY_ENABLED=true ALLOWED_MODELS='z-ai/glm-5.3-flash,Qwen/Qwen3.8-27B' NEXT_PUBLIC_DEFAULT_MODE=fixtures npx next dev -p 3110`, with the key loaded by Next itself from the untracked `.env` — it was never printed, never placed on a command line, and never echoed by anything below. **Not one billable completion is in this section.** Every call is either a catalog GET, a report GET, a signature GET for an id that does not exist, or a body the relay or the service refused before running a model. That is deliberate: AGENTS.md §5 puts a paid run on the human's side of the line, and everything this section needed to prove was provable for free.
+
+| Asked of the relay | Came back |
+|---|---|
+| `GET /api/relay/v1/model/z-ai%2Fglm-5.3-flash` | **200**, 1,556 bytes — the namespaced row, parsed by `readModelMetadata` through the same `modelCatalogRowSchema` the §4 payloads were copied from |
+| `GET /api/relay/v1/attestation/report?model=…&nonce=…&signing_algo=ed25519` | **200**, 318,299 bytes in **0.898 s**, forwarded and returned as upstream's own bytes |
+| `GET /api/relay/v1/models`, `GET /api/relay/v1/model/list` | **403** `{"error":"path_not_allowed","relay_enabled":true}`, 62 bytes, answered locally — no upstream call, so no key was ever sent for them |
+| `GET /api/relay/v1/signature/chatcmpl-doesnotexist` | **404** with upstream's own 137-byte body passed through untouched, which is what `signatures.ts`'s retry-on-not-found rule needs to see |
+| `POST …/chat/completions` with `max_tokens: 99999999` | **400** carrying upstream's own `invalid_request_error` JSON in **1,197 ms** — the model gate had already passed, so the refusal is the service's, not ours |
+| the same POST again, same model | the gate half took **19 ms**: the 15-minute metadata cache did its job |
+| `POST …/chat/completions` with `stream: true` | **400** `streaming_not_supported`, refused by us before the body left (ADR-22) |
+| a 9,437,237-byte body | **413** `body_too_large`, decided on the byte count before any parse |
+| `POST …/chat/completions` for `moonshotai/kimi-k2.6` | **403** `model_not_allowed` with the id echoed and nothing forwarded (the operator list refused it; the no-catalog-call part is proved by `tests/relay/relay.test.ts`, which asserts its fetch double was never called) |
+
+**The `%2F` question (B-05's open half) is answered, and the answer is "the handler never asks it".** What §4 chose — one percent-encoded segment, `model/z-ai%2Fglm-5.3-flash` — was recorded with an explicit caveat that *how Next hands `%2F` to `params.path` has to be observed live rather than assumed*. It was, and the way turned out to be simpler than the caveat: `resolveRequest` matches on `new URL(request.url).pathname`, which is the **encoded** form, and that same string is what goes upstream. There is no `params.path` in the handler at all, so there is no decode-then-re-encode step where one approved segment could become two path steps. The live row above is the evidence that the encoded segment survives the whole way to `cloud-api.near.ai` and back.
+
+**What this section is not.** It is not an accuracy measurement, a price, or a privacy claim. The gate's `partial` ceiling (ADR-33) and the four unrun quote checks (ADR-32) are unchanged by any of this: the relay proves what the *transport* does, and the receipt still says what was and was not verified.
+
+**One finding this run produced that nobody asked for: the nonce appears in Next's own dev request log.** The report URL carries `?nonce=…` in its query string, and `next dev` prints request lines including the query. That is the framework's log, not ours, and the value in it is the random per-session nonce the report is *for* — not document-derived, and useless without the report it points at — so it does not breach rule 7's "logs hold status codes and timings only" in the sense that a transcript or a key would. But it is a fact about deploying this, and the roadmap records it under **R-04**'s observability pass rather than letting the reader discover it in a hosted log line.
 
 ---
 

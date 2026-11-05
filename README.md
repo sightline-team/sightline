@@ -61,10 +61,14 @@ Three of the four letters are **authored synthetic**; the fifth case is **record
 provenances are labelled separately everywhere they appear (`fixtures/README.md`, item **S-11**).
 
 **What it does not do:** read *your* photo, or run in relay/direct mode. The live modes still refuse at
-the door, and since 2026-11-05 the reason is precise rather than general: the model allowlist has no
-transport yet (F-04) and the relay forwards nothing (F-05), so Mode B cannot ask for a report at all, and
-Mode A — where the browser could ask directly — has no field for a person to put a key in (**T-13**, held
-by **B-10**). What changed on 2026-11-05 is that the gate itself is no longer one of the reasons: with
+the door, and since 2026-11-05 the reason is precise rather than general — and it moved twice that day.
+The transport is no longer missing: the relay's handler is **built** (four allowlisted paths, a live
+per-model TEE check before any document byte leaves, the received bytes forwarded verbatim) and was
+measured answering the real service with not one billable call in the run, and the model allowlist's
+per-model metadata read now has a transport too (**F-05**, **ADR-34**). What still stops a live run is
+this app's own wiring: `src/app/_flow/refused_steps.ts` refuses one by name until a session is bound to
+the trust gate and the signature verifier, and Mode A — where the browser could ask directly — has no
+field for a person to put a key in (**T-13**, held by **B-10**). What changed on 2026-11-05 is that the gate itself is no longer one of the reasons: with
 **T-03**'s `/api/verify` answering, a live report that binds and agrees reaches `partial` and a run would
 be allowed to send. No run has yet been allowed to send a document. Nothing on screen can imply a
 verified run before verification exists, and `partial` is not the word "verified" (**AGENTS.md §4** rule 5).
@@ -111,9 +115,10 @@ the hardware — which is the sentence its receipt line carries. What it does wh
 what it never does (say `verified`), is pinned by `tests/verification/verify_route.test.ts`.
 
 A run that reaches **this gate** — `createTrustSession`, which ANDs its local checks with `/api/verify` —
-in a browser has never happened, and the reason is no longer the verifier: in Mode B F-04's allowlist
-transport and F-05's relay refuse at the door before a report is ever asked for, and in Mode A a person
-has no place to put a key (**T-13**, held as a consent decision by **B-10**). In fixture mode no report is
+in a browser has never happened, and the reason is no longer the verifier, nor the relay: in Mode B the
+app's own door refusal (`_flow`) stops the run before a report is ever asked for, while the handler that
+would forward it answers today (**F-05**), and in Mode A a person has no place to put a key (**T-13**, held
+as a consent decision by **B-10**). In fixture mode no report is
 fetched at all, so what a person sees on the receipt there is the demo sentence, not this list. The
 signature step adds two more names when a completion is answered — `response_signature` and
 `signed_by_model_enclave` (**T-02**) — and neither is an attestation check.

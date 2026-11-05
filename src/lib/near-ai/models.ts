@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { notBuilt } from '@/lib/not_built';
-import type { CallPurpose } from '@/lib/near-ai/client';
+import type { CallPurpose, NearClient } from '@/lib/near-ai/client';
 
 /**
  * Model discovery and the TEE allowlist (item **F-04**), plus the per-step model and reply budget
@@ -297,7 +297,23 @@ export function listCandidates(): Promise<string[]> {
   return notBuilt('F-04', 'Candidate listing (the transport that reaches /v1/model/list)') as never;
 }
 
-/** As `listCandidates`: reading one model's metadata needs to know which client will carry it. */
-export function readModelMetadata(_modelId: string): Promise<ModelMetadata> {
-  return notBuilt('F-04', 'Per-model metadata read (the transport that reaches /v1/model/{name})') as never;
+/**
+ * Reading one model's metadata is **F-04**'s second transport half, and **F-05** answered the
+ * question this comment used to leave open: the client that carries it is `createNearClient`, which
+ * already lists `model/{model_name}` in `NEAR_PATHS`, pins the host, retries once, validates nothing
+ * about the document and logs nothing. The relay is its caller (`lib/server/relay.ts`), because rule 3
+ * has to be answered server-side before document bytes leave — and a row that will not parse is a
+ * model whose TEE status is unknown, which is the `metadata_unavailable` refusal rather than a pass.
+ *
+ * `listCandidates()` above stays refused: it needs `/v1/model/list`, which is not in `NEAR_PATHS`, and
+ * widening the endpoint set is a human decision.
+ */
+export async function readModelMetadata(modelId: string, client: NearClient): Promise<ModelMetadata> {
+  const response = await client.get('model/{model_name}', { modelName: modelId });
+  const parsed = modelCatalogRowSchema.safeParse(response.json);
+  if (!parsed.success) {
+    // The id is product configuration, not a person's letter, so naming it in an error is safe.
+    throw new Error(`GET /v1/model/${modelId} did not parse as a catalog row`);
+  }
+  return toModelMetadata(parsed.data);
 }
