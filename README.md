@@ -14,8 +14,20 @@ track**. Deadline: **2026-11-14 23:59 UTC**.
 
 Sightline **explains and answers questions about** a document. It is not a text-recognition tool:
 the value is "what does this mean and what do I have to do", read aloud in the order the answer
-matters, not a perfect transcription. For blind and low-vision users, who today hand sensitive
-mail to a sighted stranger or a chatbot with no privacy story.
+matters, not a perfect transcription.
+
+**Who it is for is a premise, not a finding.** The readers it is written for — blind and low-vision
+people who today hand sensitive mail to a sighted stranger or to a chatbot with no privacy story
+— have **never used this**. `ROADMAP.md` §9 set 2026-11-05 as the date by which one real session
+would have settled whether the premise holds; that date passed with nobody reachable (**B-01/D-07**
+is an open human decision, not a slipped task), so **U-04** fired and the Impact claim came down in
+the commit that recorded it. Accordingly **no sentence in this repository claims validated impact,
+improved comprehension, or a measured usability gain**, and none should be inferred from the demo.
+What *is* measured is behaviour and evidence: the flow and its refusals in the committed test suite,
+what each verification check does and does not prove on the receipt screen, and the audit
+(`npm run release:synthetic`, **R-07**) that every sample document here is synthetic. In
+`docs/ACCESSIBILITY_REPORT.md` the accessibility rows are automated checks in one headless browser:
+**no screen reader has run this app** (**A-03**/**A-04**), and it has not been run on a phone.
 
 Sensitive documents are the point. A photo or pasted letter goes to an AI service; Sightline's
 claim is about *which* service and *how* we know — see "What is verified" below.

@@ -179,7 +179,7 @@ No scoring weights are published. Previous NEAR hackathons evaluated technical i
 |---|---|---|
 | Technical implementation | Real attestation checks, signature verification, grounded two-step pipeline | Full TDX quote verification may not ship; say so |
 | Design | Tested accessibility, native camera, plain-language trust UI | Limited device testing |
-| Impact | Real need, one real-user session | Unvalidated until Day 3 |
+| Impact | Real need, one real-user session | **No session by 2026-11-05, so this is unvalidated by decision, not by schedule**: §9's trigger fired, **U-04** is `[!]`, and README's Impact claim was weakened in the commit that recorded it (`docs/USER_RESEARCH.md`) |
 | Originality | Verifiable privacy as the accessibility feature | Reading itself is not novel |
 | Sustainability | Open source, no data custody | **Who pays per document is unanswered** |
 
@@ -290,5 +290,6 @@ Ranked by (likelihood × damage).
 ### Decisions needed from you
 1. **Which devices and screen readers do you actually have?** This sets §7 testing honestly.
 2. **Can you reach one real blind or low-vision user by Day 3?** If not, say so in the README and weaken the Impact claim.
+   **Answered 2026-11-06: no.** The date in the roadmap version of this question was 2026-11-05 and it passed unanswered, so the second half of this instruction is what happened — README says so plainly and **U-04** is `[!]`. The question is still open as a *request*: one session before 2026-11-14 would be recorded as U-02 evidence and would be the first real finding this project has.
 3. **Are you willing to ship the weaker (but true) privacy sentence if E2EE is unavailable?** I recommend yes.
 4. **Who pays per document in a real deployment?** There is no good answer yet. A NEAR-based pay-per-use idea is the obvious story, but not a v1 build item.

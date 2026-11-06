@@ -4,11 +4,20 @@ Item **U-02** holds the sessions; **U-03** updates `docs/PRD.md` from them. Writ
 session happened, deliberately: the file exists so the absence of evidence is visible rather
 than implied.
 
-**Status as of 2026-11-02: no session has taken place.** U-01 (find at least one blind or
-low-vision person) is open and owned by the human. If nobody is reachable by **2026-11-05**,
-**U-04** applies: record it here, weaken the Impact claim in `README.md`, and mark the items
-`[!]`. Until a session happens, the personas and the "explanation beats transcription" premise
-in `docs/PRD.md` §2 remain an assumption we are honest about — not a finding.
+**Status as of 2026-11-06: the date passed and no session took place.** U-01 (find at least one
+blind or low-vision person) stayed open and stayed the human's; **2026-11-05 ended with nobody
+reachable**, so `ROADMAP.md` §9's trigger fired and **U-04** is recorded as `[!]` — the item's own
+instruction, not a softening of it. The two consequences the item names were both done in the
+commit that records the absence: the Impact claim in `README.md` is weakened, and this file now
+describes what passed rather than what was planned.
+
+Read this as what it is: **the premise is untested, not falsified.** Nothing here says a blind or
+low-vision reader would not use Sightline, and nothing here says they would. What changed is only
+that the honest tense is now fixed — the personas and the "explanation beats transcription" premise
+in `docs/PRD.md` §2 are an assumption the builders made about other people, and the only thing that
+can promote it to a finding is a session. One is still worth doing before 2026-11-14 and would be
+recorded here as U-02's evidence; it does not retroactively repair the claim that was made past its
+own deadline, and the README's weakened wording stays until a session actually happens.
 
 ## Why this project needs it
 
