@@ -351,7 +351,12 @@ inside a range Ofcom reserves for drama. `npm run release:docs` (**R-08**) reads
 the repository instead: no page may name a file that is gone, every script and every test must be
 listed where the structure document says it lists them, the commands table must equal `package.json`,
 the decision records must be a gap-free sequence with the newest one on the page a new reader is told
-to read first, and every item citation must reach a `ROADMAP.md` checkbox line. All four have been run
+to read first, every item citation must reach a `ROADMAP.md` checkbox line, and — the sixth check,
+item **R-15** — every unverified claim in a document must name, in the same paragraph or table row or
+directory-tree line, the item or the open decision that could close it, because a marker with no owner
+is how an honest hedge ages into a sentence nobody reads. Eleven such claims are open in this repo and
+each now has a name against it; none of them was closed by an edit, which is not what a check can do.
+All four have been run
 against deliberately broken copies of their own subject and refused — the first two against a throwaway
 repository holding a planted synthetic key that was committed then deleted, plus one staged but never
 committed; the third against nine mutations and the control run beside them (a real-format number and
@@ -359,7 +364,12 @@ email planted in the recorded transcript, a provenance block
 without its signature, a photograph carrying EXIF, one byte changed, a fixture the audit could not
 name); the fourth against five breaks planted in the prose itself — a file renamed in one table row, a
 test row deleted, a command the manifest does not define, a decision record renumbered past its own
-sequence, a citation to an item that was never created. The secrets scan also refused **this
+sequence, a citation to an item that was never created — and the sixth against six more, each refused
+for its own reason: an owner deleted from a marker's row, a document's legend renamed so it stops
+reading as a legend, the same unowned marker planted above and below the roadmap's append-only log (the
+first refused, the second left alone, which is the difference between a live claim and history), three
+markers waiting on one item that never says what the answer would change, and a marker in the directory
+tree whose neighbour's item ID was not allowed to cover for it. The secrets scan also refused **this
 repository's own test fixture** — its first version
 spelled nine credential shapes out in full, and both GitHub's push protection and the scan said so
 before anything was published — which is why those planted values are assembled at runtime and a test

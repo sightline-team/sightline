@@ -46,6 +46,24 @@
  * citation to nothing, and renumbering — which §2 forbids — would show up here rather than in a
  * judge's reading.
  *
+ * **F6 — an `[Unverified]` marker may not be orphaned** (item **R-15**). A marker is a promise that
+ * something has not been measured yet, and AGENTS.md §6 forbids promoting "probably" to "verified";
+ * the mirror failure is a marker that names no owner, because it ages into noise and a reader learns
+ * to skip the whole class. So every live marker must sit in the unit that makes it — a paragraph, one
+ * table row, one line of a fenced tree — that names the item, or the §8 blocker, that can resolve it;
+ * and an owner credited with two or more markers must say, in at least one of them, what the answer
+ * would change. The unit matters: the directory tree in `docs/PROJECT_STRUCTURE.md` has no blank lines
+ * in it, so reading it as one paragraph would let any ID anywhere in a hundred lines own every marker
+ * in all of them. Three things are *not* markers: a token
+ * inside backticks, which is the word being discussed rather than a claim being labelled (three of
+ * this repository's own rule sentences write it that way), and any mention inside a **marker key** —
+ * the line at the top of a document that opens "Markers:" and defines the vocabulary. That shape is
+ * the convention rather than a loophole: three documents already wrote their legend that way and
+ * **R-15** brought `AGENTS.md` and `ARCHITECTURE_ESSENTIALS.md` into line rather than teaching the
+ * audit to guess at prose, and `--verbose` prints how many mentions were read as vocabulary, so a key
+ * used as a hiding place stays visible. `ROADMAP.md` is read **up to §10**: the log below that heading
+ * is append-only by §3, so a gate firing inside it could not be answered by an edit.
+ *
  * What this **cannot** check, printed in the verdict rather than hidden: whether a sentence that
  * names a real file still describes it correctly, whether a **path** is at the directory it claims
  * (matching is by basename, so `src/lib/gone/quote.ts` passes while `quote.ts` lives elsewhere),
@@ -68,6 +86,8 @@ export const CHECKS = [
   { id: 'F3', name: 'command_mismatch', means: 'a command is documented without existing, or exists without a row' },
   { id: 'F4', name: 'adr_mismatch', means: 'the ADR table is not a unique contiguous sequence, or a reference reaches nothing' },
   { id: 'F5', name: 'item_reference_dangling', means: 'a document cites a ROADMAP item ID that no checkbox line defines' },
+  { id: 'F6', name: 'marker_unowned', means: 'an [Unverified] marker names no item or blocker that could resolve it' },
+  { id: 'F6', name: 'marker_owner_unstated', means: 'an owner credited with two or more markers never says what the answer would change' },
 ] as const;
 
 
@@ -335,6 +355,153 @@ export function itemReferenceProblems(docsTexts: [string, string][], defined: Se
   return out;
 }
 
+/**
+ * The IDs that can own a marker: an item's checkbox line, or a §8 blocker row. A blocker is an owner
+ * because that table's whole column set is "what, why, what unblocks it" — `B-07` owning the browser
+ * E2EE marker is the accurate answer, not a way out of naming an item.
+ */
+export function ownerIds(roadmap: string): Set<string> {
+  const out = definedItems(roadmap);
+  for (const m of roadmap.matchAll(/^\| ([A-Z]{1,2}-\d{2}) \|/gm)) if (m[1]) out.add(m[1]);
+  return out;
+}
+
+/** A paragraph, or one row of a table, or one line of a fenced block. */
+type Block = { lines: { n: number; text: string }[]; text: string };
+/**
+ * The units a claim is made in. A table row is one unit and so is one line of a fenced block —
+ * `docs/PROJECT_STRUCTURE.md`'s directory tree runs to a hundred lines with no blank among them, and
+ * reading it as one paragraph would let any item ID anywhere in the tree own every marker in it.
+ */
+export function blocks(md: string): Block[] {
+  const out: Block[] = [];
+  let cur: Block | null = null;
+  let fence = false;
+  md.split('\n').forEach((text, i) => {
+    if (/^\s*```/.test(text)) {
+      fence = !fence;
+      cur = null;
+      return;
+    }
+    if (fence || /^\s*\|/.test(text)) {
+      out.push({ lines: [{ n: i + 1, text }], text });
+      cur = null;
+      return;
+    }
+    if (text.trim() === '') {
+      cur = null;
+      return;
+    }
+    if (!cur) {
+      cur = { lines: [], text: '' };
+      out.push(cur);
+    }
+    cur.lines.push({ n: i + 1, text });
+    cur.text = cur.text ? `${cur.text} ${text}` : text;
+  });
+  return out;
+}
+
+/**
+ * The part of a document that makes live claims. `ROADMAP.md` §10 is the append-only measurement log
+ * (AGENTS.md §3 forbids rewriting it), so a marker below that heading cannot be answered by an edit
+ * and is read as history rather than as a promise.
+ */
+export function liveClaimsText(rel: string, text: string): string {
+  if (rel !== 'ROADMAP.md') return text;
+  const at = text.search(/^## 10\./m);
+  return at < 0 ? text : text.slice(0, at);
+}
+
+const MARKER_TOKEN = /\[(?:Unverified|U)\]/g;
+const CODE_RANGE = /`[^`]*`/g;
+/**
+ * A document's **marker key**: the one line that opens by defining the vocabulary — `Markers: …`,
+ * `Marker vocabulary (AGENTS.md §6): …`. Markers inside such a block are the words being defined, not
+ * claims being labelled, so they are read out — and the shape is the convention rather than a loophole,
+ * because five of this repository's documents already write their legend that way and **R-15** brought
+ * the other two into line instead of teaching the audit to guess. The count of skipped mentions is
+ * printed by `--verbose`, so a legend used as a hiding place is visible.
+ */
+const MARKER_KEY = /^\s*>?\s*[-*\d.)]*\s*\**\s*Markers?\b[^|]*:/;
+const CONSEQUENCE = /\bchang(?:e|es|ed|ing)\b/i;
+
+export function codeRanges(line: string): (readonly [number, number])[] {
+  const out: [number, number][] = [];
+  for (const m of line.matchAll(CODE_RANGE)) out.push([m.index, m.index + m[0].length]);
+  return out;
+}
+
+/**
+ * F6: an `[Unverified]` marker must name the thing that can close it, and an owner that carries more
+ * than one marker must say what a measurement would change. The tally comes back too, because the
+ * `--verbose` verdict is where a reader sees which open questions this project is actually waiting on.
+ */
+export function markerOwnershipProblems(
+  docsTexts: [string, string][],
+  owners: Set<string>,
+): { problems: Problem[]; tally: Map<string, number>; live: number; vocabulary: number } {
+  const problems: Problem[] = [];
+  const tally = new Map<string, number>();
+  const consequences = new Map<string, boolean>();
+  let live = 0;
+  let vocabulary = 0;
+  for (const [where, whole] of docsTexts) {
+    for (const block of blocks(liveClaimsText(where, whole))) {
+      const isKey = MARKER_KEY.test(block.lines[0]!.text);
+      const ids = [...new Set([...block.text.matchAll(ITEM_REF)].map((m) => m[1]).filter((id): id is string => !!id && owners.has(id)))];
+      const says = CONSEQUENCE.test(block.text);
+      for (const line of block.lines) {
+        const ranges = codeRanges(line.text);
+        for (const m of line.text.matchAll(MARKER_TOKEN)) {
+          if (isKey) {
+            vocabulary++;
+            continue;
+          }
+          if (ranges.some(([from, to]) => m.index >= from && m.index < to)) continue; // the word being discussed
+          live++;
+          if (ids.length === 0) {
+            problems.push({
+              check: 'marker_unowned',
+              where: `${where}:${line.n}`,
+              means: 'an [Unverified] marker with no item or blocker named in its paragraph or row, so nothing can ever close it',
+            });
+            continue;
+          }
+          // Attribution is by *proximity in reading order*: the closest item named before the marker,
+          // or the closest one after it if nothing precedes it. Both prose styles exist in this repo —
+          // "T-10: audio is [Unverified]" labels first, "[Unverified] — owned by T-10" cites after —
+          // and crediting every ID in the paragraph instead would read one busy sentence as several
+          // open questions, which would then make the rule below measure prose length.
+          const at = block.text.indexOf(line.text) + m.index;
+          const hits = ids.map((id) => ({ id, positions: [...block.text.matchAll(new RegExp(`\\b${id}\\b`, 'g'))].map((h) => h.index) }));
+          const closest = (side: 'before' | 'after') =>
+            hits
+              .map((h) => {
+                const candidates = h.positions.filter((p) => (side === 'before' ? p <= at : p >= at));
+                if (candidates.length === 0) return undefined;
+                return { id: h.id, d: (side === 'before' ? Math.max(...candidates) : Math.min(...candidates)) - at };
+              })
+              .filter((p): p is { id: string; d: number } => p !== undefined)
+              .sort((a, b) => Math.abs(a.d) - Math.abs(b.d))[0];
+          const owner = (closest('before') ?? closest('after'))!.id;
+          tally.set(owner, (tally.get(owner) ?? 0) + 1);
+          consequences.set(owner, (consequences.get(owner) ?? false) || says);
+        }
+      }
+    }
+  }
+  for (const [id, count] of [...tally].sort((a, b) => b[1] - a[1])) {
+    if (count < 2 || consequences.get(id)) continue;
+    problems.push({
+      check: 'marker_owner_unstated',
+      where: id,
+      means: `${count} markers wait on ${id} and none of them says what the answer would change`,
+    });
+  }
+  return { problems, tally, live, vocabulary };
+}
+
 export function audit(root: string): { problems: Problem[]; counts: Record<string, number | string> } {
   const files = listFiles(root);
   const known = basenames(files);
@@ -358,6 +525,8 @@ export function audit(root: string): { problems: Problem[]; counts: Record<strin
   problems.push(...adrReferenceProblems(texts, adr.highest, essentials));
   const defined = definedItems(roadmap);
   problems.push(...itemReferenceProblems(texts, defined));
+  const markers = markerOwnershipProblems(texts, ownerIds(roadmap));
+  problems.push(...markers.problems);
 
   const uniq = new Map<string, Problem>();
   for (const p of problems) if (!uniq.has(`${p.check}|${p.where}`)) uniq.set(`${p.check}|${p.where}`, p);
@@ -372,6 +541,10 @@ export function audit(root: string): { problems: Problem[]; counts: Record<strin
       'ROADMAP items': defined.size,
       'npm scripts': scripts.length,
       '[Unverified] markers': markerCount,
+      'markers read as live claims (F6)': markers.live,
+      'markers read as vocabulary or prose about the word (F6)': markers.vocabulary,
+      'owners with markers (F6)': markers.tally.size,
+      'owners carrying two or more (F6)': [...markers.tally].filter(([, n]) => n >= 2).map(([id, n]) => `${id} ×${n}`).join(', ') || 'none',
     },
   };
 }
@@ -394,12 +567,16 @@ function main(): void {
   if (problems.length === 0) {
     console.log('\ndocs-audit OK — every file a document names exists, every real file under scripts/tests/src is listed,');
     console.log('  every command agrees between package.json, the commands table and the prose, the ADR sequence is whole');
-    console.log('  and appears on the essentials page, and every item reference reaches a ROADMAP checkbox line.');
+    console.log('  and appears on the essentials page, every item reference reaches a ROADMAP checkbox line, and every');
+    console.log('  [Unverified] claim names the item or blocker that could close it.');
     console.log('Outside this audit, and not excused by it: whether a sentence that names a real file still describes it');
     console.log('  correctly is a reading task, not a shape — that is the other half of R-08 and it belongs to a person.');
     console.log('  Names resolve by basename, so a path in the wrong directory is not a finding; URLs and ' + F1_OUT_OF_SCOPE.join(' / ') + ' are');
     console.log("  somebody else's tree and read as citations. Item references are checked only for the prefixes ROADMAP.md");
     console.log('  uses, so Q-001 (a HACKATHON question) is left alone. The file-by-file promise is made by: ' + STRUCTURE_DOCS.join(', ') + '.');
+    console.log('  A marker inside backticks is the word being discussed, a block opening "Markers:" is the document');
+    console.log('  defining its vocabulary, and ROADMAP.md is read up to its §10 log, which §3 of the same file forbids');
+    console.log('  rewriting. None of this closes a marker — an unverified claim ends with a measurement, not an edit.');
     return;
   }
   console.log(`\ndocs-audit FAILED — ${problems.length} problem(s):`);

@@ -9,13 +9,16 @@ import {
   definedItems,
   itemReferenceProblems,
   listFiles,
+  liveClaimsText,
+  markerOwnershipProblems,
+  ownerIds,
   staleFileReferences,
   tableCommands,
   unlistedFiles,
 } from '../../scripts/docs-audit';
 
 /**
- * Tests for the documentation consistency audit (item **R-08**).
+ * Tests for the documentation consistency audit (items **R-08** and **R-15**).
  *
  * The two properties that matter, asserted rather than described: **each check fires on the drift it
  * names**, because a gate that has only ever printed OK has not been observed to reject anything
@@ -27,6 +30,11 @@ import {
  */
 
 const known = new Set(['spike.ts', 'roadmap-check.ts', 'reducer.ts', 'quote.ts', 'route.ts', 'cases.ts', 'ci.yml']);
+
+/** The owners F6 accepts, spelled out here so a test does not depend on the live ledger. */
+const owners = new Set(['S-03', 'T-10', 'B-07', 'P-09']);
+const f6 = (md: string, where = 'docs/TEST.md') => markerOwnershipProblems([[where, md]], owners);
+const found = (md: string, where?: string) => f6(md, where).problems;
 
 describe('F1 — a document may not name a file that is gone', () => {
   it('fires on a stale module path in the tree', () => {
@@ -199,6 +207,60 @@ describe('F5 — an item citation must reach an item', () => {
 
   it('clears every citation the roadmap defines', () => {
     expect(itemReferenceProblems([['docs/PRD.md', 'owned by R-08 and A-17']], definedItems(roadmap))).toEqual([]);
+  });
+});
+
+describe('F6 — an unverified claim must name what could close it', () => {
+  it('fires on a marker no paragraph takes responsibility for, and clears when one does', () => {
+    expect(found('The gateway signs the stream instead. [Unverified]').map((f) => f.where)).toEqual(['docs/TEST.md:1']);
+    expect(found('The gateway signs the stream instead. [Unverified] — owned by S-03.')).toEqual([]);
+  });
+
+  it('accepts a blocker as an owner, because a blocker is the decision that closes the question', () => {
+    expect(found('Browser E2EE [Unverified], waiting on B-07')).toEqual([]);
+  });
+
+  it('reads a marker inside backticks as the word, not a claim', () => {
+    // Three of this repository's own rule sentences write it that way; the gate must not shout at prose.
+    expect(found('Do not build on `[Unverified]` until its spike item is done.')).toEqual([]);
+    expect(f6('Do not build on `[Unverified]` until its spike item is done.').live).toBe(0);
+    expect(found('The `[U]` shorthand means still unknown.')).toEqual([]);
+  });
+
+  it('reads a marker key as a definition, including on the wrapped lines of the same paragraph', () => {
+    const key = ['**Markers:** **[Verified]** = read in official docs.', '**[Unverified]** = to be checked, nothing more.'].join('\n');
+    expect(found(key)).toEqual([]);
+    expect(f6(key).vocabulary).toBe(1); // only the unverified shape is ever counted, and here it is a definition
+    // The shape is a convention, not a loophole: the very next paragraph is read as a claim.
+    expect(found([key, '', 'Tee speech is [Unverified] here.'].join('\n'))).toHaveLength(1);
+  });
+
+  it('does not let a table row hide behind a neighbour row, or behind the paragraph above it', () => {
+    const md = ['A run of notes about S-03 and its measurements.', '', '| TEE text-to-speech | [Unverified], assume none |'].join('\n');
+    expect(found(md).map((f) => f.where)).toEqual(['docs/TEST.md:3']);
+  });
+
+  it('credits the nearest item, so a paragraph naming three does not become three open questions', () => {
+    const { tally } = f6('T-10: audio is [Unverified]. S-03: the refusal field is [Unverified].');
+    expect([...tally]).toEqual([['T-10', 1], ['S-03', 1]]);
+  });
+
+  it('demands that an owner carrying two markers says somewhere what the answer would change', () => {
+    const two = 'First [Unverified] (T-10). Second [Unverified] (T-10).';
+    expect(found(two).map((f) => f.check)).toEqual(['marker_owner_unstated']);
+    expect(found(`${two} Whether the enclave decrypts the payload changes which sentence claims.ts may show.`)).toEqual([]);
+  });
+
+  it('reads ROADMAP only up to the append-only log, and every other document in full', () => {
+    const md = ['## 9. Something', '', 'a live claim [Unverified] (S-03)', '', '## 10. Log', '', 'a dated note [Unverified]'].join('\n');
+    expect(f6(md, 'ROADMAP.md').live).toBe(1);
+    expect(liveClaimsText('docs/PRD.md', md)).toBe(md);
+  });
+
+  it('takes blocker rows from the ledger as owners, not only checkbox lines', () => {
+    const roadmap = ['- [x] **S-03** measured', '| B-07 | a dependency | T-10 | Human | 2026-11-02 | Open |'].join('\n');
+    expect([...ownerIds(roadmap)].sort()).toEqual(['B-07', 'S-03']);
+    expect(definedItems(roadmap)).toEqual(new Set(['S-03']));
   });
 });
 

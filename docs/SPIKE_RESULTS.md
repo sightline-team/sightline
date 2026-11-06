@@ -89,9 +89,10 @@ Protocol (v2), quoted field for field:
 | Endpoints that accept encrypted input | `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/images/generations`. **`/v1/responses` does not.** |
 | Legacy scheme | SECP256K1 ECDH + HKDF + AES-256-GCM, 128-hex keys, info `"ecdsa_encryption"`, `[eph 65 B][nonce 12 B][ct]` |
 
-**[Unverified] from a browser.** The documented examples are Python and Node (they use Node `crypto`
-`randomBytes`). No browser/WebCrypto path is documented anywhere we read. This matters because it is
-the whole of our privacy claim (ARCH §10, PRD §8):
+**[Unverified] from a browser** — owned by **T-10**, waiting on the dependency decision **B-07**, and
+nothing in the claims ladder moves until one of those two runs (PRD §8). The documented examples are
+Python and Node (they use Node `crypto` `randomBytes`). No browser/WebCrypto path is documented
+anywhere we read. This matters because it is the whole of our privacy claim (ARCH §10, PRD §8):
 
 - XChaCha20-Poly1305 is **not** a WebCrypto algorithm → needs a pure-JS implementation.
 - `@noble/ciphers` provides `xchacha20poly1305`, `@noble/curves` provides Ed25519 → X25519 conversion,

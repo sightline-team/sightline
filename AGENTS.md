@@ -85,7 +85,7 @@ Run `lint`, `typecheck`, `test` and `roadmap:check` before every commit. If a co
 
 ## 6. Facts and uncertainty
 
-- Docs mark claims **[Verified]** (read in official docs) or **[Unverified]** (to be checked). Do not build on `[Unverified]` until its spike item is done.
+- **Markers:** **[Verified]** = read in official docs or vendor source, with the source named. **[Measured]** = run against the live service, output recorded in `docs/SPIKE_RESULTS.md`. **[Unverified]** = still unknown; do not build on it until its spike item is done. A marker written in backticks (`[Unverified]`) is this word, not a claim.
 - If you need an unknown NEAR AI Cloud detail, read the official docs or the reference verifier, record the finding in `docs/SPIKE_RESULTS.md`, and update the marker. If you cannot confirm it, say so in the code comment, the ROADMAP log, and the PR.
 - Never promote "probably" to "verified".
 
