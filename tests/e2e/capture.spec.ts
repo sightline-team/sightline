@@ -74,6 +74,27 @@ function blocking(results: Awaited<ReturnType<AxeBuilder['analyze']>>) {
     .map((v) => `${v.id} (${v.impact}): ${v.nodes.map((n) => n.html).join(' | ')}`);
 }
 
+/**
+ * Wait until no colour fade is in flight, so an axe run measures a state rather than a frame of a
+ * transition (**A-19**).
+ *
+ * axe reads `getComputedStyle` the instant it is called. Adding a photograph enables the primary
+ * control, and A-17's hover/press layer has `background-color` and `color` on a 120 ms transition,
+ * so the button spends that window crossing white/`#4A4A5A` → `#0B5CAD`/white through frames like
+ * `rgb(83,140,197)` under `rgb(202,202,205)` — about 1.9:1. Measuring there reports a contrast
+ * violation the app does not have: **AGENTS.md §8** asks for 4.5:1 in the states a person reads, and
+ * a fade is not a state. Waiting for the fade instead of sleeping a fixed number of milliseconds
+ * keeps the check deterministic under load, which is when it was failing.
+ *
+ * Transitions only, deliberately: an infinite looping animation reports `running` for the whole life
+ * of the page, so filtering on it would hang the suite. `CSSTransition` is what a colour fade is.
+ */
+async function nothingIsFading(page: Page) {
+  await page.waitForFunction(() =>
+    document.getAnimations().every((a) => !(a instanceof CSSTransition) || a.playState === 'finished'),
+  );
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
 });
@@ -305,6 +326,7 @@ test.describe('the screen is reachable and honest (AGENTS.md §8)', () => {
     expect(blocking(await new AxeBuilder({ page }).analyze()), 'axe on the empty capture screen').toEqual([]);
 
     await addPhotographs(page, [await photo(page, 'one.jpg'), await photo(page, 'two.jpg')]);
+    await nothingIsFading(page);
     expect(blocking(await new AxeBuilder({ page }).analyze()), 'axe with two pages, previews and controls').toEqual([]);
   });
 

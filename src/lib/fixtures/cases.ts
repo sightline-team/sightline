@@ -46,7 +46,7 @@ Date of issue: 2 February 2026
 Amount due: £840
 Payment deadline: 14 March 2026
 Our bank: Riverside Building Society, sort code 00-00-00, account 12345678
-If you cannot pay by the deadline, telephone 0300 123 0000 and ask for the payments team.
+If you cannot pay by the deadline, telephone 01632 960 441 and ask for the payments team.
 
 This letter is synthetic demo data written for Sightline. It describes no real person,
 provider, account or debt.`;
@@ -56,7 +56,7 @@ Statement for account 12345678
 Closing balance: £1,204.55 in credit
 Direct debit: Grid Energy, £62.10 on 5 March 2026
 Overdraft fee: £0.00 this month
-Call 0345 000 1111 if you do not recognise a payment.
+Call 01632 960 117 if you do not recognise a payment.
 
 This letter is synthetic demo data written for Sightline. No real bank, account or
 balance appears in it.`;
@@ -77,7 +77,7 @@ Bus pass renewal letter
 Reference: BP-2026-0188
 Renew by: 30 April 2026 to keep travelling free
 Take this letter and your old pass to a One Stop Centre.
-Telephone 01234 560 000 if you cannot get to one.
+Telephone 01632 960 203 if you cannot get to one.
 
 This letter is synthetic demo data written for Sightline. It describes no real person,
 address, bus pass or council.`;
@@ -96,7 +96,7 @@ export const FIXTURE_CASES: FixtureCase[] = [
         { kind: 'reference', label: 'Invoice number', value: 'NC-2026-0441', sourceQuote: 'Invoice NC-2026-0441' },
         { kind: 'amount', label: 'Amount due', value: '£840', sourceQuote: 'Amount due: £840' },
         { kind: 'date', label: 'Payment deadline', value: '14 March 2026', sourceQuote: 'Payment deadline: 14 March 2026' },
-        { kind: 'phone', label: 'Payments team', value: '0300 123 0000', sourceQuote: 'telephone 0300 123 0000' },
+        { kind: 'phone', label: 'Payments team', value: '01632 960 441', sourceQuote: 'telephone 01632 960 441' },
       ],
       actions: [
         {
@@ -111,9 +111,9 @@ export const FIXTURE_CASES: FixtureCase[] = [
       { question: 'How much do I have to pay?', answer: 'You have to pay 840 pounds.', notInDocument: false, sourceQuote: 'Amount due: £840' },
       {
         question: 'Who do I call if I cannot pay by the deadline?',
-        answer: 'Telephone 0300 123 0000 and ask for the payments team.',
+        answer: 'Telephone 01632 960 441 and ask for the payments team.',
         notInDocument: false,
-        sourceQuote: 'telephone 0300 123 0000 and ask for the payments team.',
+        sourceQuote: 'telephone 01632 960 441 and ask for the payments team.',
       },
       {
         question: 'What is the invoice reference?',
@@ -156,12 +156,12 @@ export const FIXTURE_CASES: FixtureCase[] = [
           sourceQuote: 'Closing balance is £1,204.55',
         },
         { kind: 'date', label: 'Direct debit', value: '5 March 2026', sourceQuote: '£62.10 on 5 March 2026' },
-        { kind: 'phone', label: 'Fraud line', value: '0345 000 1111', sourceQuote: 'Call 0345 000 1111' },
+        { kind: 'phone', label: 'Fraud line', value: '01632 960 117', sourceQuote: 'Call 01632 960 117' },
       ],
       actions: [
         {
           text: 'Ring the bank if a payment is unfamiliar',
-          sourceQuote: 'Call 0345 000 1111 if you do not recognise a payment.',
+          sourceQuote: 'Call 01632 960 117 if you do not recognise a payment.',
         },
       ],
       warnings: [{ kind: 'financial', text: 'A direct debit of 62 pounds 10 pence leaves the account on 5 March 2026.' }],

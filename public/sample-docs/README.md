@@ -57,11 +57,38 @@ Cases the golden set must cover, from PRD §11 and ARCH §14:
 
 ## Rules for adding files
 
+These are enforced by `npm run release:synthetic` (**R-07**, **ADR-39**) rather than by diligence: it
+classifies every file in the corpus, **fails on one it cannot name**, scans every string value in
+every one of them (the recorded SHA-256 digests included) for eleven personal-data shapes, and prints
+rule + source + length for a match — never the matched value, because a real NHS number in a CI log
+would be the audit creating the thing it hunts.
+
 - Synthetic content, invented sender, invented reference numbers, invented NHS/account numbers.
-- Never a photograph of a real document, including the author's own.
+- **A telephone number may come only from Ofcom's table of numbers reserved for TV and radio drama**
+  — the geographic drama range, the mobile drama range, the London drama range and the rest, all
+  twenty listed as data in `DRAMA_RANGES` in `scripts/synthetic-audit.ts` (transcribed second-hand
+  from a reproduction of Ofcom's extract, because ofcom.org.uk answers this machine with 403; the
+  table lives in the script rather than in prose, and a test asserts each range's own first number is
+  accepted and one past its thousand is not). "Invented" is not a checkable property — a
+  plausible-looking non-geographic number is real-format and nobody can prove it is nobody's —
+  while a reserved range is a claim with a source. Three numbers in the demo corpus moved into the
+  geographic drama range on 2026-11-05 for exactly that reason.
+- **This README is inside the audited tree, so it may not quote a refused number either.** It used to
+  spell out the three it moved, and the audit failed the run on this file's own prose (rule, source,
+  length — the digits are deliberately not printed here, and that is the rule working, not an
+  exemption). Describe a shape by what it is, not by an example of it.
+- Never a photograph of a real document, including the author's own. A drawn page has no reason to
+  own camera metadata, so the audit parses each shipped JPEG's segment table and refuses EXIF, XMP,
+  Photoshop-3.0 and COM segments, then hashes the bytes it read and compares the digest with the one
+  the recording keys on (**ADR-31**) — the photograph audited is the photograph Demo mode answers for.
 - Never a screenshot of real mail from a real inbox.
 - `expected.json` is the ground truth a human wrote, not model output saved as truth — otherwise
   the golden set measures the model against itself.
+
+What the audit cannot see is in its own verdict: whether an invented *name* (`Northgate Example
+Trust`) happens to belong to something real is a lookup, not a shape; and nothing in a repository can
+see a document a person typed into a live run, which is AGENTS.md §4 rule 7 (never persisted) and
+**R-06** (never committed).
 
 **Current state: three recorded demo photographs, and no golden set.** `photographs/` exists because
 of **S-11**; the case table above is still entirely unbuilt, so no accuracy number may be quoted

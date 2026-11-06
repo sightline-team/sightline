@@ -326,12 +326,19 @@ The same rule is why the release checks are scripts with mutation proofs rather 
 `npm run release:clean-checkout` (**R-03**) proves README's two commands from an anonymous clone of
 the pushed `main`. `npm run release:secrets` (**R-06**) reads **every object in the object
 database** — reachable or not, text or JPEG — and reports a match as rule, path, commit and length
-only, never as the matched text. Both were run against a throwaway repository holding a planted
-synthetic key that was committed and then deleted, plus one staged but never committed: the scan
-named both, and refused. It has refused **this repository's own test fixture** too — the first
-version spelled nine credential shapes out in full, and both GitHub's push protection and this scan
-said so before anything was published — which is why those planted values are assembled at runtime
-and a test asserts the fixture file's own bytes are clean. `.env` is ignored and has never been
-added; CI takes no credential. What
-neither can see is the key that once crossed into a conversation log, which is a rotation task
-(**B-11**) rather than a git finding.
+only, never as the matched text. `npm run release:synthetic` (**R-07**) walks the sample-document
+corpus itself: every file must classify, every letter must say in its own text that it is synthetic,
+every recorded reply must carry a signature-verified provenance block, every shipped photograph must
+be metadata-free and hash to the digest Demo mode keys on, and every telephone number in it must sit
+inside a range Ofcom reserves for drama. All three have been run against deliberately broken copies
+of their own subject and refused — the first two against a throwaway repository holding a planted
+synthetic key that was committed then deleted, plus one staged but never committed; the third against
+ten mutations (a real-format number and email planted in the recorded transcript, a provenance block
+without its signature, a photograph carrying EXIF, one byte changed, a fixture the audit could not
+name). The secrets scan also refused **this repository's own test fixture** — its first version
+spelled nine credential shapes out in full, and both GitHub's push protection and the scan said so
+before anything was published — which is why those planted values are assembled at runtime and a test
+asserts the fixture file's own bytes are clean. `.env` is ignored and has never been added; CI takes
+no credential. What none of the three can see is the key that once crossed into a conversation log,
+which is a rotation task (**B-11**) rather than a git finding, and what none of them can see in **any**
+document is what a person types into a live run — that is AGENTS.md §4 rule 7, not a script.

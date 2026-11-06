@@ -24,6 +24,7 @@
     "crosscheck": "tsx --env-file-if-exists=.env scripts/crosscheck.ts",
     "release:clean-checkout": "tsx scripts/clean-checkout.ts",
     "release:secrets": "tsx scripts/secrets-scan.ts",
+    "release:synthetic": "tsx scripts/synthetic-audit.ts",
     "roadmap:check": "tsx scripts/roadmap-check.ts",
     "hooks:install": "git config core.hooksPath .githooks"
   },
