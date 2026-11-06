@@ -104,7 +104,7 @@ Run `lint`, `typecheck`, `test` and `roadmap:check` before every commit. If a co
 - Native HTML first (`button`, `label`, `details`, headings, landmarks). ARIA only when HTML cannot express it.
 - Every status change goes through the single announcer (`lib/a11y/announcer`). No silent transitions. Progress is announced about every 10 s, not per tick.
 - Move focus to the new view's heading after navigation; to the error summary after failure.
-- Results order is fixed: Summary → Key facts → Actions → Warnings → Full text → Ask → Trust receipt.
+- Results order is fixed, in the words the headings actually show: Summary → Key facts → What you may need to do (the "actions" section) → Warnings → Full text → Ask a question → Verification. The receipt itself is on `/trust`.
 - No gesture-only actions, targets at least 44×44 px, visible focus, contrast 4.5:1, honour `prefers-reduced-motion` and `prefers-contrast`.
 - Plain language in the main flow. "TEE" and "attestation" appear only inside details views.
 - Automated axe results are necessary but not sufficient. Never claim a platform was tested unless it was; list untested platforms.

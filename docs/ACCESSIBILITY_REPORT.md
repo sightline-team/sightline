@@ -24,7 +24,7 @@ The rows below are the honest current state of each.
 | 3 | Exactly one live region, `aria-live="polite"`, `role="status"`; landmarks; `lang="en"`; viewport not zoom-locked | Playwright DOM assertions, same file | 2026-11-02 | Pass |
 | 4 | The completed Mode F flow — paste a demo document, read the results — axe-swept for all three demo documents | `tests/e2e/flow.spec.ts`, Chromium headless, dev server with no credentials | 2026-11-03 | 0 serious or critical violations; 26 tests passed (13 shell, 13 flow) |
 | 5 | Focus after navigation lands on the results `<h1>`; after a failure, on the error summary | Playwright `toBeFocused()` on the same run | 2026-11-03 | Pass |
-| 6 | Section order (Summary → Key facts → Actions → Warnings → Full text → Ask → Verification) is what a reader navigates by | `main h2` text asserted as an array | 2026-11-03 | Pass |
+| 6 | Section order (Summary → Key facts → What you may need to do → Warnings → Full text → Ask a question → Verification) is what a reader navigates by | `main h2` text asserted as an array | 2026-11-03 | Pass |
 | 7 | The ungrounded fact is flagged in **words**, not by colour; every `main button` is ≥ 44 px tall; the keyboard path reaches the text box and the submit control in order | Playwright, same file | 2026-11-03 | Pass |
 | 8 | Only one `role="status"` region exists during client navigation, and the route title is identical on every route | Playwright, same file | 2026-11-03 | Pass |
 | 9 | The Forget control (P-10) is reachable on all four routes, and one press empties the screen, says so through the announcer, moves focus to the heading of what is left, and is ≥ 44 px | Playwright `toBeFocused()` + `boundingBox()`, same file | 2026-11-03 | Pass (47 tests: 12 shell, 35 flow) |

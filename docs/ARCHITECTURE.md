@@ -755,7 +755,7 @@ CSP: `connect-src` limited to self and NEAR AI Cloud hosts (including `*.complet
   `metadata.title` therefore adds a second voice, assertively, in the one place AGENTS.md §8
   forbids it. Guarded by `tests/e2e/flow.spec.ts`; decided properly by item **A-16**.
 - Focus moves to the new view's heading on route change; to the error summary on failure.
-- Results order: Summary → Key facts → Actions → Warnings → Full text → Ask → Trust receipt. "Skip to full text" link.
+- Results order, in the words on the headings: Summary → Key facts → What you may need to do → Warnings → Full text → Ask a question → Verification (the receipt is on `/trust`). "Skip to full text" link.
   Warnings holds two named lists (§13, P-07): Sightline's own notices first, then the reading's own
   warnings under an `<h3>`. Adding content there rather than a section is deliberate — the order
   above is what a returning reader navigates by.

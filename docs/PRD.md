@@ -1,7 +1,7 @@
 # Sightline — Product Requirements Document
 
 > **Working title.** Rename freely.
-> **Version:** 0.3 (Day-1 spike reading folded in; claims ladder unchanged) · **Date:** 2 Nov 2026
+> **Version:** 0.4 (the 2026-11-06 documentation-consistency pass, **R-08**, folded in) · **Date:** 6 Nov 2026 · the body carries measurements dated 2026-11-03 to 2026-11-06
 > **Hackathon:** NEAR Hackathon · **Track:** Privacy & Private AI (also eligible for Open Innovation)
 > **Hard deadline:** 14 Nov 2026, 23:59 UTC (public repo + X demo post + form)
 
@@ -60,7 +60,7 @@ Not in scope: deaf and hard-of-hearing users.
 1. **Open** the app (works in a phone or desktop browser).
 2. **Add content:** take photos with the native camera (1–5 pages) **or** paste text.
 3. **Send:** the app checks the enclave attestation, then sends the images or text.
-4. **First read** (images only): verbatim transcript comes back first. If the model reports capture problems (page cut off, glare, sideways, tiny text), the app says so and offers a retake before spending time on analysis.
+4. **First read** (images only): verbatim transcript comes back first. If the model reports capture problems (page cut off, glare, sideways, tiny text), the app says so and offers a retake before spending time on analysis. **As built (C-02/C-03/C-11):** it says so — the reported issues are summarised out loud before the reading goes on — and then **carries on**; the retake offer that *stops the run for an answer* is **C-04**, still open, and the capture screen's own controls are remove / retake-last / remove-all. The step-4 wording above is the target, not the shipped gate.
 5. **Understand:** summary, key facts with quoted sources, actions needed, warnings.
 6. **Ask:** type a question (the on-screen keyboard's dictation works, see R4).
 7. **Trust receipt:** shows what was verified and what was not.
@@ -81,15 +81,15 @@ Not in scope: deaf and hard-of-hearing users.
 - Step 1, **transcribe** (vision model): verbatim text, tables kept row by row, unreadable spans marked, plus `captureIssues[]` (cut-off edges, glare, rotated/upside-down, text too small, not a document).
 - Step 2, **structure** (text-only): summary, key facts, actions, warnings, as validated JSON.
 - Responses that hit the length limit, are refused by the model, or fail validation are handled (§12 Q2).
-- **Acceptance:** one clean printed page completes in under 30 s **[Unverified: depends on model and load]**.
+- **Acceptance:** one clean printed page completes in under 30 s **[Measured, and it holds on average but not on the tail]** — SPIKE §4's two five-page runs: mean **25.8 s** a page, spread **16.4–39.9 s**, so the slowest page this service gave was over the limit. Whether the *person* waits 30 s or 40 s is not a model fact but a UI fact, and the interval announcer (R3) is what covers it.
 
 ### R3. Accessible reading (P0)
-- Output uses real headings in this order: Summary → Key facts → Actions → Warnings → Full text.
+- Output uses real headings in this order: Summary → Key facts → What you may need to do → Warnings → Full text. (**R-08:** this row named the sections internally; the `h2` text is what a reader's heading lands on, so the row now quotes that.)
 - Key facts show the **exact source quote** next to each value.
 - **How many facts a person is offered is a decided quantity** (item **P-16**, ADR-36): at most 12 listed and
   at most 3 of any one kind, short lists untouched, the count stated before the list and the remainder one
   native disclosure control away with its quotes. A fact whose quote could not be matched is always listed.
-- "Read exactly what it says" shows the verbatim transcript only.
+- The **Full text** section shows the verbatim transcript only. (It is the section's `h2`; "read exactly what it says" was the name this document used for it, and the screen never says it.)
 - **Read aloud:** one button, play/stop, rate control, using on-device speech. Screen-reader users will mostly not use it, because it duplicates their own reader **[Likely]**. It exists mainly for low-vision users like Daniel.
 - **Acceptance:** everything is reachable in logical order by screen reader and by keyboard.
 
@@ -119,9 +119,10 @@ Not in scope: deaf and hard-of-hearing users.
 See §7.
 
 ### R9. Run with zero credentials (P0, new)
-- `npm run dev:fixtures` runs the full UI against **recorded sample responses and sample attestation fixtures**, so a reviewer with no API key can run the app and see every screen, including the failed-verification case.
+- `npm run dev:fixtures` runs the full UI against **recorded sample responses and sample attestation fixtures**, so a reviewer with no API key can run the app and see every screen.
+- **What it cannot show is a verification verdict, and the README says so too:** fixture mode fetches **no attestation report at all**, so its gate answers `not_run` and the receipt on screen is the *unverified* one with the no-guarantee banner above it. The `failed` ending is proved in `tests/verification/` and over the two recorded reports in `fixtures/attestation/`, never on the demo screen — that is the honest shape of R9, and quoting the demo receipt as evidence that verification ran would be exactly the overclaim AGENTS.md §4 rule 5 forbids.
 - Fixture mode shows a persistent banner: "Demo data. No real privacy guarantee in this mode."
-- A public deployed URL in relay mode (rate-limited, small prepaid budget) is the live demo.
+- A public deployed URL in relay mode (rate-limited, small prepaid budget) **would be** the live demo. **As of 2026-11-06 there is none**: no deployment target is decided and nothing is hosted (**R-01**, **B-06**), so the demo a reviewer runs is the two commands in the README, not a URL.
 - **Acceptance:** a clean checkout runs with two commands and no `.env`.
 
 ### R10. Paste text (P0, new)
@@ -187,7 +188,7 @@ No scoring weights are published. Previous NEAR hackathons evaluated technical i
 
 | # | Risk | Likelihood | Mitigation |
 |---|---|---|---|
-| 1 | No usable TEE vision model, or poor on numbers | Medium — **lowered on the first half**: the catalog lists 6 image-capable `attestationSupported: true` models **[Verified]**; whether any is served, and how it reads numbers on bad photos, still needs a key | Day 1 spike; paste-text path (R10) keeps the product alive |
+| 1 | No usable TEE vision model, or poor on numbers | **Closed on the first half, measured with the key 2026-11-03 [Measured]**: of 41 image-capable models the catalog lists **6** as `attestationSupported: true`, **4** pass this app's own allowlist and **2 answer** — `z-ai/glm-5.3-flash` and `Qwen/Qwen3.8-27B` (`SPIKE_RESULTS.md` §1–§2). `Qwen/Qwen3-VL-30B-A3B-Instruct` is flagged `attestationSupported` *and* `isReady` and **never answers**; `moonshotai/kimi-k3` returns 502. What is still open is the second half — **how it reads numbers on bad photographs** — and that needs no key, only the golden set (**S-03**, **C-09**) | Day 1 spike; paste-text path (R10) keeps the product alive |
 | 2 | Browser calls to NEAR AI Cloud blocked (CORS) | **Closed as a risk.** The server's CORS layer allows any origin on every non-`/v1/admin` path **[Verified in source]**, the live preflight answered 200 with the origin echoed **[Measured 2026-11-03]**, and on **2026-11-05 a page in Chromium completed the whole authenticated round trip** — report, completion, signature — with all three calls 200, the page's own origin echoed on every response, and the reply verified against the attested key **[Measured]** (`npm run test:e2e:live`, SPIKE §6). Our shipped `connect-src` was measured on a production build admitting the NEAR host and refusing a host outside it, so the app's own policy is not the obstacle either. | Relay mode first regardless; direct mode is now blocked only by the key field A-15 deliberately does not have (T-13/**B-10**, ADR-21), not by the network |
 | 3 | Full attestation verification (TDX quote, GPU evidence) too heavy to port | Low–Medium — the reference verifier ships **TypeScript** with `dcap-qvl-node` **[Verified]**, so this is a port; it still needs a real report to test against | Ship the checks that work, label the rest "not verified" (§8) |
 | 4 | Model misreads a number | High | Verbatim-first, quoted sources, uncertainty markers, safety notices; P1 verification pass |
@@ -232,7 +233,7 @@ Ranked by (likelihood × damage).
 | 2 | **The grounding check gives false comfort.** | "Quote is an exact substring of the transcript" proves the summary matches the transcript, not that the transcript matches the page. A misread "£840" passes perfectly. | Certain | Say so in the README. P1 verification pass, triggered by spike data. Drop the model's self-reported "confidence" field; self-reported model confidence is poorly calibrated **[Likely]**. |
 | 3 | **Nobody can run it.** | Reviewer agents screen first and likely have no API key; real users cannot paste one. | Likely | R9 fixture mode; deployed relay URL. |
 | 4 | **The attestation verifier port.** | Reference verifier code may not be TypeScript; TDX quote verification needs Intel collateral and GPU evidence needs NVIDIA's service. 12 days is tight. | **Lowered from Likely** — `nearai/nearai-cloud-verifier` is MIT *and* ships a native TypeScript `ts/` that uses `dcap-qvl-node` for TDX quotes **[Verified]**. Collateral mechanics are delegated to `dcap-qvl`, and we still need a real report to test against | Define the minimum honest set (nonce binding, signature check, GPU-evidence token check) and label the rest "not verified". See `ARCHITECTURE.md` §10, now decided. |
-| 5 | **Serverless limits on the relay.** | Request body size and execution time limits on common hosts can be smaller than five photographed pages plus a slow vision call **[Likely; check your plan's limits]**. | Likely | Downscale images hard, send pages in separate requests, stream responses, test with 5 pages on Day 3. |
+| 5 | **Serverless limits on the relay.** | Request body size and execution time limits on common hosts can be smaller than five photographed pages plus a slow vision call **[Likely; check your plan's limits]**. | Likely | Downscale images hard, send pages in separate requests, test with 5 pages. **Not streaming: a stream is gateway-signed, so ADR-22 rules it out and the relay refuses one (`streaming_not_supported`, ADR-34). The downscale is built (C-01, ≤1600 px / ≤768 KiB) and five pages were assembled (C-11); the host-limit half still waits on **C-07**/**S-08**.** |
 | 6 | **Capture is the real accuracy bottleneck.** | Blind users cannot frame a page; cut-off, rotated and glared photos are the common case, and brightness/blur metrics do not detect them. | Likely | Model-reported `captureIssues`, retake loop, eyes-closed test photos. |
 | 7 | **In-memory rate limiting does nothing on serverless.** | Instances do not share memory. | Likely | Use a shared store, or rely on a small prepaid key balance as the cap. |
 | 8 | **Fail-closed locks the user out.** | If verification is down, a user with an urgent medical letter gets nothing. | Likely | Keep fail-closed in v1 (the claim stays clean) but show this as an explicit product decision, not an accident. Revisit with real users. |
@@ -243,22 +244,22 @@ Ranked by (likelihood × damage).
 
 | Edge case | Handling | Priority |
 |---|---|---|
-| Page cut off at an edge | `captureIssues`, announce which edge, offer retake | P0 |
-| Upside-down or sideways page | Report orientation in `captureIssues`; retake prompt | P0 |
-| Glare / shadow / curved page | Same | P0 |
+| Page cut off at an edge | `captureIssues`, announce which edge, offer retake | **Partly built:** the issue is reported and announced (`captureIssueSummary` in `app/_flow/usePhotoRun.ts`), the run then **carries on**. The retake *offer that stops for an answer* is **C-04**, open — see ESSENTIALS pipeline step 5 for why halting on a reported tilt would stop more runs than it saves |
+| Upside-down or sideways page | Report orientation in `captureIssues`; retake prompt | **Partly built, same as the row above:** `rotated` came off **6 of 14** measured pages, so the announcement is the shipped behaviour and the prompt is **C-04**. `prepareImage` bakes the EXIF rotation into the pixels before the tag is dropped (C-01) |
+| Glare / shadow / curved page | Same | Same as the two rows above: reported and announced, not blocked on; the copy review for each issue is **C-06** (`[~]`) |
 | Tables and forms (amount due vs previous balance) | Transcribe tables **row by row**; facts must quote the row | P0 |
 | Handwriting, stamps, checkboxes | Mark as low-reliability; do not interpret checkbox state without saying "appears" | P0 |
 | Pages out of order, duplicated, or wrong document mixed in | Look for "Page x of y"; warn on gaps/duplicates; no silent reorder | P1 |
 | Not a document (face, screen, object, blank) | `captureIssues: not_a_document`; plain message | P0 |
 | Model refuses (ID card, medical image, safety filter) | Show the refusal plainly, offer paste-text path | P0 |
-| Output truncated (`finish_reason: length`) | Detect, split by page, retry | P0 |
+| Output truncated (`finish_reason: length`) | Detect, split by page, retry | **Not built as written** — the answer is detected and left as a marked hole, `[page n could not be read]` (**ADR-27**, C-11); there is **no retry and no split** (`lib/near-ai/completion.ts`). Splitting is not needed on the photo path because a page is one request, which is what the hole is for |
 | Invalid JSON from the model | One repair retry, then show transcript only | P0 |
 | Document contains instructions to the AI ("ignore previous…") | Treat as data; no tools exist; schema-validated output | P0 |
 | **Scam or fake letters** | Read faithfully; **do not** claim detection; one generic caution on payment/urgent requests | P0 (wording only) |
 | Mixed languages / non-English | Say English only is supported; do not guess | P0 |
 | Phone locks or app backgrounded mid-analysis | Wake-lock; on abort, say what was lost and allow retry | P1 |
 | Very long wait with no audio feedback | Interval announcements (every ~10 s), then done tone/haptic | P0 |
-| Attestation changes between check and use (model redeploy) | Re-fetch once; then fail with a clear message | P0 |
+| Attestation changes between check and use (model redeploy) | Re-fetch once; then fail with a clear message | **Half built:** a report is fetched **once per model per session** (**ADR-35**) and a response that no longer verifies against the attested key fails the run — fail-closed, nothing sent on the stale key. The *re-fetch and retry* is not built; `attestation_changed` exists as an error code and its message only (`types/index.ts`, `lib/errors.ts`) |
 | Screen reader announces progress twice | Single announcer instance | P0 |
 | Large camera images (memory) | One page decoded at a time, bitmap closed as soon as its JPEG is written; output ≤1600 px / ≤768 KiB. **As built (C-01): the downscale is at draw time, not during decode** — `createImageBitmap` resize options need the target size, which is only known after decoding. Whether that is survivable across five pages on a mid-range phone is C-07, on a device | P0 |
 | User already has text from their phone | Paste-text path | P0 |

@@ -4,11 +4,13 @@ Understand a sensitive document — a benefits letter, a lab result, a bill — 
 see exactly what was and was not verified. Built for the **NEAR Hackathon, Privacy & Private AI
 track**. Deadline: **2026-11-14 23:59 UTC**.
 
-> **Build state: structural scaffold, no working flow yet.** The repository now contains the whole
-> shape of the product — data models, session reducer, error catalogue, module boundaries, route
-> stubs, config and CSP — with every unfinished function refusing loudly and naming the ROADMAP
-> item that owns it. Read `ROADMAP.md` for live status; do not read this README as a description of
-> working behaviour.
+> **Build state: the demo flow runs in a browser; the live path has never carried a document.** Mode F
+> — what the two commands below run — completes end to end with no key at all and is tested in
+> Chromium doing that (72 of the suite's 141 tests). The Mode B relay is built and wired, and its
+> door-refusals are gone, but **no real document has been sent through it**, because the first paid
+> completion is a human decision (AGENTS.md §5). Verification answers `partial`, never `verified`,
+> while the four hardware checks named in the receipt stay unrun (**B-12**). Read `ROADMAP.md` for
+> live status; every claim below is dated and evidenced there.
 
 ## What it does (and what it is not)
 
@@ -47,20 +49,20 @@ it disagree with the app (requirement R9, `docs/PRD.md` §7).
 Those two commands are themselves a test. `npm run release:clean-checkout` clones this repository
 anonymously into a temporary folder, refuses a checkout that contains a `.env`, installs with
 `npm ci` from the lockfile alone, and runs the committed browser suite against a dev server booted
-**from that checkout** — no key, so every reply is replayed from `fixtures/`. Takes about five
+**from that checkout** — no key, so every reply is replayed from `fixtures/`. Takes about three
 minutes and spends nothing. It proves the repository is self-sufficient; it proves nothing about a
 live model, a real phone or a screen reader (**R-03**, `docs/ARCHITECTURE.md` ADR-38).
 
-**What that runs today:** **photographing** — add the three pictures this repo ships at
-`public/sample-docs/photographs/page-{1,2,3}.jpg`, see each one as the app will send it, press *Read
-these photographs*, and the whole flow completes with no key in about a second: the page loop, the join,
+**What that runs today:** **photographing** — add the three pictures this repo ships in
+`public/sample-docs/photographs/` (one JPEG per page), see each one as the app will send it, press *Read
+these photographs*, and the whole flow completes with no key: the page loop, the join,
 the reading, the results view, two questions answered, the receipt. That is **S-11** and **C-13** — the
 replies beside those three files came out of a TEE-hosted model on 2026-11-04 and are replayed, not
 generated. **A different photograph is a different document:** any other file — or one of these with a
 single byte changed — is refused at the first page by `no_fixture_for_page`, because a demo that answered
 your own letter with somebody else's reading would be the opposite of what this app is for. Choosing
 **two** of the three is also refused: the reading belongs to the document those three pages join into,
-not to a subset of it. Proved in a browser by `tests/e2e/photo-fixtures.spec.ts` (6 tests).
+not to a subset of it. Proved in a browser by `tests/e2e/photo-fixtures.spec.ts` (7 tests).
 
 **Pasting** is the other half of the same screen: paste text, or choose one of four synthetic demo
 letters, and the flow completes the same way. The corpus is matched by *content*, so pasting your own
@@ -69,8 +71,8 @@ presented as a reading of your letter. A paste over **20,000 characters** is ref
 words of `paste_too_long`, before Sightline asks anything of the service: the sentence offers the smaller
 piece — one page, or the section you need answered — rather than naming the number, and the field's own
 error is where your screen reader lands (`docs/ARCHITECTURE.md` §13, **ADR-29**). The flow itself: the
-pipeline answers, the results view shows Summary → Key facts →
-Actions → Warnings → Full text → Ask → Verification, questions about the letter are answered from its
+pipeline answers, the results view shows Summary → Key facts → What you may need to do →
+Warnings → Full text → Ask a question → Verification in that fixed order, questions about the letter are answered from its
 text or refused by name, and the receipt lists the checks that ran and the ones that did not. **A long
 fact list is bounded on the way to the reader, not in the reading:** the screen lists at most 12 facts and
 at most three of any one kind, says how many it found before it lists them, and puts the rest behind one
@@ -83,8 +85,9 @@ fourth letter exists to show the other ending: its reply is not the answer the a
 run makes its one repair retry and then shows the text you gave with no summary on it, which is the
 path most likely to meet a real user and the one `docs/ARCHITECTURE.md` §13 promises. Proved by
 `tests/e2e/flow.spec.ts` (72 of the suite's 141 Playwright tests) against exactly these two commands.
-Three of the four letters are **authored synthetic**; the fifth case is **recorded** traffic, and the two
-provenances are labelled separately everywhere they appear (`fixtures/README.md`, item **S-11**).
+All four offered letters are **authored synthetic**; the fifth case — photographed pages, never offered
+to the paste screen — is **recorded** traffic, and the two provenances are labelled separately everywhere
+they appear (`fixtures/README.md`, item **S-11**).
 
 **What it does not do:** read *your* photo or *your* letter, yet. Both live halves now exist and are
 measured — the relay's handler (**F-05**, **ADR-34**: four allowlisted paths, a live per-model TEE check
@@ -217,8 +220,10 @@ facts.** Nothing has been checked against what is on the page, by anyone, so the
 accuracy number**: the recorded reading is the model's own answer replayed, and the only thing measured
 about it is internal consistency. What is left of the path to prove is **C-04/C-06** (a *bad* photograph
 and what it costs the person), **C-07**/`S-08` (a device, host limits), **C-09/C-10** and **S-03** (the
-golden set, and the misread count that decides **T-11**); **live modes still refuse before a request
-exists** (**B-12**), so no real user's photograph has been read anywhere. The transcription numbers that
+golden set, and the misread count that decides **T-11**). **Mode A still refuses at the door** — the
+settings page has no key field by design (**ADR-21**, item **T-13**) — and Mode B runs but has never been
+given a document, because the first paid completion is a human decision (AGENTS.md §5). So no real
+user's photograph has been read anywhere. The transcription numbers that
 do exist are measured against the *spike's* synthetic page rasters, not against this app's screen
 (`docs/SPIKE_RESULTS.md` §4). Two statements will be required there and are stated now so they cannot be
 quietly dropped later:
@@ -321,7 +326,7 @@ detail in `docs/ARCHITECTURE.md` (and its one-page `ARCHITECTURE_ESSENTIALS.md`)
 - Repo: `https://github.com/sightline-team/sightline` (public from the start; the rules file
   `HACKATHON.md` is committed at root)
 - Live status and remaining work: **[`ROADMAP.md`](ROADMAP.md)**
-- Licence: MIT — [`LICENSE`](LICENSE), attributions in `docs/ARCHITECTURE.md` §17 and
+- Licence: MIT — [`LICENSE`](LICENSE), attributions in `docs/ARCHITECTURE.md` §2 and
   `src/lib/near-ai/verifier/README.md`
 - Demo post on X: added by X-03/X-06 when it exists (a human publishes it)
 
@@ -342,15 +347,26 @@ only, never as the matched text. `npm run release:synthetic` (**R-07**) walks th
 corpus itself: every file must classify, every letter must say in its own text that it is synthetic,
 every recorded reply must carry a signature-verified provenance block, every shipped photograph must
 be metadata-free and hash to the digest Demo mode keys on, and every telephone number in it must sit
-inside a range Ofcom reserves for drama. All three have been run against deliberately broken copies
-of their own subject and refused — the first two against a throwaway repository holding a planted
-synthetic key that was committed then deleted, plus one staged but never committed; the third against
-ten mutations (a real-format number and email planted in the recorded transcript, a provenance block
+inside a range Ofcom reserves for drama. `npm run release:docs` (**R-08**) reads the documents against
+the repository instead: no page may name a file that is gone, every script and every test must be
+listed where the structure document says it lists them, the commands table must equal `package.json`,
+the decision records must be a gap-free sequence with the newest one on the page a new reader is told
+to read first, and every item citation must reach a `ROADMAP.md` checkbox line. All four have been run
+against deliberately broken copies of their own subject and refused — the first two against a throwaway
+repository holding a planted synthetic key that was committed then deleted, plus one staged but never
+committed; the third against nine mutations and the control run beside them (a real-format number and
+email planted in the recorded transcript, a provenance block
 without its signature, a photograph carrying EXIF, one byte changed, a fixture the audit could not
-name). The secrets scan also refused **this repository's own test fixture** — its first version
+name); the fourth against five breaks planted in the prose itself — a file renamed in one table row, a
+test row deleted, a command the manifest does not define, a decision record renumbered past its own
+sequence, a citation to an item that was never created. The secrets scan also refused **this
+repository's own test fixture** — its first version
 spelled nine credential shapes out in full, and both GitHub's push protection and the scan said so
 before anything was published — which is why those planted values are assembled at runtime and a test
 asserts the fixture file's own bytes are clean. `.env` is ignored and has never been added; CI takes
-no credential. What none of the three can see is the key that once crossed into a conversation log,
+no credential. What none of them can see is the key that once crossed into a conversation log,
 which is a rotation task (**B-11**) rather than a git finding, and what none of them can see in **any**
-document is what a person types into a live run — that is AGENTS.md §4 rule 7, not a script.
+document is what a person types into a live run — that is AGENTS.md §4 rule 7, not a script. Nor can
+`release:docs` judge whether a sentence that names a real file still describes it: that is a reading
+task, and the pass behind **R-08** says so in its own evidence rather than implying the shape check
+settled it.
