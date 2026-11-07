@@ -206,7 +206,10 @@ describe('the good fixture is a real report, and the app can still read it (T-08
     const leaked = JSON.parse(JSON.stringify(page!.raw)) as Record<string, unknown>;
     (leaked as { gateway_attestation: Record<string, unknown> }).gateway_attestation.vpc = { vpc_hostname: 'cloud-api-prod-abcd.dstack.internal' };
     expect(JSON.stringify(leaked).toLowerCase()).toContain('dstack.internal');
-  });
+    // 30 s, not the default 5: the two recorded reports are ~300 KB each and this test stringifies
+    // them repeatedly; under 38 parallel workers it starved past 5 s twice while passing alone in
+    // 4 s. The assertions are unchanged — only the wall-clock allowance, same reason as A-17.3.
+  }, 30_000);
 });
 
 // ------------------------------------------------------------------------ the good case

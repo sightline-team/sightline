@@ -4,13 +4,22 @@ Understand a sensitive document — a benefits letter, a lab result, a bill — 
 see exactly what was and was not verified. Built for the **NEAR Hackathon, Privacy & Private AI
 track**. Deadline: **2026-11-14 23:59 UTC**.
 
-> **Build state: the demo flow runs in a browser; the live path has never carried a document.** Mode F
-> — what the two commands below run — completes end to end with no key at all and is tested in
-> Chromium doing that (72 of the suite's 141 tests). The Mode B relay is built and wired, and its
-> door-refusals are gone, but **no real document has been sent through it**, because the first paid
-> completion is a human decision (AGENTS.md §5). Verification answers `partial`, never `verified`,
-> while the four hardware checks named in the receipt stay unrun (**B-12**). Read `ROADMAP.md` for
-> live status; every claim below is dated and evidenced there.
+> **Build state: the demo flow runs in a browser; the live path has never carried a document.** Three
+> modes, named as the code names them: **Mode F** is what the two commands below run — the whole app,
+> answering from `fixtures/` instead of the service, with no key; **Mode B** is the app talking to NEAR AI
+> Cloud through this repository's own relay; **Mode A** would be the app asking with *your* key, and it
+> still refuses at the door because there is no field on screen to put one in (**T-13**, held by **B-10**).
+> Mode F completes end to end and is proved doing that in Chromium: **141** browser tests are collected
+> against exactly that keyless server and all but two of them run with no credential — the two are the
+> live round trip and they skip themselves when no key is configured. 72 of them are
+> `tests/e2e/flow.spec.ts`, and the photographed half is `tests/e2e/photo-fixtures.spec.ts` (7). The Mode B
+> relay is built and wired and its door-refusals are gone, but **no real document has been sent through
+> it**, because the first paid completion is a human decision (AGENTS.md §5); what *has* run is its gate —
+> from a script, against the app's own relay, answering `partial` (`docs/SPIKE_RESULTS.md` §11).
+> Verification answers `partial`, never `verified`, while the four receipt checks that need Intel's
+> certificate service, NVIDIA's service, or a clock the report does not expose stay unrun (**B-12**). Read
+> `ROADMAP.md` for live status; every claim below is evidenced there, and dated where the evidence is a
+> run rather than a test.
 
 ## What it does (and what it is not)
 
@@ -41,44 +50,74 @@ npm ci
 npm run dev:fixtures
 ```
 
-No `.env`, no API key, no account. Fixture mode replays a local corpus instead of calling the
+No `.env`, no API key, no account. `npm ci` needs the npm registry — it is a network install, about a
+minute on a fast connection — and needs Node 20.9 or newer (`package.json` says so in `engines`); nothing
+else has to be configured. `npm run dev:fixtures` then prints its own address, and the app is at
+**http://localhost:3000** in your browser. Fixture mode replays a local corpus instead of calling the
 model, and it always shows the demo-data banner — that sentence is defined in
 `src/features/trust/claims.ts` and is deliberately not repeated here, so a README edit cannot make
-it disagree with the app (requirement R9, `docs/PRD.md` §7).
+it disagree with the app (requirement R9, `docs/PRD.md` §6).
+
+One trap for a first run, and it is the app's design rather than a defect: **the session lives in memory**
+(ADR-8), so typing a URL into the address bar or pressing reload starts a new empty session and
+`/trust` will say nothing has been read yet. Move around the demo with the links on the screen — the
+results page ends in *Verification*, and the navigation reaches the receipt from there.
+
+Two committed suites, and this page always says which one it means: **`npm test`** is Vitest in Node —
+unit, verification and relay assertions, the bulk of everything held by a test — and
+**`npm run test:e2e`** is Playwright in Chromium against a server booted in fixture mode, which is where
+the flow itself is proved. They are two different counts of two different things, and neither number in
+this README refers to the other suite.
 
 Those two commands are themselves a test. `npm run release:clean-checkout` clones this repository
 anonymously into a temporary folder, refuses a checkout that contains a `.env`, installs with
 `npm ci` from the lockfile alone, and runs the committed browser suite against a dev server booted
 **from that checkout** — no key, so every reply is replayed from `fixtures/`. Takes about three
-minutes and spends nothing. It proves the repository is self-sufficient; it proves nothing about a
-live model, a real phone or a screen reader (**R-03**, `docs/ARCHITECTURE.md` ADR-38).
+minutes and spends nothing. **Its one machine prerequisite is not the repository's:** it needs a
+Playwright browser in this machine's cache, so on a fresh box run `npx playwright install chromium`
+first, and the script says exactly that rather than failing quietly if the cache is missing. It proves
+the repository is self-sufficient; it proves nothing about a live model, a real phone or a screen reader
+(**R-03**, `docs/ARCHITECTURE.md` ADR-38).
 
-**What that runs today:** **photographing** — add the three pictures this repo ships in
-`public/sample-docs/photographs/` (one JPEG per page), see each one as the app will send it, press *Read
+**What that runs today:** **photographing** — on the home page press **Add photographs**, add the three
+pictures this repo ships in `public/sample-docs/photographs/` (one JPEG per page; the screen takes up to
+five and lets you retake or remove any one of them), see each one as the app will send it, press *Read
 these photographs*, and the whole flow completes with no key: the page loop, the join,
-the reading, the results view, two questions answered, the receipt. That is **S-11** and **C-13** — the
+the reading, the results view, two questions answered, the receipt. Answering takes **two presses** — an
+offered question puts its wording in the box and says so, and *Ask* is what sends it. That is **S-11** and
+**C-13** — the
 replies beside those three files came out of a TEE-hosted model on 2026-11-04 and are replayed, not
 generated. **A different photograph is a different document:** any other file — or one of these with a
 single byte changed — is refused at the first page by `no_fixture_for_page`, because a demo that answered
 your own letter with somebody else's reading would be the opposite of what this app is for. Choosing
 **two** of the three is also refused: the reading belongs to the document those three pages join into,
-not to a subset of it. Proved in a browser by `tests/e2e/photo-fixtures.spec.ts` (7 tests).
+not to a subset of it. Either refusal appears as a plain-language sentence in the *Something stopped*
+block on the same screen — the code names above are what the tests and the logs call them, and none of
+them is ever printed on screen. Proved in a browser by `tests/e2e/photo-fixtures.spec.ts` (7 tests).
 
 **Pasting** is the other half of the same screen: paste text, or choose one of four synthetic demo
-letters, and the flow completes the same way. The corpus is matched by *content*, so pasting your own
+letters — the screen names them *Demo document 1: a care trust bill*, *2: a bank statement letter*,
+*3: a GP letter about a medicine*, *4: an answer that does not arrive* — and the flow completes the same
+way. The corpus is matched by *content*, so pasting your own
 document gets a refusal explaining that demo answers belong to demo documents — never an authored summary
 presented as a reading of your letter. A paste over **20,000 characters** is refused on the spot, in the
 words of `paste_too_long`, before Sightline asks anything of the service: the sentence offers the smaller
-piece — one page, or the section you need answered — rather than naming the number, and the field's own
-error is where your screen reader lands (`docs/ARCHITECTURE.md` §13, **ADR-29**). The flow itself: the
+piece — one page, or the section you need answered — rather than naming the number, and focus moves to
+that refusal where you already are (`tests/e2e/paste-cap.spec.ts` asserts the focus in Chromium; what a
+screen reader then says is **A-03**'s untested half, and this repository does not claim it — **ADR-29**).
+The flow itself: the
 pipeline answers, the results view shows Summary → Key facts → What you may need to do →
-Warnings → Full text → Ask a question → Verification in that fixed order, questions about the letter are answered from its
-text or refused by name, and the receipt lists the checks that ran and the ones that did not. **A long
+Warnings → Full text → Ask a question → Verification in that fixed order — on a demo run the Ask section
+also lists the questions this document has a prepared answer for, anything else you type is refused by
+name, and a reading with warnings adds a
+*What the reading flagged* block under them — and the receipt lists the checks that ran and the ones that
+did not. **A long
 fact list is bounded on the way to the reader, not in the reading:** the screen lists at most 12 facts and
 at most three of any one kind, says how many it found before it lists them, and puts the rest behind one
-"Show the other n facts" control with their quotes. That is item **P-16** (**ADR-36**), and the reason is
-measured rather than stylistic — the same bill has come back with **33 facts for one page and 5 for five
-pages**, and the photographed document in this repo's own demo comes back with **86**, 84 of them line
+"Show the other n facts" control with their quotes — a native `<details>` disclosure, not a button, so a
+script looking for `button` will not find it (**ADR-36**). That is item **P-16**, and the reason is
+measured rather than stylistic — the same bill has come back with **32–33 facts for one page and 5–7 for
+five pages**, and the photographed document in this repo's own demo comes back with **86**, 84 of them line
 items. A list of 12 or fewer is left exactly as it is; a fact whose words could not be matched to the text
 is never put behind the control. The
 fourth letter exists to show the other ending: its reply is not the answer the app asked for, so the
@@ -96,9 +135,12 @@ attestation report to the session (**T-01**, **T-03**, **ADR-32**) — and since
 to them: `src/app/_flow/collaborators.ts` gives a Mode B session the relay transport and one trust session
 per Sightline session, whose gate attests **each model the run asks** before that step's request is built
 (**ADR-35**), because a photographed run crosses two enclaves with two keys (**ADR-24**, **SPIKE §11**).
-So **Mode B runs**. What has not happened is the paid half of it: no document has been sent, because a real
-completion is a human decision (AGENTS.md §5), and `partial` is the strongest word a live receipt can print
-while the four quote checks that need Intel's and NVIDIA's services stay open (**B-12**) — rule 5 forbids
+So **the Mode B path has no door in front of it any more**. What has actually run, and what has not, are
+two different sentences: the gate reached `partial` over this repository's own relay from a script
+(**SPIKE §11**), and no screen has driven it and no document has crossed it — a real completion is a human
+decision (AGENTS.md §5), and `partial` is the strongest word a live receipt can print
+while the four receipt checks that need Intel's certificate service, NVIDIA's service, or a clock the
+report does not expose in plaintext stay open (**B-12**) — rule 5 forbids
 more. Mode A — where the browser would ask with your own key — still refuses at the door, for one reason
 that has not moved: there is no field to put a key in (**T-13**, held by **B-10**). Nothing on screen can
 imply a verified run before verification exists, and `partial` is not the word "verified" (**AGENTS.md §4**
@@ -120,15 +162,18 @@ selection logic in `claims.ts`.
 
 **Which attestation checks ran and which did not** (the list AGENTS.md §9 requires here; the names
 below are pinned by `tests/verification/attestation-fixtures.test.ts` › "the README names exactly the
-checks the gate emits", which compares this list with a real gate call in both directions):
+checks the gate emits, under the heading each one belongs to (T-14)", which compares this list with a real
+gate call in both directions — and because it parses these three lines by name, a name written here that
+the gate does not emit fails the suite):
 
 | Check | Ran? | Passed? | Why |
 |---|---|---|---|
-| Nonce binding | Not in an app run | — | T-01's `bindReport` passed **4/4 against the first real report** on 2026-11-03 and the service echoed the nonce this session minted (`docs/SPIKE_RESULTS.md` §3) — measured by `npm run spike`, not by the app, because live modes still refuse to send (F-04, F-05). **It ran again on 2026-11-04 with a fresh nonce per model** while `npm run fixtures:record` was fetching the demo's photographed replies (**S-11**): two reports, two nonces, and nothing sent until each `bindReport` had passed. **And on 2026-11-05 two live reports are on disk** (`fixtures/attestation/`, one per attested model, **T-08**), so this check is now asserted by `tests/verification/attestation-fixtures.test.ts` against recorded bytes — including the negative: the same report refused by a freshly minted nonce, and a *replayed* genuine report failing the gate's nonce check. **Since ADR-32 the binding is checked twice:** `quote_binds_our_nonce` reads the same 32 bytes *inside the quote*, where writing them means the enclave re-ran its attestation rather than the service editing a JSON field — measured on both live reports, and proven as a refusal by "a service that re-echoes the JSON field but cannot rewrite the quote is caught by the quote" |
+| Nonce binding | Not in an app run | — | T-01's `bindReport` passed **4/4 against the first real report** on 2026-11-03 and the service echoed the nonce this session minted (`docs/SPIKE_RESULTS.md` §3) — measured by `npm run spike`, not by the app, because nothing has taken this path from a person's screen yet
+(F-04, F-05). **It ran again on 2026-11-04 with a fresh nonce per model** while `npm run fixtures:record` was fetching the demo's photographed replies (**S-11**): two reports, two nonces, and nothing sent until each `bindReport` had passed. **And on 2026-11-05 two live reports are on disk** (`fixtures/attestation/`, one per attested model, **T-08**), so this check is now asserted by `tests/verification/attestation-fixtures.test.ts` against recorded bytes — including the negative: the same report refused by a freshly minted nonce, and a *replayed* genuine report failing the gate's nonce check. **Since ADR-32 the binding is checked twice:** `quote_binds_our_nonce` reads the same 32 bytes *inside the quote*, where writing them means the enclave re-ran its attestation rather than the service editing a JSON field — measured on both live reports, and proven as a refusal by "a service that re-echoes the JSON field but cannot rewrite the quote is caught by the quote" |
 | GPU/NRAS verdict | Not in an app run | — | **Measured 2026-11-05 and it needs no dependency:** one unauthenticated POST of the report's `nvidia_payload` to NVIDIA's attestation service answered **HTTP 200 in 1.6 s with the overall verdict `true`** (`npm run spike -- --stage=gpu`, `docs/SPIKE_RESULTS.md` §3). So this check is blocked by a *decision* — a server that is allowed to speak to a second host (**B-12**, AGENTS.md §4 rule 9) — and not by `dcap-qvl-node`. Until then `gpu_evidence_verdict` is listed on the receipt as a check that did not run. **A gap the recording found earlier stays:** every `device_id` in both reports holds `SHA-256("")`, so a check reading that field would pass on a report naming no device |
 | Intel TDX quote | Yes — in the production gate, over live bytes; **and since 2026-11-05 inside a browser page**, though not reached from the app's own screens | 8/8 on both live reports, on both recordings, and in Chromium | **This row reversed on 2026-11-05 (ADR-32).** The quote's bytes open with arithmetic and the `@noble/hashes` already in the repo, and `lib/near-ai/quote.ts` runs the eight **inside `createTrustSession`** — `quote_is_tdx`, `td_not_debug`, `td_attributes_allowed`, `quote_binds_our_nonce`, `quote_binds_attested_key`, `quote_binds_compose_hash`, `quote_matches_report_measurements`, `event_log_replays_rtmr0_to_2` — `npm run spike` showing all eight passing on two live reports (5,006-byte quote, 35 and 30 boot events). **The same eight then ran in a page**: `npm run test:e2e:live` bundles the production modules into Chromium and a live report fetched over the network passed all eight there, with `bindReport` 4/4 and the signature verified — fourteen checks in the browser, none of them a mock (**S-06**, SPIKE §6). Two things it does **not** mean: that Intel's signature over those bytes was checked — `quote_signed_by_hardware` and `platform_still_trusted` are the `dcap-qvl-node` decision (**B-12**) and ship as checks that did not run — and that the documented **RTMR3** replay works; it does not reproduce on four quotes and eighteen framings, so the eighth check is named for what it does and its receipt line says register 3 was left out. **Freshness/expiry stays unrunnable and is named as `report_expiry`:** a live report carries no `issuedAt`, no `exp`, nothing a clock could be compared to |
 | Response signature | Not in an app run | — | T-02 verified **one live non-streamed completion** (`provider_tee`, against the key the gate bound, §5), and **every one of the six replies the fixture recording stored** — three pages, one reading, two answers, all `provider_tee` ed25519 over the exact bytes, verified by this repo's own `checkSignature` before a file was written (**S-11**, SPIKE §4). **And on 2026-11-05 from inside a browser page**: `npm run test:e2e:live` asked the live service for a completion *in Chromium*, then verified it there against the key that session's own report named — `response_signature` and `signed_by_model_enclave` both ran and both passed (**SPIKE §6**). A *streamed* reply is signed by the gateway enclave instead, which is why the app does not stream (ADR-22) |
-| End-to-end encryption to the enclave | Not yet | — | T-10; documented by NEAR, never demonstrated from a browser (ADR-16). The report carries the key such a call would encrypt to (§3), so what is left is `@noble/ciphers` (**B-07**) and a device |
+| End-to-end encryption to the enclave | Not yet | — | T-10; documented by NEAR, never demonstrated from a browser (ADR-16). The report carries the key such a call would encrypt to (§3), so what is left is `@noble/ciphers` as an approved dependency (**B-07**) and **a live enclave actually decrypting a browser payload** — `src/lib/near-ai/e2ee.ts` names those two and nothing else, so the second half is the paid run (AGENTS.md §5), not a piece of test hardware |
 | Quote consistency (the only check fixture mode runs) | Yes, in fixture mode | Per fact: a quote that is not in the transcript is shown **flagged**, never as sourced | P-02; it proves consistency with our transcript, not correctness against the page. **On the recorded case it is the model's own quote against the model's own transcript** — 86 facts, all consistent, which says nothing about whether any of them matches the page (**S-03**) |
 
 **The names, as the gate's `CheckResult[]` emits them** — one call of `createTrustSession` over a
@@ -153,7 +198,11 @@ what stops a person's document from crossing it is no longer a missing handler o
 completion nobody has authorised (AGENTS.md §5) and `partial` being the ceiling while **B-12** is open. In
 Mode A a person still has no place to put a key (**T-13**, held as a consent decision by **B-10**).
 In fixture mode no report is
-fetched at all, so what a person sees on the receipt there is the demo sentence, not this list. The
+fetched at all, so the receipt there prints the demo sentence **above** a list of one check that ran —
+`quote_consistency`, the transcript match — and two that did not, `attestation_report` and
+`response_signature`; its status is `not_run`, and it is not this list of thirteen. `tests/e2e/flow.spec.ts`
+asserts the banner sentence and both headings on the same screen, so this is held by a test rather than by
+tone. The
 signature step adds two more names when a completion is answered — `response_signature` and
 `signed_by_model_enclave` (**T-02**) — and neither is an attestation check.
 
@@ -169,12 +218,14 @@ reasons, each with its own ID: the app has **no key field** for a person to star
 held as a consent decision by **B-10**) — and Mode B, which needs no key from the person, is wired to the
 gate but has never carried a document, because that half costs money and is a human decision (**SPIKE §11**,
 AGENTS.md §5), the composed gate reaches only **`partial`** while the four checks
-that need Intel's certificate service and NVIDIA's service stay unanswered (**B-12**, since **T-03** for a
+that need Intel's certificate service, NVIDIA's service, or a clock the live report does not expose in
+plaintext stay unanswered (**B-12**, since **T-03** for a
 new reason rather than because the route said nothing), and nothing in the round trip is **end-to-end
 encrypted** — a bearer key in a header is rule 2's weaker claim, not rule 2's strong one (**B-07**, T-10).
 Until those change, Sightline has no verification claim to make about a person's own document — which is
-why the receipt in fixture mode states the demo-data sentence from `claims.ts` instead of a list of checks
-that passed, and why every recorded fixture carries `"e2ee": false`.
+why the receipt in fixture mode leads with the demo-data sentence from `claims.ts` and shows that one
+consistency check rather than a list of hardware checks that passed, and why every recorded fixture carries
+`"e2ee": false`.
 
 ## Forgetting a document
 
@@ -221,14 +272,17 @@ accuracy number**: the recorded reading is the model's own answer replayed, and 
 about it is internal consistency. What is left of the path to prove is **C-04/C-06** (a *bad* photograph
 and what it costs the person), **C-07**/`S-08` (a device, host limits), **C-09/C-10** and **S-03** (the
 golden set, and the misread count that decides **T-11**). **Mode A still refuses at the door** — the
-settings page has no key field by design (**ADR-21**, item **T-13**) — and Mode B runs but has never been
-given a document, because the first paid completion is a human decision (AGENTS.md §5). So no real
+settings page has no key field by design (**ADR-21**, item **T-13**) — and Mode B has no door left in front
+of it but has never been given a document, because the first paid completion is a human decision
+(AGENTS.md §5). So no real
 user's photograph has been read anywhere. The transcription numbers that
 do exist are measured against the *spike's* synthetic page rasters, not against this app's screen
 (`docs/SPIKE_RESULTS.md` §4). Two statements will be required there and are stated now so they cannot be
 quietly dropped later:
 
-- Results include **bad photos** (glare, cut edges, small text), with the small-sample caveat.
+- Any accuracy report this project publishes must include **bad photos** (glare, cut edges, small text),
+  with the small-sample caveat. **No such run exists yet** — that is **C-04**, **C-09** and **C-10**, all
+  open, and `npm run golden` has never been pointed at a built set.
 - `quoteFound` means the quoted words appear in **our transcript**. It does **not** mean they are
   correct against the page — a model that misreads a number and then quotes its own misreading
   passes it perfectly (`src/features/analysis/grounding.ts`). The transcript it searches has
@@ -255,10 +309,11 @@ a cost run, and no per-page figure is published here that has not been sent to t
 recorded the demo's photographed replies is deliberately not priced anywhere in this repo**: the app's
 completion schema does not carry `usage`, so the recorder stored the timings and the signature verdicts and
 had nothing to store for cost (`docs/SPIKE_RESULTS.md` §4's S-11 block, and item 8 of "What is still
-unknown"). Total spend against the demo key is not published as a number: the only arithmetic this repo can do is add
-up §4's measured exchanges, which comes to a little over a cent, and the recording run above sits on top of
-that with no figure of its own. What would make the real total knowable — the organisation balance, and a
-`spendLimit` on the key — is still open (**B-11**, **S-10**).
+unknown"). Total spend against the demo key is not published as a number, because the balance is not
+published either: the only arithmetic this repo can do is add up the per-exchange rows of §4, which comes to
+**≈$0.10** across the page, structure, question and repair runs measured there, and the recording run above
+sits on top of that with no figure of its own. What would make the real total knowable — the organisation
+balance, and a `spendLimit` on the key — is still open (**B-11**, **S-10**).
 
 ## Accessibility
 
@@ -275,9 +330,12 @@ default: nothing is spoken until it is pressed, and it reads Sightline's own sum
 own cautions — the two parts of the screen whose wording we control. It is not a screen reader and is
 not meant to replace one; the key facts, the actions and the full text stay on the page for the
 reader or magnifier a person already uses. Pressing it again, leaving the screen, or pressing Forget
-stops it. The speed is a setting (0.5–2), read when the button is pressed, and the control to change
-it is on the Settings screen (item A-15): four named speeds — Slow, Normal, Fast, Very fast — which
-apply to the next press without a reload.
+stops it. The speed is a setting, read when the button is pressed, and the control to change
+it is on the Settings screen (item A-15): **four named speeds — Slow 0.75, Normal 1, Fast 1.5, Very fast 2**
+(0.5–2 are the bounds the stored value is validated against, not four more choices: a number outside them
+makes the whole blob unreadable and every setting falls back to its default, and a number inside them that
+is not one of the four is announced as the number rather than renamed). A change applies to the next press
+without a reload.
 
 Settings holds two things, because those are the two that are about the app rather than about a
 document: the reading speed, and the high-contrast theme (black, white, yellow — the palette
@@ -302,9 +360,11 @@ tested / not-tested table and `tests/a11y/manual-checklist.md` for the script th
 
 ## User research
 
-No session has taken place yet. `docs/USER_RESEARCH.md` holds the protocol, the consent rules and
-the empty findings table. If the deadline in U-04 passes without one, the design is stated as
-un-validated rather than implied otherwise.
+No session has taken place. `docs/USER_RESEARCH.md` holds the protocol, the consent rules and
+the empty findings table. **The dated trigger in U-04 has already passed** — 2026-11-05 ended with nobody
+reachable, **U-04** fired, and the Impact claim came down in the commit that recorded it, so the design is
+stated as un-validated rather than implied otherwise. One session before 2026-11-14 would still be the
+first real finding this project has; nothing has been retrofitted onto the absence.
 
 ## Limitations
 
@@ -317,8 +377,12 @@ transit unless end-to-end encryption is proven (see the table above).
 
 Next.js App Router, TypeScript strict, no database, no accounts, no server-side document storage.
 Three modes: **B** relay (our server forwards to NEAR AI Cloud), **A** direct with the user's own
-key, **F** fixtures. Before any document bytes leave the device, an attestation report is fetched
-with a fresh nonce and verified; each response's signature is verified before it is shown. Full
+key, **F** fixtures. **In a live run** — Mode B, which is the only one that reaches the service today —
+before any document bytes leave the device, an attestation report is fetched
+with a fresh nonce and verified, and each response's signature is verified against the key that report
+named before the reply is shown. **In Demo mode neither of those happens at all:** no report is fetched and
+nothing is signed, which is why its receipt leads with the demo-data sentence and names `attestation_report`
+and `response_signature` among the checks that did not run (**F-09**, `src/lib/near-ai/verification.ts`). Full
 detail in `docs/ARCHITECTURE.md` (and its one-page `ARCHITECTURE_ESSENTIALS.md`).
 
 ## Links

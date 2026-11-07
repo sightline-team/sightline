@@ -186,7 +186,7 @@ RATE_LIMIT_STORE_URL=            # shared store; in-memory limits do not work on
 
 NEXT_PUBLIC_NEAR_AI_BASE_URL=https://cloud-api.near.ai/v1
 NEXT_PUBLIC_DEFAULT_MODE=fixtures   # fixtures | relay | direct
-NEXT_PUBLIC_ALLOW_DIRECT=false     # Mode A stays off. **Not because of CORS any more** — the preflight passed 2026-11-03 and a page in Chromium completed the full authenticated round trip with the signature verified on 2026-11-05 (SPIKE §6, S-06/**B-03** closed). It stays off for two reasons the code can name: Mode A has no in-app key field yet (**T-13**/A-15, held by **B-10** as a consent decision), and since **T-03** the gate's ceiling is `partial`, because the four quote checks in `QUOTE_CHECKS_THAT_CANNOT_RUN` need Intel's certificate service or a clock a page cannot read (ADR-32) — so a person who flipped this today could not be shown `verified`.
+NEXT_PUBLIC_ALLOW_DIRECT=false     # Mode A stays off. **Not because of CORS any more** — the preflight passed 2026-11-03 and a page in Chromium completed the full authenticated round trip with the signature verified on 2026-11-05 (SPIKE §6, S-06/**B-03** closed). It stays off for two reasons the code can name: Mode A has no in-app key field yet (**T-13**/A-15, held by **B-10** as a consent decision), and since **T-03** the gate's ceiling is `partial`, because the four checks in `QUOTE_CHECKS_THAT_CANNOT_RUN` need Intel's certificate service, NVIDIA's attestation service, or a clock a page cannot read (ADR-32) — so a person who flipped this today could not be shown `verified`.
 ```
 
 Enforced in `lib/server/env.ts`, not just documented: in production the relay reports

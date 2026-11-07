@@ -36,7 +36,7 @@ export const DIRECT_MODE_UNAVAILABLE: { code: ErrorCode; userMessage: string; re
 export const DIRECT_MODE_QA_UNAVAILABLE: { code: ErrorCode; userMessage: string; retryable: boolean } = {
   code: 'model_unavailable',
   userMessage:
-    'Sightline cannot answer questions with your own key yet: the place to enter that key is not built. Demo mode answers the questions written for its demo letters.',
+    'Sightline cannot answer questions with your own key yet: the place to enter that key is not built. Demo mode answers the questions written for its demo documents.',
   retryable: false,
 };
 

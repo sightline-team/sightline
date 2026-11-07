@@ -26,6 +26,15 @@ import AxeBuilder from '@axe-core/playwright';
 /** The section order AGENTS.md §8 fixes; the receipt must stay last, below the answer. */
 const SECTION_ORDER = ['Summary', 'Key facts', 'What you may need to do', 'Warnings', 'Full text', 'Ask a question', 'Verification'];
 
+/**
+ * Navigation waits get 30 s, not the default 5: in `next dev` the first visit to a route includes
+ * Turbopack's on-demand compile, and on a loaded machine that exceeded 5 s once while every later
+ * navigation was instant (measured 2026-11-07, R-13's re-run, load average 14 on 8 cores). The
+ * assertion is unchanged — the URL still has to become the route — only the wall-clock allowance,
+ * same reason as A-17.3.
+ */
+const NAV_WAIT = { timeout: 30_000 };
+
 const BOX = 'document-text';
 
 /** The demo buttons are rendered in corpus order: 1 = bill, 2 = bank statement, 3 = GP letter, 4 = the one whose answer cannot be read. */
@@ -170,7 +179,7 @@ test.describe('the demo flow, with no credentials (F-09 done-when)', () => {
     const text = await chooseDemoDocument(page, DEMO.bill);
     await runText(page, text);
 
-    await expect(page).toHaveURL(/\/read$/);
+    await expect(page).toHaveURL(/\/read$/, NAV_WAIT);
     const results = page.getByTestId('results-heading');
     await expect(results).toBeVisible();
     // §8: after navigation focus lands on the new view's heading, not back at the top of the page.
@@ -408,7 +417,7 @@ test.describe('the demo flow, with no credentials (F-09 done-when)', () => {
     await page.goto('/');
     await runText(page, 'My own rent agreement, signed last week. Rent is £900 due on the 1st.');
 
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/$/, NAV_WAIT);
     await expect(page.getByTestId('results-heading')).toHaveCount(0);
     const summary = page.getByTestId('status-message');
     await expect(summary).toBeVisible();
@@ -427,7 +436,7 @@ test.describe('the demo flow, with no credentials (F-09 done-when)', () => {
     await page.getByRole('button', { name: 'Read this text' }).click();
     await expect(page.getByTestId('announcer')).toHaveText('There is nothing in the text box yet.');
     await expect(page.getByTestId('status-message')).toHaveCount(0);
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/$/, NAV_WAIT);
   });
 
   test('the results page is reachable by navigation and honest when empty', async ({ page }) => {
@@ -647,7 +656,7 @@ test.describe('the transcript-only screen (P-11)', () => {
     await expect(page.getByTestId('degraded-notice')).toContainText('The service returned something Sightline could not read. Try again.');
     await expect(page.getByTestId('degraded-notice')).toContainText('there is nothing to summarise yet');
     await expect(page.getByTestId('degraded-notice')).toContainText('You can try again.');
-    await expect(page).toHaveURL(/\/read$/);
+    await expect(page).toHaveURL(/\/read$/, NAV_WAIT);
   });
 
   test('the sections that need a reading are absent, not empty', async ({ page }) => {
@@ -845,7 +854,7 @@ test.describe('Forgetting the document (P-10)', () => {
     await expect(page.getByTestId('results-heading')).toBeFocused();
     // The button is not a back arrow. Being told the document is gone while being sent somewhere
     // else is two changes from one press.
-    await expect(page).toHaveURL(/\/read$/);
+    await expect(page).toHaveURL(/\/read$/, NAV_WAIT);
   });
 
   test('the document’s words are nowhere on the page afterwards', async ({ page }) => {
@@ -988,7 +997,7 @@ test.describe('the request that was still going (P-12)', () => {
 
     // The abandoned run does not move the person and does not refill the box it was started from.
     await expect(page.getByRole('heading', { name: 'Add a document' })).toBeVisible();
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/$/, NAV_WAIT);
     await expect(page.getByLabel('Paste the text of your document')).toHaveValue('');
     // Phrases from the letter itself, not 'care trust' — the demo picker's own button labels say
     // that, and a check that trips on the screen's furniture proves nothing.
@@ -1049,7 +1058,7 @@ test.describe('Reading the answer aloud (P-09)', () => {
     expect(await spoken(page)).toEqual({ spoken: [], cancels: 0 });
 
     await page.getByRole('link', { name: 'Verification' }).click();
-    await expect(page).toHaveURL(/\/trust$/);
+    await expect(page).toHaveURL(/\/trust$/, NAV_WAIT);
     expect((await spoken(page)).spoken).toEqual([]);
   });
 
@@ -1267,7 +1276,7 @@ test.describe('Settings a person can change (A-15)', () => {
     // back is client-side, so the document is still in memory and the button is still there.
     await readABill(page);
     await page.getByRole('link', { name: 'Settings' }).click();
-    await expect(page).toHaveURL(/\/settings$/);
+    await expect(page).toHaveURL(/\/settings$/, NAV_WAIT);
     await radio(page, 'Fast').click();
     expect(await storedSettings(page)).toContain('"speechRate":1.5');
 

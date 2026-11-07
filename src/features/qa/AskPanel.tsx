@@ -68,12 +68,12 @@ export function AskPanel() {
       {!isFixture ? (
         <p>
           Asking questions about a document is not built in this mode yet, so there is no question
-          box to use. Demo mode answers the questions written for its demo letters.
+          box to use. Demo mode answers the questions written for its demo documents.
         </p>
       ) : (
         <>
           <p>
-            Sightline answers from the text it was given and nothing else. If the letter does not
+            Sightline answers from the text it was given and nothing else. If the document does not
             say, it says so rather than filling in an answer.
           </p>
           <form onSubmit={onSubmit}>
@@ -100,10 +100,10 @@ export function AskPanel() {
 
           {prepared.length > 0 ? (
             <section aria-labelledby="prepared-heading">
-              <h3 id="prepared-heading">Questions this demo letter can answer</h3>
+              <h3 id="prepared-heading">Questions this demo document can answer</h3>
               <p className="muted">
-                Demo letters carry prepared answers, and only these wordings have one. Choosing a
-                question puts it in the box above.
+                Demo documents carry prepared answers, and only these wordings have one. Choosing a
+                question puts it in the box above; press Ask to send it.
               </p>
               <ul className="button-row">
                 {prepared.map((text) => (
