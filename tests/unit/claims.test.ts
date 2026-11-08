@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { CLAIM_COPY, FIXTURES_BANNER, claimCopy, claimFor, partialCopy } from '@/features/trust/claims';
+import { CLAIM_COPY, FIXTURES_BANNER, blockedCopy, claimCopy, claimFor, partialCopy } from '@/features/trust/claims';
 import { E2EE_PROVEN_IN_BROWSER } from '@/lib/near-ai/e2ee';
 import type { CheckResult, TrustRecord } from '@/types';
 
@@ -142,6 +142,12 @@ describe('the sentence for each rung is exactly the ladder copy (PRD §8)', () =
     const copy = claimCopy('partial', [check('a', true, true), check('b', true, true), check('c', true, true)]);
     expect(copy).toContain('3 of 3 checks passed');
     expect(copy).toContain('not verified');
+  });
+
+  test('blockedCopy emits the fail-closed sentence and contains nothing was sent (T-06)', () => {
+    const copy = blockedCopy();
+    expect(copy).toContain('Nothing was sent');
+    expect(copy).toContain('Verification did not pass');
   });
 });
 

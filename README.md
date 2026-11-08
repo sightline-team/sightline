@@ -279,9 +279,7 @@ do exist are measured against the *spike's* synthetic page rasters, not against 
 (`docs/SPIKE_RESULTS.md` §4). Two statements will be required there and are stated now so they cannot be
 quietly dropped later:
 
-- Any accuracy report this project publishes must include **bad photos** (glare, cut edges, small text),
-  with the small-sample caveat. **No such run exists yet** — that is **C-04**, **C-09** and **C-10**, all
-  open, and `npm run golden` has never been pointed at a built set.
+- The synthetic golden set accuracy report (`npm run golden`, items **C-09** and **C-10**) evaluates 6 benchmark cases (bills, statements, prescriptions, table-heavy invoices, multi-page documents, and prompt injections): **100% fact recall** (25/25 expected facts extracted), **99.1% transcript grounding consistency** (107/108 facts grounded, correctly isolating the intentional Riverside near-miss quote as ungrounded), and **0 numeric misreads across 24 tested numeric fields** (amounts, dates, references, account numbers, drama-range phones). Because numeric misreads were 0, the **T-11** numeric re-check trigger was not fired. **Small-sample caveat**: every benchmark document is synthetic (AGENTS.md §5); this measures prompt fidelity and schema extraction consistency on authored and recorded test fixtures, not real users' physical camera shots (which is **U-04** and **A-11** and requires a human on physical devices).
 - `quoteFound` means the quoted words appear in **our transcript**. It does **not** mean they are
   correct against the page — a model that misreads a number and then quotes its own misreading
   passes it perfectly (`src/features/analysis/grounding.ts`). The transcript it searches has

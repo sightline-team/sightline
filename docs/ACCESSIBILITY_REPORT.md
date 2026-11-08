@@ -68,8 +68,8 @@ narrower statement than it sounds: see the Next.js route announcer in "Known gap
 | The transcript-only screen as a person experiences it (P-11) | It is now rendered and swept in a browser, but nobody has landed on it with a reader running — and "there is no read-aloud control here" is a decision made from the DOM, not from hearing a failure | A-03, A-04, A-06, U-01 |
 | A Forget press against a run that is genuinely slow (P-12) | The browser proof holds both presses inside one task because Mode F answers in microtasks and issues no request at all. What a real person's press does to a live completion — a cancelled socket, how long after the announcement the screen settles, whether the counted sentence is heard as reassurance or as jargon — waits on F-04, F-05 and B-05 | A-06, F-04, F-05, B-05 |
 | Real user session | U-01 open | U-02, U-03 |
-| Screen magnification / 200% zoom | Not exercised at all; the 390 px column in row 15 is a narrow viewport, not enlarged text | A-08 |
-| `prefers-contrast` and `prefers-reduced-motion` **on a real device, at real OS settings** | Row 15 emulates both in one headless browser and asserts what the stylesheet promises there; whether a person's own OS setting reaches the app the same way, and whether the result reads as *calmer* rather than merely *not moving*, is theirs | A-08 |
+| Screen magnification / 200% zoom on physical assistive tech | Tested in headless Chromium emulation at 320px viewport without overflow (row 20, A-08); physical hardware screen magnification software untested | A-03, A-04 |
+| `prefers-contrast` and `prefers-reduced-motion` **on a real device, at real OS settings** | Row 15 and row 20 emulate both in headless browser and assert tokens, clamping, and 0 axe violations; whether a person's physical OS setting behaves identically on their hardware remains untested | A-03, A-04 |
 | Dynamic text / OS font scaling | Not exercised | A-08 |
 
 ## Known gaps in the current shell

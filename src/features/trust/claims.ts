@@ -1,5 +1,4 @@
 import { E2EE_PROVEN_IN_BROWSER } from '@/lib/near-ai/e2ee';
-import { notBuilt } from '@/lib/not_built';
 import type { CheckResult, TrustRecord } from '@/types';
 
 /**
@@ -80,5 +79,5 @@ export function partialCopy(checks: CheckResult[]): string {
  * can prove no document bytes left the device.
  */
 export function blockedCopy(): string {
-  return notBuilt('T-06', 'The blocked-before-sending sentence') as never;
+  return 'Verification did not pass. Nothing was sent from your document.';
 }
