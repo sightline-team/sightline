@@ -132,6 +132,24 @@ describe('session reducer (F-07)', () => {
     expect(s.transcript?.captureIssues).toHaveLength(1);
   });
 
+  it('does not hold at "needs_retake" for rotated or handwriting_present (C-04, SPIKE §4)', () => {
+    const s = run([
+      { type: 'analysis_started' },
+      { type: 'verification_passed' },
+      {
+        type: 'transcript_received',
+        transcript: transcript({
+          captureIssues: [
+            { page: 0, issue: 'rotated' },
+            { page: 1, issue: 'handwriting_present' },
+          ],
+        }),
+      },
+    ]);
+    expect(s.status).toBe('analysing');
+    expect(s.transcript?.captureIssues).toHaveLength(2);
+  });
+
   it('continues past a capture issue only when the user says to', () => {
     const stuck = run([
       { type: 'analysis_started' },
@@ -139,6 +157,25 @@ describe('session reducer (F-07)', () => {
       { type: 'transcript_received', transcript: transcript({ captureIssues: [{ page: 0, issue: 'blurry' }] }) },
     ]);
     expect(sessionReducer(stuck, { type: 'retake_continued' }).status).toBe('analysing');
+  });
+
+  it('clears transcript when a page is added, removed, or retaken after a retake offer', () => {
+    const s1 = run([
+      { type: 'page_added', page: page('p-1') },
+      { type: 'page_added', page: page('p-2') },
+      { type: 'transcript_received', transcript: transcript({ captureIssues: [{ page: 1, issue: 'cut_off_bottom' }] }) },
+    ]);
+    expect(s1.status).toBe('needs_retake');
+    expect(s1.transcript).toBeDefined();
+
+    const page2Id = s1.pages[1]!.id;
+    const sRemoved = sessionReducer(s1, { type: 'page_removed', id: page2Id });
+    expect(sRemoved.status).toBe('preparing');
+    expect(sRemoved.transcript).toBeUndefined();
+
+    const sRetaken = sessionReducer(s1, { type: 'page_retaken', id: page2Id, page: page('p-3') });
+    expect(sRetaken.status).toBe('preparing');
+    expect(sRetaken.transcript).toBeUndefined();
   });
 
   it('reaches ready with the analysis attached', () => {

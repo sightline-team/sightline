@@ -9,6 +9,7 @@ import { usePhotoRun } from '@/app/_flow/usePhotoRun';
 import { useAnnouncer } from '@/lib/a11y/announcer';
 import { useSessionStore } from '@/lib/session/store';
 import { MAX_PAGES } from '@/lib/session/reducer';
+import { captureIssueSummary } from '@/lib/errors';
 
 /**
  * Photograph a document (item **C-02**). The sibling of `features/paste/PasteView.tsx` (P-05), mounted
@@ -40,16 +41,22 @@ export function CaptureView() {
 function CaptureForm() {
   const { session } = useSessionStore();
   const capture = useCapture();
-  const run = usePhotoRun();
+  const { run, continueAnyway } = usePhotoRun();
   const announce = useAnnouncer().announce;
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const errorRef = useRef<HTMLDivElement | null>(null);
+  const retakeHeadingRef = useRef<HTMLHeadingElement | null>(null);
 
   // A-06, as on the paste screen: a failure is moved to, not merely spoken.
   useEffect(() => {
     if (session.error !== undefined) errorRef.current?.focus();
   }, [session.error]);
+
+  // C-04 / A-06: focus moves to the retake offer heading when a severe capture issue is reported
+  useEffect(() => {
+    if (session.status === 'needs_retake') retakeHeadingRef.current?.focus();
+  }, [session.status]);
 
   const pageCount = session.pages.length;
 
@@ -66,8 +73,21 @@ function CaptureForm() {
     }
   }
 
+  async function onContinueAnyway() {
+    setBusy(true);
+    try {
+      await continueAnyway();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (session.status === 'needs_retake') {
+      await onContinueAnyway();
+      return;
+    }
     if (pageCount === 0) {
       // The button is disabled for this; the spoken backstop is for a keyboard user who reached it
       // before the disable landed, and for the next person to change the rule.
@@ -135,8 +155,27 @@ function CaptureForm() {
           </p>
         )}
 
+        {/* Retake offer (C-04): pauses before analysis when severe capture issues (cut-off edges, glare,
+            blur, etc.) are reported by the vision model. Rotated/handwriting are informational and carry on. */}
+        {session.status === 'needs_retake' && session.transcript ? (
+          <div className="retake-offer" data-testid="retake-offer" role="region" aria-labelledby="retake-heading">
+            <h3 id="retake-heading" tabIndex={-1} ref={retakeHeadingRef}>
+              Check before reading
+            </h3>
+            <p>{captureIssueSummary(session.transcript.captureIssues)}</p>
+            <p className="muted">
+              Part of the page may be missing. You can retake the photograph, or carry on with what Sightline read.
+            </p>
+            <p className="retake-actions">
+              <Button type="button" onClick={onContinueAnyway} disabled={busy}>
+                {busy ? 'Reading…' : 'Continue anyway'}
+              </Button>
+            </p>
+          </div>
+        ) : null}
+
         <p>
-          <Button type="submit" disabled={busy || pageCount === 0}>
+          <Button type="submit" disabled={busy || pageCount === 0 || session.status === 'needs_retake'}>
             {busy ? 'Reading…' : 'Read these photographs'}
           </Button>
         </p>

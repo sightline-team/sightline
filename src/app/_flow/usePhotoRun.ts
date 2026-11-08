@@ -9,7 +9,7 @@ import { RunHalt } from '@/lib/near-ai/verification';
 import { DIRECT_MODE_UNAVAILABLE } from '@/app/_flow/refused_steps';
 import { collaboratorsFor, modelFor } from '@/app/_flow/collaborators';
 import { liveWrites } from '@/app/_flow/live_writes';
-import { captureIssueSummary } from '@/lib/errors';
+import { captureIssueSummary, requiresRetake } from '@/lib/errors';
 import { missingPagesAnnouncement } from '@/lib/transcript/holes';
 import { useSessionStore } from '@/lib/session/store';
 import { useAnnouncer } from '@/lib/a11y/announcer';
@@ -46,12 +46,67 @@ import type { AppError } from '@/types';
  * strongest live answer is still `partial` while **B-12** is open, and AGENTS.md §4 rule 5 forbids
  * showing a check as passed when it is not). The action stays for the run that can honestly dispatch it.
  */
-export function usePhotoRun(): () => Promise<RunOutcome> {
+export type PhotoRun = (() => Promise<RunOutcome>) & {
+  run: () => Promise<RunOutcome>;
+  continueAnyway: () => Promise<RunOutcome>;
+};
+
+export function usePhotoRun(): PhotoRun {
   const { session, dispatch, beginRun, endRun } = useSessionStore();
   const announce = useAnnouncer().announce;
   const router = useRouter();
 
-  return useCallback(
+  const continueAnyway = useCallback(async (): Promise<RunOutcome> => {
+    if (!session.transcript) return { ok: false };
+
+    dispatch({ type: 'retake_continued' });
+    const { transport, gate, verifySignature } = collaboratorsFor(session);
+    const controller = beginRun();
+    const dispatchLive = liveWrites(controller.signal, dispatch);
+    let degraded: AppError | undefined;
+
+    try {
+      announce('Continuing with what Sightline read.');
+      await runPipeline({
+        mode: session.mode,
+        transcript: session.transcript,
+        model: modelFor(session.mode, 'analyse'),
+        transport,
+        gate,
+        verifySignature,
+        signal: controller.signal,
+        onTranscript: (t) => dispatchLive({ type: 'transcript_received', transcript: t }),
+        onTrustRecord: (record) => dispatchLive({ type: 'trust_recorded', record }),
+        onAnalysis: (analysis) => dispatchLive({ type: 'analysis_received', analysis }),
+        onDegraded: (error) => {
+          degraded = error;
+          dispatchLive({ type: 'run_degraded', code: error.code, context: error.context });
+        },
+      });
+
+      if (controller.signal.aborted) return { ok: false };
+
+      announce(
+        degraded === undefined
+          ? 'Done. Showing what Sightline read.'
+          : `${degraded.userMessage} Showing the photographs you gave instead.`,
+      );
+      router.push('/read');
+      return { ok: true };
+    } catch (cause) {
+      if (cause instanceof RunHalt) {
+        if (controller.signal.aborted) return { ok: false };
+        dispatch({ type: 'failed', code: cause.error.code, context: cause.error.context });
+        announce(cause.error.userMessage);
+        return { ok: false };
+      }
+      throw cause;
+    } finally {
+      endRun(controller);
+    }
+  }, [announce, beginRun, dispatch, endRun, router, session]);
+
+  const run = useCallback(
     async (): Promise<RunOutcome> => {
       // Which input the person is using is recorded **before** anything can refuse, because the failure
       // summary on this screen is shown by the section that owns the run (`CaptureView` when `input` is
@@ -142,15 +197,19 @@ export function usePhotoRun(): () => Promise<RunOutcome> {
           );
         }
 
-        // A capture problem does not stop the run here, and C-04 owns whether it should: the measured
-        // answer so far — `rotated` on 4 of 11 pages (SPIKE §4), including one drawn at 0.63° — says a
-        // run that halted on every reported tilt would stop more often than it finished. So it is
-        // announced and the run carries on. The transcript is dispatched once, by the pipeline's own
-        // `onTranscript` below, which is what puts the person's words on the full-text screen whether
-        // the reading arrives or not (P-08); `needs_retake` is the status that dispatch yields while a
-        // capture issue is on record, and `analysis_received` replaces it when the reading lands.
+        // Severe capture issues pause the run at needs_retake before analysis time and budget are spent (C-04).
+        // Rotated (measured on 6 of 14 live pages at 0.63° tilt) and handwriting are informational and carry on.
+        const hasSevereIssue = requiresRetake(assembled.transcript.captureIssues);
+
         if (assembled.transcript.captureIssues.length > 0) {
           notices.push(captureIssueSummary(assembled.transcript.captureIssues));
+        }
+
+        if (hasSevereIssue) {
+          notices.push('Retake the photograph, or carry on with what you have.');
+          dispatchLive({ type: 'transcript_received', transcript: assembled.transcript });
+          announce(notices.join(' '));
+          return { ok: false };
         }
 
         if (notices.length > 0) announce(notices.join(' '));
@@ -203,4 +262,6 @@ export function usePhotoRun(): () => Promise<RunOutcome> {
     },
     [announce, beginRun, dispatch, endRun, router, session],
   );
+
+  return Object.assign(run, { run, continueAnyway });
 }

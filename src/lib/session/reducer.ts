@@ -1,4 +1,4 @@
-import { appError } from '@/lib/errors';
+import { appError, requiresRetake } from '@/lib/errors';
 import type {
   Analysis,
   AppError,
@@ -89,21 +89,21 @@ export function sessionReducer(state: Session, action: SessionAction): Session {
         return { ...state, status: 'error', error: appError('too_many_pages') };
       }
       const page: Page = { ...action.page, index: state.pages.length };
-      return { ...state, pages: [...state.pages, page], status: 'preparing', error: undefined };
+      return { ...state, pages: [...state.pages, page], status: 'preparing', error: undefined, transcript: undefined };
     }
 
     case 'page_removed': {
       // Reindex so "Page n" labels stay contiguous in capture order. There is no
       // reorder UI (PROJECT_STRUCTURE §8): capture order is the order.
       const pages = state.pages.filter((p) => p.id !== action.id).map((p, i) => ({ ...p, index: i }));
-      return { ...state, pages, status: 'preparing' };
+      return { ...state, pages, status: 'preparing', transcript: undefined };
     }
 
     case 'page_retaken': {
       const original = state.pages.find((p) => p.id === action.id);
       if (!original) return state;
       const pages = state.pages.map((p) => (p.id === action.id ? { ...action.page, index: original.index } : p));
-      return { ...state, pages, status: 'preparing' };
+      return { ...state, pages, status: 'preparing', transcript: undefined };
     }
 
     case 'analysis_started':
@@ -118,9 +118,9 @@ export function sessionReducer(state: Session, action: SessionAction): Session {
       return {
         ...state,
         transcript: action.transcript,
-        // Model-reported capture issues come before analysis time is spent
-        // (ESSENTIALS pipeline step 5).
-        status: action.transcript.captureIssues.length > 0 ? 'needs_retake' : 'analysing',
+        // Model-reported severe capture issues pause for a retake before analysis time is spent
+        // (ESSENTIALS pipeline step 5, C-04). Informational issues like tilt carry on.
+        status: requiresRetake(action.transcript.captureIssues) ? 'needs_retake' : 'analysing',
       };
 
     case 'retake_continued':

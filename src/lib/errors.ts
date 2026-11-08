@@ -178,10 +178,44 @@ export function captureIssueMessage(issue: CaptureIssue): string {
 }
 
 /**
+ * Issues where content is cut off or severely degraded, justifying pausing the run
+ * to offer the person a retake before spending time and budget on analysis (C-04).
+ *
+ * `rotated` is deliberately excluded: 6 of 14 measured live pages were reported
+ * `rotated` on a 0.63° tilt (SPIKE_RESULTS.md §4), including the demo's own photographs.
+ * Halting on `rotated` would nag on almost every handheld photo.
+ * `handwriting_present` is informational only (Sightline is less reliable with it).
+ */
+export const RETAKE_ISSUES: ReadonlySet<CaptureIssue> = new Set([
+  'cut_off_top',
+  'cut_off_bottom',
+  'cut_off_left',
+  'cut_off_right',
+  'blurry',
+  'glare',
+  'too_small_text',
+  'not_a_document',
+]);
+
+export function isRetakeIssue(issue: CaptureIssue): boolean {
+  return RETAKE_ISSUES.has(issue);
+}
+
+export function requiresRetake(issues: readonly { page: number; issue: CaptureIssue }[]): boolean {
+  return issues.some((item) => isRetakeIssue(item.issue));
+}
+
+export function retakeOfferMessage(issues: readonly { page: number; issue: CaptureIssue }[]): string {
+  const summary = captureIssueSummary(issues);
+  if (!summary) return '';
+  return `${summary} Retake the photograph, or carry on with what you have.`;
+}
+
+/**
  * What to say when several pages have capture issues at once. Names the pages in
  * capture order so the announcement matches "Page 1, Page 2" labels elsewhere.
  */
-export function captureIssueSummary(issues: { page: number; issue: CaptureIssue }[]): string {
+export function captureIssueSummary(issues: readonly { page: number; issue: CaptureIssue }[]): string {
   if (issues.length === 0) return '';
   const first = issues[0]!;
   const lead = `Page ${first.page + 1}: ${captureIssueMessage(first.issue)}`;

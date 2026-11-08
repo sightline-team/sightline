@@ -358,13 +358,32 @@ button[disabled] {
   margin-block: var(--space-2) var(--space-3);
 }
 
+.retake-offer {
+  border: 2px solid var(--warn-fg);
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  margin-block: var(--space-2) var(--space-3);
+}
+
+.retake-offer h3 {
+  color: var(--warn-fg);
+  margin-top: 0;
+}
+
+.retake-offer .retake-actions {
+  margin-top: var(--space-2);
+}
+
 .muted {
   color: var(--muted);
 }
 
-/* A programmatic focus target (results heading, error summary) must be visible as a focus
+/* A programmatic focus target (results heading, error summary, retake heading) must be visible as a focus
    change even though it was never tab-reachable: `:focus-visible` would skip it. */
 h1:focus,
+h3:focus,
 div:focus {
   outline: 3px solid var(--accent);
   outline-offset: 2px;
