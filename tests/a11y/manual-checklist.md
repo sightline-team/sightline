@@ -60,6 +60,26 @@ Run in this order. Each cell: heard correctly? (Y/N), what was actually spoken, 
 | No focus trap in the announcer or nav | Tab traversal through 25 elements | **Pass** — Tab cycles through controls without trapping. Announcer live region `<p role="status">` has no tabindex and is never focused by keyboard (`tests/e2e/keyboard.spec.ts`). |
 | Routes render no content requiring a hover state | DOM computed style inspection | **Pass** — Zero content or controls require mouse hover to be revealed or operated across all four routes (`tests/e2e/keyboard.spec.ts`). |
 
+## Focus-management audit (A-06) — run and verified 2026-11-08
+
+| Check | Command / action | Result |
+|---|---|---|
+| New view heading focus after run | Run completion navigates to `/read` | **Pass** — After run completes, `router.push('/read')` lands with focus on results `<h1 data-testid="results-heading" tabindex="-1">` (`tests/e2e/focus-audit.spec.ts`). |
+| Error summary focus on paste failure | Submit text exceeding 20,000 char cap | **Pass** — Submitting text > 20,000 characters halts run with plain-language error; focus moves directly to `<div id="paste-error" tabindex="-1">` (`tests/e2e/focus-audit.spec.ts`). |
+| Error summary focus on question failure | Submit unanswerable / non-fixture question | **Pass** — Submitting question with no answer moves focus directly to `<div data-testid="status-message" tabindex="-1">` (`tests/e2e/focus-audit.spec.ts`). |
+| Focus return on Forget | Activate Forget button on results screen | **Pass** — Activating Forget empties document from session; focus returns to the results heading of the cleared screen (`tests/e2e/focus-audit.spec.ts`). |
+| Results screen keyboard traversal | Tab traversal through results sections | **Pass** — All 7 sections (Summary → Key facts → Actions → Warnings → Full text → Ask → Verification) rendered in fixed order; interactive controls (Read aloud, question input, Ask button, Forget button) are reachable and operable in sequence (`tests/e2e/focus-audit.spec.ts`). |
+
+## High contrast, reduced motion, and 200% zoom / 320px reflow (A-08) — run and verified 2026-11-08
+
+| Check | Command / action | Result |
+|---|---|---|
+| High contrast theme toggle & axe check | Toggle on `/settings` + sweep all routes | **Pass** — Setting toggle applies `data-high-contrast="true"`, announces change through single live region, persists across reloads, and achieves 0 serious/critical axe violations across all 4 routes (`tests/e2e/a11y-modes.spec.ts`). |
+| Media query prefers-contrast: more | `emulateMedia({ contrast: 'more' })` | **Pass** — System high-contrast query activates high-contrast tokens (`--border: var(--fg)`); 0 axe violations on all routes (`tests/e2e/a11y-modes.spec.ts`). |
+| Media query prefers-reduced-motion: reduce | `emulateMedia({ reducedMotion: 'reduce' })` | **Pass** — Animation and transition durations clamped to 0.001ms globally; button hover transform disabled (`transform: none`); all state transitions remain fully understandable and operable without motion (`tests/e2e/a11y-modes.spec.ts`). |
+| 200% zoom / 320px reflow (WCAG 1.4.10) | Viewport 320×640 across all 4 routes | **Pass** — Zero horizontal overflow (`scrollWidth <= window.innerWidth`) on all 4 routes with `input[type="file"] { max-width: 100% }`; full document reading and Q&A workflow completes without horizontal scrolling; 0 axe violations at 320px (`tests/e2e/a11y-modes.spec.ts`). |
+| Touch/click target bounds at 320px width | Measure all `main button` elements at 320px | **Pass** — All interactive buttons maintain height and width ≥ 44×44 px even at 320px width (`tests/e2e/a11y-modes.spec.ts`). |
+
 ## Findings
 
 | ID | Device | Step | What happened | Fix / item | Verified |

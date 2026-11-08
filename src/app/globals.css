@@ -490,6 +490,10 @@ section {
 
 /* The native file picker's own button is part of the control, so it is a 44 px target too (AGENTS.md §8)
  * rather than the small default the browser draws. */
+input[type='file'] {
+  max-width: 100%;
+}
+
 input[type='file']::file-selector-button {
   min-block-size: var(--target);
   margin-inline-end: var(--space-2);
