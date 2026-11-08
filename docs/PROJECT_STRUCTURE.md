@@ -41,7 +41,8 @@ sightline/
 │  ├─ PROJECT_STRUCTURE.md
 │  ├─ SPIKE_RESULTS.md            # Day 1 answers, filled in before product code
 │  ├─ USER_RESEARCH.md            # Real user notes, honestly stated (even if one session)
-│  └─ ACCESSIBILITY_REPORT.md     # What was tested, on what, what failed, what was not tested
+│  ├─ ACCESSIBILITY_REPORT.md     # What was tested, on what, what failed, what was not tested
+│  └─ DEMO_SCRIPT.md              # R-12: The six demo beats from PRD §9 with narrator script, timing cues, screen actions, a11y audio cues, and reproducible commands
 │
 ├─ public/
 │  ├─ manifest.webmanifest        # Icons only; no offline mode (referenced from layout metadata)
