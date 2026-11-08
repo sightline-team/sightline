@@ -78,27 +78,33 @@ function PasteForm({ config }: { config: PublicConfig }) {
         </p>
       ) : null}
 
-      <form onSubmit={onSubmit}>
-        <label htmlFor="document-text">Paste the text of your document</label>
-        <p className="muted" id="paste-hint">
-          Words copied from a screen or a PDF work best. Sightline reads up to{' '}
-          {MAX_PASTE_CHARS.toLocaleString('en-GB')} characters at a time, so paste the part you need
-          answered. To read a page from a photograph instead, use <em>Photograph a document</em> below.
-        </p>
-        <textarea
-          id="document-text"
-          name="document-text"
-          rows={10}
-          value={text}
-          aria-describedby="paste-hint"
-          onChange={(event) => setText(event.target.value)}
-        />
-        <p>
-          <Button type="submit" disabled={busy}>
-            {busy ? 'Reading…' : 'Read this text'}
-          </Button>
-        </p>
-      </form>
+      <div className="stream-bay">
+        <div className="stream-bay-header">
+          <span className="stream-badge">{'// STREAM: PLAIN_TEXT_INPUT'}</span>
+          <span className="stream-spec">20,000 CHAR MAX</span>
+        </div>
+        <form onSubmit={onSubmit}>
+          <label htmlFor="document-text">Paste the text of your document</label>
+          <p className="muted" id="paste-hint">
+            Words copied from a screen or a PDF work best. Sightline reads up to{' '}
+            {MAX_PASTE_CHARS.toLocaleString('en-GB')} characters at a time, so paste the part you need
+            answered. To read a page from a photograph instead, use <em>Photograph a document</em> below.
+          </p>
+          <textarea
+            id="document-text"
+            name="document-text"
+            rows={10}
+            value={text}
+            aria-describedby="paste-hint"
+            onChange={(event) => setText(event.target.value)}
+          />
+          <p>
+            <Button type="submit" disabled={busy}>
+              {busy ? 'Reading…' : 'Read this text'}
+            </Button>
+          </p>
+        </form>
+      </div>
 
       {isFixtures ? (
         <section aria-labelledby="demo-heading">

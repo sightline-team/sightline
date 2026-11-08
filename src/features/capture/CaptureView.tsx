@@ -111,75 +111,81 @@ function CaptureForm() {
         of them.
       </p>
 
-      <form onSubmit={onSubmit}>
-        <p>
-          <label htmlFor="capture-files">Add photographs</label>
-        </p>
-        <p className="muted">
-          This opens whichever thing your device offers for a picture — a camera, or a file picker that
-          can take several at once.
-        </p>
-        <input
-          ref={fileRef}
-          id="capture-files"
-          name="capture-files"
-          type="file"
-          accept="image/*"
-          capture="environment"
-          multiple
-          disabled={busy}
-          aria-describedby="capture-hint"
-          onChange={onFiles}
-        />
-
-        {pageCount > 0 ? (
-          <>
-            <p data-testid="capture-count">
-              {pageCount} of {MAX_PAGES} photographs added.
-            </p>
-            <PageList
-              pages={session.pages}
-              busy={busy}
-              onRemove={capture.removePage}
-              onRetakeLast={capture.retakeLast}
-            />
-            <p className="page-actions">
-              <Button onClick={capture.clearAll} disabled={busy}>
-                Remove all photographs
-              </Button>
-            </p>
-          </>
-        ) : (
-          <p className="muted" data-testid="capture-empty">
-            No photographs added yet.
+      <div className="stream-bay">
+        <div className="stream-bay-header">
+          <span className="stream-badge">{'// STREAM: OPTICAL_DOCUMENT_INPUT'}</span>
+          <span className="stream-spec">EXIF PURGED</span>
+        </div>
+        <form onSubmit={onSubmit}>
+          <p>
+            <label htmlFor="capture-files">Add photographs</label>
           </p>
-        )}
+          <p className="muted">
+            This opens whichever thing your device offers for a picture — a camera, or a file picker that
+            can take several at once.
+          </p>
+          <input
+            ref={fileRef}
+            id="capture-files"
+            name="capture-files"
+            type="file"
+            accept="image/*"
+            capture="environment"
+            multiple
+            disabled={busy}
+            aria-describedby="capture-hint"
+            onChange={onFiles}
+          />
 
-        {/* Retake offer (C-04): pauses before analysis when severe capture issues (cut-off edges, glare,
-            blur, etc.) are reported by the vision model. Rotated/handwriting are informational and carry on. */}
-        {session.status === 'needs_retake' && session.transcript ? (
-          <div className="retake-offer" data-testid="retake-offer" role="region" aria-labelledby="retake-heading">
-            <h3 id="retake-heading" tabIndex={-1} ref={retakeHeadingRef}>
-              Check before reading
-            </h3>
-            <p>{captureIssueSummary(session.transcript.captureIssues)}</p>
-            <p className="muted">
-              Part of the page may be missing. You can retake the photograph, or carry on with what Sightline read.
+          {pageCount > 0 ? (
+            <>
+              <p data-testid="capture-count">
+                {pageCount} of {MAX_PAGES} photographs added.
+              </p>
+              <PageList
+                pages={session.pages}
+                busy={busy}
+                onRemove={capture.removePage}
+                onRetakeLast={capture.retakeLast}
+              />
+              <p className="page-actions">
+                <Button onClick={capture.clearAll} disabled={busy}>
+                  Remove all photographs
+                </Button>
+              </p>
+            </>
+          ) : (
+            <p className="muted" data-testid="capture-empty">
+              No photographs added yet.
             </p>
-            <p className="retake-actions">
-              <Button type="button" onClick={onContinueAnyway} disabled={busy}>
-                {busy ? 'Reading…' : 'Continue anyway'}
-              </Button>
-            </p>
-          </div>
-        ) : null}
+          )}
 
-        <p>
-          <Button type="submit" disabled={busy || pageCount === 0 || session.status === 'needs_retake'}>
-            {busy ? 'Reading…' : 'Read these photographs'}
-          </Button>
-        </p>
-      </form>
+          {/* Retake offer (C-04): pauses before analysis when severe capture issues (cut-off edges, glare,
+              blur, etc.) are reported by the vision model. Rotated/handwriting are informational and carry on. */}
+          {session.status === 'needs_retake' && session.transcript ? (
+            <div className="retake-offer" data-testid="retake-offer" role="region" aria-labelledby="retake-heading">
+              <h3 id="retake-heading" tabIndex={-1} ref={retakeHeadingRef}>
+                Check before reading
+              </h3>
+              <p>{captureIssueSummary(session.transcript.captureIssues)}</p>
+              <p className="muted">
+                Part of the page may be missing. You can retake the photograph, or carry on with what Sightline read.
+              </p>
+              <p className="retake-actions">
+                <Button type="button" onClick={onContinueAnyway} disabled={busy}>
+                  {busy ? 'Reading…' : 'Continue anyway'}
+                </Button>
+              </p>
+            </div>
+          ) : null}
+
+          <p>
+            <Button type="submit" disabled={busy || pageCount === 0 || session.status === 'needs_retake'}>
+              {busy ? 'Reading…' : 'Read these photographs'}
+            </Button>
+          </p>
+        </form>
+      </div>
 
       {/* The page has one failure summary, and it is in whichever section ran: `session.input` is set to
           'images' by usePhotoRun before any of its guards, so a photo error surfaces here and a paste

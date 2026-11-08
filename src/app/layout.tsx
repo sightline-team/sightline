@@ -60,21 +60,30 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 server storage, AGENTS.md §4 rule 7), so a full page load would discard the user's
                 document mid-flow. `next/link` still renders an `<a>` element. */}
             <nav aria-label="Sightline sections">
-              <ul>
-                <li>
-                  <Link href="/">Document</Link>
-                </li>
-                <li>
-                  <Link href="/read">What Sightline read</Link>
-                </li>
-                <li>
-                  <Link href="/trust">Verification</Link>
-                </li>
-                <li>
-                  <Link href="/settings">Settings</Link>
-                </li>
-                <ForgetButton />
-              </ul>
+              <div className="nav-inner">
+                <div className="nav-brand-strip">
+                  <Link href="/" className="brand-link">
+                    <span className="brand-glyph" aria-hidden="true">⬡</span>
+                    <span className="brand-text">Sightline</span>
+                    <span className="brand-tee">TEE</span>
+                  </Link>
+                </div>
+                <ul>
+                  <li>
+                    <Link href="/">Document</Link>
+                  </li>
+                  <li>
+                    <Link href="/read">What Sightline read</Link>
+                  </li>
+                  <li>
+                    <Link href="/trust">Verification</Link>
+                  </li>
+                  <li>
+                    <Link href="/settings">Settings</Link>
+                  </li>
+                  <ForgetButton />
+                </ul>
+              </div>
             </nav>
             {/* Static text, deliberately not a second live region: the announcer is the only one. */}
             {isFixtures ? (
