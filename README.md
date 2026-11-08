@@ -44,6 +44,13 @@ what each verification check does and does not prove on the receipt screen, and 
 Sensitive documents are the point. A photo or pasted letter goes to an AI service; Sightline's
 claim is about *which* service and *how* we know — see "What is verified" below.
 
+### The Assistive AI Privacy Dilemma & Sightline's Mechanism
+
+- **The Assistive Privacy Dilemma:** Blind and low-vision individuals face an unfair compromise when understanding physical mail. Highly confidential correspondence — an eviction letter, an oncology lab result, a bank statement — cannot be read independently without sighted assistance. Existing tools (Seeing AI, Be My Eyes, or general commercial chatbots) send camera frames or text to general corporate cloud servers with unverifiable data retention policies.
+- **Hardware-Attested Enclaves (NEAR AI Cloud):** Sightline runs document understanding exclusively inside hardware-isolated enclaves (Intel TDX on NEAR AI Cloud). Before any document bytes leave the device, Sightline verifies an Intel TDX hardware attestation report bound to a fresh session nonce, confirming that even the hosting provider cannot access the document content.
+- **Machine-Computed Trust Receipts:** Instead of vague "Secured by AI" marketing badges, Sightline renders a machine-computed Trust Receipt that itemizes exactly which cryptographic and enclave checks ran, passed, or did not run.
+- **Algorithmic Transcript Grounding:** To prevent dangerous hallucinations on medicine dosages, payment amounts, and court dates, Sightline mathematically verifies every extracted fact and quote against exact document substrings before reading it aloud.
+
 ## Run it with no credentials
 
 ```bash
