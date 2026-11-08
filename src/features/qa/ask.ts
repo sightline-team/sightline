@@ -101,7 +101,7 @@ export async function askAboutDocument(deps: AskDeps): Promise<QAEntry> {
  * the model's own statement about *this document*, not a claim about the world, and the panel
  * words it that way (`notInDocument` is what the view reads to decide which sentence to show).
  */
-function groundAnswer(output: QaOutput, question: string, transcriptText: string): QAEntry {
+export function groundAnswer(output: QaOutput, question: string, transcriptText: string): QAEntry {
   const base = { id: newId(), question, askedAt: Date.now() };
 
   if (output.notInDocument) return { ...base, answer: output.answer, notInDocument: true };
