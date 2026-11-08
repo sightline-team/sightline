@@ -65,7 +65,7 @@ export function AskPanel() {
     <section aria-labelledby="ask-heading">
       <h2 id="ask-heading">Ask a question</h2>
 
-      {!isFixture ? (
+      {session.mode === 'direct' ? (
         <p>
           Asking questions about a document is not built in this mode yet, so there is no question
           box to use. Demo mode answers the questions written for its demo documents.

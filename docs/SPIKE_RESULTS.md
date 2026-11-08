@@ -1292,6 +1292,63 @@ heavy checks (§10 of ARCH).
 
 ---
 
+## 12. The first document through the app's own screens [Measured 2026-11-07]
+
+**Task #21 closed.** The human authorized the paid run; two synthetic paste runs and one live Q&A
+completed through Mode B's relay on `localhost:3000`, driven in a browser (MCP browser-use, Chromium).
+
+**Configuration:** `RELAY_ENABLED=true`, `ALLOWED_MODELS=z-ai/glm-5.3-flash,Qwen/Qwen3.8-27B`,
+`NEXT_PUBLIC_DEFAULT_MODE=relay`, key from the untracked `.env` (never printed, never on a command line).
+Dev server: `next dev` (Turbopack), in-memory rate-limit store (B-15 blocks production only).
+
+**Run 1 — paste, analyse step (Qwen):**
+
+| Step | Result | Time |
+|---|---|---|
+| Attestation report (Qwen, nonce `b4b13a07…`) | 502 first, **200 on retry** | 13.4 s + 5.3 s |
+| `/api/verify` (server second opinion) | 200, 12/12 checks agreed | 367 ms |
+| `POST /v1/chat/completions` (analyse) | **200** | **38.9 s** |
+| `GET /v1/signature/a921efc8…` | 200, verified against attested key | 355 ms |
+| Navigation to `/read` | results rendered | 183 ms |
+
+Receipt: **`partial`** — 15 of 19 checks passed, 4 did not run. 30 boot events replayed (RTMR 0–2).
+Summary correct ("a synthetic demo invoice… £840… 14 March 2026"), 8 facts all grounded, 2 actions,
+3 safety warnings + the synthetic declaration flagged.
+
+**Run 2 — paste + Q&A (two enclaves, one nonce `d4e75b5a…`):**
+
+| Step | Model | Result | Time |
+|---|---|---|---|
+| Attestation (Qwen) | Qwen/Qwen3.8-27B | 200 | 6.3 s |
+| `/api/verify` | — | 200 | 98 ms |
+| Completion (analyse) | Qwen | 200 | 59 s |
+| Signature `fac46443…` | Qwen | 200, verified | 431 ms |
+| Attestation (glm) | z-ai/glm-5.3-flash | 200 | 6.1 s |
+| `/api/verify` | — | 200 | 75 ms |
+| Completion (Q&A) | glm | 200 | **5.8 s** |
+| Signature `c0057165…` | glm | 200, verified | 349 ms |
+
+Q&A answer: **"£840 is owed, with a payment deadline of 14 March 2026."** — `quoteFound: true`,
+sourceQuote `"Amount due: £840 Payment deadline: 14 March 2026"`. Receipt shows two trust records:
+"Reading the document" (Qwen, 30 boot events) and "Answering a question" (glm, 32 boot events),
+each `partial`, each 15/19. The per-model cache (ADR-35) held: one nonce, two enclaves, two keys,
+no re-fetch on the second ask of the same model.
+
+**Bug found and fixed:** `AskPanel.tsx` rendered the Q&A refusal for all non-fixture modes
+(`!isFixture`), but Mode B's hook is wired. Changed to `session.mode === 'direct'` — the refusal
+now belongs to Mode A alone (T-13/B-10). Run 2 proved the fix live.
+
+**What this closes:** §11's "not measured here" paragraph (a completion through the relay, the
+signature round trip for a real answer, the first `partial` receipt on a real document). The README's
+"the live path has never carried a document" is now false and must be updated in the same commit.
+
+**What this does not close:** the photo path live (C-03's transcribe step on a real photograph through
+the app's screens — the fixture recording proved the model answers, but the app's own capture → prepare →
+transcribe → assemble → analyse chain has not crossed the wire); a deployed target (R-01/B-06);
+the strong privacy rung (B-07/T-10); accuracy (S-03).
+
+---
+
 ## What is still unknown (and cannot be closed by reading)
 
 Closed by the key on 2026-11-03, so removed from this list: the live TEE-and-image catalog, which model

@@ -4,7 +4,8 @@ Understand a sensitive document — a benefits letter, a lab result, a bill — 
 see exactly what was and was not verified. Built for the **NEAR Hackathon, Privacy & Private AI
 track**. Deadline: **2026-11-14 23:59 UTC**.
 
-> **Build state: the demo flow runs in a browser; the live path has never carried a document.** Three
+> **Build state: the demo flow runs in a browser; the live path carried its first synthetic document
+> on 2026-11-07.** Three
 > modes, named as the code names them: **Mode F** is what the two commands below run — the whole app,
 > answering from `fixtures/` instead of the service, with no key; **Mode B** is the app talking to NEAR AI
 > Cloud through this repository's own relay; **Mode A** would be the app asking with *your* key, and it
@@ -13,9 +14,9 @@ track**. Deadline: **2026-11-14 23:59 UTC**.
 > against exactly that keyless server and all but two of them run with no credential — the two are the
 > live round trip and they skip themselves when no key is configured. 72 of them are
 > `tests/e2e/flow.spec.ts`, and the photographed half is `tests/e2e/photo-fixtures.spec.ts` (7). The Mode B
-> relay is built and wired and its door-refusals are gone, but **no real document has been sent through
-> it**, because the first paid completion is a human decision (AGENTS.md §5); what *has* run is its gate —
-> from a script, against the app's own relay, answering `partial` (`docs/SPIKE_RESULTS.md` §11).
+> relay is built, wired, and **has now carried a synthetic document end to end** — paste, attestation,
+> completion, signature verification, results, and a live Q&A answer, all from the app's own screens
+> (`docs/SPIKE_RESULTS.md` §12). The receipt answered `partial`: 15 of 19 checks passed, 4 did not run.
 > Verification answers `partial`, never `verified`, while the four receipt checks that need Intel's
 > certificate service, NVIDIA's service, or a clock the report does not expose stay unrun (**B-12**). Read
 > `ROADMAP.md` for live status; every claim below is evidenced there, and dated where the evidence is a
@@ -137,8 +138,8 @@ per Sightline session, whose gate attests **each model the run asks** before tha
 (**ADR-35**), because a photographed run crosses two enclaves with two keys (**ADR-24**, **SPIKE §11**).
 So **the Mode B path has no door in front of it any more**. What has actually run, and what has not, are
 two different sentences: the gate reached `partial` over this repository's own relay from a script
-(**SPIKE §11**), and no screen has driven it and no document has crossed it — a real completion is a human
-decision (AGENTS.md §5), and `partial` is the strongest word a live receipt can print
+(**SPIKE §11**), and on 2026-11-07 a synthetic document crossed it from the app's own screens — paste,
+attestation, completion, signature, results and a live Q&A answer (**SPIKE §12**). `partial` is the strongest word a live receipt can print
 while the four receipt checks that need Intel's certificate service, NVIDIA's service, or a clock the
 report does not expose in plaintext stay open (**B-12**) — rule 5 forbids
 more. Mode A — where the browser would ask with your own key — still refuses at the door, for one reason
@@ -216,8 +217,7 @@ question and it closes "can a browser even read this answer", which for two days
 infer from a Node script's header dump. It is still not the sentence a user needs, for three separate
 reasons, each with its own ID: the app has **no key field** for a person to start Mode A with (**T-13**,
 held as a consent decision by **B-10**) — and Mode B, which needs no key from the person, is wired to the
-gate but has never carried a document, because that half costs money and is a human decision (**SPIKE §11**,
-AGENTS.md §5), the composed gate reaches only **`partial`** while the four checks
+gate and **carried its first synthetic document on 2026-11-07** (**SPIKE §12**), the composed gate reaches only **`partial`** while the four checks
 that need Intel's certificate service, NVIDIA's service, or a clock the live report does not expose in
 plaintext stay unanswered (**B-12**, since **T-03** for a
 new reason rather than because the route said nothing), and nothing in the round trip is **end-to-end
@@ -273,8 +273,7 @@ about it is internal consistency. What is left of the path to prove is **C-04/C-
 and what it costs the person), **C-07**/`S-08` (a device, host limits), **C-09/C-10** and **S-03** (the
 golden set, and the misread count that decides **T-11**). **Mode A still refuses at the door** — the
 settings page has no key field by design (**ADR-21**, item **T-13**) — and Mode B has no door left in front
-of it but has never been given a document, because the first paid completion is a human decision
-(AGENTS.md §5). So no real
+of it and carried its first synthetic document on 2026-11-07 (**SPIKE §12**). So no real
 user's photograph has been read anywhere. The transcription numbers that
 do exist are measured against the *spike's* synthetic page rasters, not against this app's screen
 (`docs/SPIKE_RESULTS.md` §4). Two statements will be required there and are stated now so they cannot be
