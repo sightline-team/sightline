@@ -384,6 +384,29 @@ nothing is signed, which is why its receipt leads with the demo-data sentence an
 and `response_signature` among the checks that did not run (**F-09**, `src/lib/near-ai/verification.ts`). Full
 detail in `docs/ARCHITECTURE.md` (and its one-page `ARCHITECTURE_ESSENTIALS.md`).
 
+## Hackathon compliance and disclosures
+
+Written for human judges and machine screening agents (Claude Code, Codex) per [`HACKATHON.md`](HACKATHON.md) rules:
+
+- **Track:** Privacy & Private AI (`privacy`).
+- **Development window (Q-001, Q-003):** Every line of code in this repository was created between 2026-11-02 and 2026-11-14 (within the hackathon window announced 2026-10-19). There is zero pre-existing baseline codebase; development started from an empty git commit.
+- **Licence & public repository (Q-012, Q-014):** MIT Licence ([`LICENSE`](LICENSE)). The repository is publicly hosted at `https://github.com/sightline-team/sightline` and will remain public indefinitely through judging.
+- **Dependencies & libraries (Q-005):** Next.js App Router (React), TypeScript (strict), Zod for runtime schema validation, `@noble/hashes` and `@noble/curves` for client-side SHA-256/384, Ed25519 and Secp256k1 cryptographic checks. Zero UI component libraries (native HTML and plain CSS only). Automated testing: Vitest, Playwright, `@axe-core/playwright`, ESLint.
+- **AI assistance (Q-005):** AI coding assistants (Antigravity, Qoder, Claude, Gemini) were used for pair programming under human direction, strictly bound by the mandatory roadmap gate ([`AGENTS.md`](AGENTS.md)), test-driven development, and release integrity gates.
+- **Reproducibility with zero credentials ("Do X → See Y", Q-012, Q-017):**
+  1. **Do:** Run `npm ci && npm run dev:fixtures`, then open `http://localhost:3000`.
+     **See:** The app loads in Mode F (fixture replay). The persistent demo-data banner appears (defined in `claims.ts`).
+  2. **Do:** Click **Add photographs**, choose `public/sample-docs/photographs/page-1.jpg`, `page-2.jpg`, and `page-3.jpg`, then click **Read these photographs**.
+     **See:** Multi-page progress is announced every 10 seconds. Results render in the invariant order: Summary → Key facts → What you may need to do → Warnings → Full text. Medication safety notices are visibly presented.
+  3. **Do:** Expand any fact's source quote (e.g. prescription dosage).
+     **See:** The verbatim quote from the transcript is shown alongside `"Quote found in document transcript"`.
+  4. **Do:** In the **Ask a question** panel, ask `"What is my dosage?"` then click **Ask**.
+     **See:** The answer is quoted directly from the transcript. Ask an unmentioned question (e.g. `"Can I drive?"`) and see the honest refusal: `"The document does not answer this question."`
+  5. **Do:** Navigate to **Verification** (`/trust`).
+     **See:** The trust receipt explicitly enumerates which checks ran and which did not. *Honesty note:* Demo mode fetches no attestation report, so its gate answers `not_run`. To inspect the failed verification case, run `npx vitest run tests/verification/` where tampered quotes, invalid nonces, and unverified signatures fail closed.
+  6. **Do:** Click **Forget this document** in the navigation.
+     **See:** All session storage keys, object URLs, and memory state are purged immediately. Focus returns to the primary heading.
+
 ## Links
 
 - Repo: `https://github.com/sightline-team/sightline` (public from the start; the rules file
