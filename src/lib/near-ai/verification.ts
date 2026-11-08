@@ -53,7 +53,7 @@ export interface SignatureOutcome {
   checks: CheckResult[];
 }
 
-export type AttestationGate = (args: { model: string; signal: AbortSignal }) => Promise<GateOutcome>;
+export type AttestationGate = (args: { model: string; signal: AbortSignal; forceRefresh?: boolean }) => Promise<GateOutcome>;
 
 /**
  * ADR-19 in one signature: the verifier is handed the **exact** bytes (`sentBody`, `rawText`)

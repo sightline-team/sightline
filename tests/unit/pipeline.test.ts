@@ -259,6 +259,20 @@ describe('nothing document-derived is sent before the checks (AGENTS.md §4 rule
     expect(h.analyses).toEqual([]);
   });
 
+  it('halts with attestation_changed when attestation key changes mid-session (T-07)', async () => {
+    const h = harness({
+      gate: {
+        ...GATE_OK,
+        status: 'failed',
+        checks: [{ name: 'quote_binds_attested_key', ran: true, passed: false, detail: 'the quote names a different key than the one this session would encrypt to' }],
+      },
+    });
+
+    await expectHalt(h, 'attestation_changed');
+    expect(h.log).toEqual(['onTranscript', 'gate']);
+    expect(h.analyses).toEqual([]);
+  });
+
   it('a partially verified gate still runs, and the record cannot claim more than partial', async () => {
     const h = harness({ gate: { ...GATE_OK, status: 'partial', checks: [{ name: 'attestation_report', ran: true, passed: false }] } });
 

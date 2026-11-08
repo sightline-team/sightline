@@ -275,6 +275,71 @@ describe('one session, two models: each enclave is attested for the step that as
     expect(outcome.checks[0]?.detail).toMatch(/no attestation has run for this model/);
     expect(asked.filter((a) => a.path === 'signature/{chat_id}'), 'refused before the round trip').toEqual([]);
   });
+
+  it('attestation changed mid-session: re-fetch binds a different key, causing signature verification to fail and halt (T-07)', async () => {
+    const asked: { path: string; query?: Record<string, string> }[] = [];
+    let currentKey = PAGE_KEY;
+    const dynamicService: NearClient = {
+      mode: 'relay',
+      baseUrl: '/api/relay/v1',
+      post: async () => {
+        throw new Error('no post');
+      },
+      get: (path: string, init?: { query?: Record<string, string> }) => {
+        asked.push({ path, query: init?.query });
+        const model = init?.query?.model ?? '';
+        if (path === 'attestation/report') {
+          const nonce = init?.query?.nonce ?? '';
+          return Promise.resolve({
+            status: 200,
+            path: 'attestation/report',
+            rawText: '{}',
+            json: {
+              model_attestations: [
+                {
+                  request_nonce: nonce,
+                  signing_address: pub(currentKey),
+                  signing_algo: 'ed25519',
+                  signing_public_key: pub(currentKey),
+                },
+              ],
+            },
+          });
+        }
+        const text = signedTextFor(model);
+        return Promise.resolve({
+          status: 200,
+          path: 'signature/{chat_id}',
+          rawText: '{}',
+          json: {
+            text,
+            signature: hex(ed25519.sign(new TextEncoder().encode(text), currentKey)),
+            signing_address: pub(currentKey),
+            signing_algo: 'ed25519',
+            signature_kind: 'provider_tee',
+          },
+        });
+      },
+    } as unknown as NearClient;
+
+    const session = createTrustSession({ client: dynamicService, fetchImpl: agrees });
+
+    // 1. Initial gate call binds to initial key (PAGE_KEY)
+    const initial = await session.gate({ model: PAGE, signal });
+    expect(initial.signingKey?.keyOrAddress).toBe(pub(PAGE_KEY));
+
+    // 2. Initial response signed by PAGE_KEY verifies
+    const initialSig = await session.verifySignature({ chatId: 'chat-1', model: PAGE, sentBody: REQUEST, rawText: RESPONSE, signal });
+    expect(initialSig.verified).toBe(true);
+
+    // 3. Service replaces/redeploys model enclave mid-session with a new key
+    currentKey = READING_KEY;
+
+    // 4. Response signed by the new key does NOT verify against the session's attested key
+    const changedSig = await session.verifySignature({ chatId: 'chat-1', model: PAGE, sentBody: REQUEST, rawText: RESPONSE, signal });
+    expect(changedSig.verified).toBe(false);
+    expect(changedSig.checks.find((c) => c.name === 'response_signature')).toMatchObject({ ran: true, passed: false });
+  });
 });
 
 describe('the strong claim is unreachable without proof', () => {
@@ -499,7 +564,7 @@ describe('decided verification set (ARCH §10) — what still needs a live verif
   it.todo('NRAS GPU verdict: the device facts live inside nvidia_payload, which this build cannot open (T-01, gated on B-12)');
   it.todo('TDX quote: valid passes, tampered tcb fails, expired fails — the fixtures exist, the verifier does not (T-03, gated on B-12)');
   it.todo('partial status is rendered as the ran/passed list and never as "verified" (T-05, needs T-04 claimFor)');
-  it.todo('attestation changed mid-session: re-fetch once, then stop with attestation_changed (T-07)');
+  // T-07 (attestation changed mid-session) is implemented and verified above in 'per-model trust session'
   it.todo('e2ee_enclave is selected only when TrustRecord.e2ee is true and the flag is proven (T-04)');
 });
 

@@ -237,7 +237,7 @@ export function bindReport(input: { report: AttestationReport; nonce: string; si
 }
 
 export interface TrustSession {
-  gate: (args: { model: string; signal: AbortSignal }) => Promise<GateOutcome>;
+  gate: (args: { model: string; signal: AbortSignal; forceRefresh?: boolean }) => Promise<GateOutcome>;
   verifySignature: SignatureVerifier;
   /** What the session bound the report to. Kept for the receipt. */
   nonce(): string;
@@ -266,13 +266,20 @@ export function createTrustSession(deps: { client: NearClient; ttlMs?: number; f
   const algo = deps.signingAlgo ?? 'ed25519';
   const ttl = deps.ttlMs ?? 60_000;
   const cache = new Map<string, { outcome: GateOutcome; at: number }>();
+  // T-07: Track the initial attested signing key per model across the session
+  const initialKeys = new Map<string, string>();
 
   const run = async (model: string, signal: AbortSignal): Promise<GateOutcome> => {
     const report = await fetchReport(deps.client, { model, nonce, signingAlgo: algo, signal });
     const local = bindReport({ report, nonce, signingAlgo: algo });
-    // T-03's dependency-free half, decided here rather than on our server: a browser that reads the
-    // quote itself trusts its own arithmetic, a browser that asks `/api/verify` trusts our verdict.
-    const quote = checkQuote({ attestation: report.model_attestations?.[0], nonce, label: 'the model enclave', expectedKey: local.signingKey?.keyOrAddress });
+    // T-07: Compare against the initial session key if one was previously bound for this model (PRD §12 Q2 row 7).
+    // If the model enclave was restarted or replaced mid-session, its key differs and quote_binds_attested_key fails.
+    const initialKey = initialKeys.get(model);
+    const expectedKey = initialKey ?? local.signingKey?.keyOrAddress;
+    if (local.signingKey?.keyOrAddress && initialKey === undefined) {
+      initialKeys.set(model, local.signingKey.keyOrAddress);
+    }
+    const quote = checkQuote({ attestation: report.model_attestations?.[0], nonce, label: 'the model enclave', expectedKey });
     const server = await verifyWithServer(report, nonce, { fetchImpl: deps.fetchImpl, signal, signingAlgo: algo });
     // Rule 5 in its structural form: a check that never ran has to stop the word `verified`, not merely
     // annotate it. The four gaps count against the status until `/api/verify` answers one of them — when
@@ -285,7 +292,7 @@ export function createTrustSession(deps: { client: NearClient; ttlMs?: number; f
     // Required checks are the ones that must pass to send anything: a report that is not bound to
     // us, a verifier that said no, and a quote that says the enclave is in debug mode — in which
     // state the machine's operator can read its memory, so nothing here would be private.
-    const required = ['nonce_fresh', 'server_verification', 'attestation_report', 'td_not_debug'];
+    const required = ['nonce_fresh', 'server_verification', 'attestation_report', 'td_not_debug', 'quote_binds_attested_key'];
     // Rule 4 with its teeth on: no readable quote means no readable debug bit, and a machine whose
     // debug bit is unknown is one whose operator may be able to read its memory, so nothing in it would
     // be private. A report like that stops the run instead of merely lowering the wording. Until T-03
@@ -304,9 +311,11 @@ export function createTrustSession(deps: { client: NearClient; ttlMs?: number; f
     return outcome;
   };
 
-  const gate = async ({ model, signal }: { model: string; signal: AbortSignal }): Promise<GateOutcome> => {
-    const held = cache.get(model);
-    if (held !== undefined && Date.now() - held.at < ttl) return held.outcome;
+  const gate = async ({ model, signal, forceRefresh }: { model: string; signal: AbortSignal; forceRefresh?: boolean }): Promise<GateOutcome> => {
+    if (!forceRefresh) {
+      const held = cache.get(model);
+      if (held !== undefined && Date.now() - held.at < ttl) return held.outcome;
+    }
     return run(model, signal);
   };
 

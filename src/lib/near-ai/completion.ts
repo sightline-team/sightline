@@ -163,7 +163,10 @@ async function attemptOnce<T>(deps: ReadCompletionDeps<T>, repair: boolean): Pro
   // gated like the first. Mode F has no enclave to ask, and `fixtureGate` calls that `not_run`
   // rather than borrowing a pass from somewhere else.
   const gate = isFixture ? fixtureGate() : await deps.gate({ model: deps.model, signal: deps.signal });
-  if (gate.status === 'failed') throw new RunHalt(appError('verification_failed'));
+  if (gate.status === 'failed') {
+    const isChanged = gate.checks.some((c) => c.name === 'quote_binds_attested_key' && !c.passed);
+    throw new RunHalt(appError(isChanged ? 'attestation_changed' : 'verification_failed'));
+  }
 
   const call = await send(deps, repair);
 
