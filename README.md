@@ -157,8 +157,7 @@ signature-checked on its own model row.
 
 ## Live demo
 
-The demo URL and the mode it runs in are recorded here when R-01 deploys it. Until then there is no
-hosted demo, and blocker B-06 (a deploy target) is open.
+- **Live URL**: [https://sightline-snowy-beta.vercel.app/](https://sightline-snowy-beta.vercel.app/) — deployed on Vercel with App Router serverless runtime (item **R-01**). When configured with `NEAR_AI_API_KEY` and `RATE_LIMIT_STORE_URL` (or in-memory with key cap), it proxies authenticated requests to NEAR AI Cloud enclaves in Mode B; unconfigured or when relay verification fails closed, it defaults to Mode F fixtures.
 
 ## What is verified
 

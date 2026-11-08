@@ -49,6 +49,31 @@ describe('relay configuration fails closed', () => {
     expect(cfg.relayDisabledReason).toBeNull();
     expect(cfg.allowedModels).toEqual(['org/model-a', 'org/model-b']);
     expect(cfg.rateLimitPerIpPerHour).toBe(20);
+    expect(cfg.hasSharedStore).toBe(true);
+  });
+
+  it('allows in-memory rate limiting with key cap in production when explicitly requested', () => {
+    const memoryStoreCfg = serverConfig({
+      NEAR_AI_API_KEY: KEY,
+      RELAY_ENABLED: 'true',
+      ALLOWED_MODELS: 'org/model-a',
+      RATE_LIMIT_STORE_URL: 'memory',
+      NODE_ENV: 'production',
+    });
+    expect(memoryStoreCfg.relayEnabled).toBe(true);
+    expect(memoryStoreCfg.relayDisabledReason).toBeNull();
+    expect(memoryStoreCfg.hasSharedStore).toBe(false);
+
+    const explicitFlagCfg = serverConfig({
+      NEAR_AI_API_KEY: KEY,
+      RELAY_ENABLED: 'true',
+      ALLOWED_MODELS: 'org/model-a',
+      ALLOW_IN_MEMORY_RATE_LIMIT: 'true',
+      NODE_ENV: 'production',
+    });
+    expect(explicitFlagCfg.relayEnabled).toBe(true);
+    expect(explicitFlagCfg.relayDisabledReason).toBeNull();
+    expect(explicitFlagCfg.hasSharedStore).toBe(false);
   });
 
   it('does not put the API key on the returned config object', () => {

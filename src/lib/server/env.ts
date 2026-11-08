@@ -38,6 +38,7 @@ const serverEnvSchema = z.object({
     z.number().int().positive(),
   ),
   RATE_LIMIT_STORE_URL: z.string().default(''),
+  ALLOW_IN_MEMORY_RATE_LIMIT: booleanFromEnv,
   NODE_ENV: z.string().default('development'),
 });
 
@@ -56,7 +57,8 @@ export type RelayDisabledReason = 'no_key' | 'not_requested' | 'no_allowed_model
 
 function interpret(env: z.infer<typeof serverEnvSchema>): ServerConfig {
   const isProduction = env.NODE_ENV === 'production';
-  const hasSharedStore = env.RATE_LIMIT_STORE_URL.length > 0;
+  const hasSharedStore = env.RATE_LIMIT_STORE_URL.length > 0 && env.RATE_LIMIT_STORE_URL !== 'memory';
+  const allowInMemory = env.ALLOW_IN_MEMORY_RATE_LIMIT || env.RATE_LIMIT_STORE_URL === 'memory';
 
   let relayDisabledReason: RelayDisabledReason | null = null;
   if (!env.RELAY_ENABLED) relayDisabledReason = 'not_requested';
@@ -65,7 +67,9 @@ function interpret(env: z.infer<typeof serverEnvSchema>): ServerConfig {
   // An in-memory counter does not survive across serverless instances, so in
   // production it is no limit at all. Fail closed instead of running unprotected
   // (docs/PRD.md §12 Q1 risk 7). In development the operator may accept that.
-  else if (isProduction && !hasSharedStore) relayDisabledReason = 'no_rate_limit_store';
+  // In serverless production, the operator may explicitly accept in-memory rate
+  // limiting backed by a prepaid key cap budget control (blocker B-15).
+  else if (isProduction && !hasSharedStore && !allowInMemory) relayDisabledReason = 'no_rate_limit_store';
 
   return {
     relayEnabled: relayDisabledReason === null,
