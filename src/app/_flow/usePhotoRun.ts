@@ -13,6 +13,9 @@ import { captureIssueSummary, requiresRetake } from '@/lib/errors';
 import { missingPagesAnnouncement } from '@/lib/transcript/holes';
 import { useSessionStore } from '@/lib/session/store';
 import { useAnnouncer } from '@/lib/a11y/announcer';
+import { createProgressTicker } from '@/lib/a11y/progress';
+import { createWakeLockManager } from '@/lib/a11y/wake_lock';
+import { appError } from '@/lib/errors';
 import type { RunOutcome } from '@/app/_flow/useDocumentRun';
 import type { AppError } from '@/types';
 
@@ -64,8 +67,24 @@ export function usePhotoRun(): PhotoRun {
     const controller = beginRun();
     const dispatchLive = liveWrites(controller.signal, dispatch);
     let degraded: AppError | undefined;
+    let backgrounded = false;
+    const progressTicker = createProgressTicker(announce);
+    const wakeLock = createWakeLockManager();
+
+    const onVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        backgrounded = true;
+        controller.abort();
+      }
+    };
 
     try {
+      void wakeLock.acquire();
+      progressTicker.start();
+      if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', onVisibilityChange);
+      }
+
       announce('Continuing with what Sightline read.');
       await runPipeline({
         mode: session.mode,
@@ -94,14 +113,26 @@ export function usePhotoRun(): PhotoRun {
       router.push('/read');
       return { ok: true };
     } catch (cause) {
+      if (backgrounded) {
+        const error = appError('aborted');
+        dispatch({ type: 'failed', code: error.code });
+        announce(error.userMessage);
+        return { ok: false };
+      }
       if (cause instanceof RunHalt) {
         if (controller.signal.aborted) return { ok: false };
         dispatch({ type: 'failed', code: cause.error.code, context: cause.error.context });
         announce(cause.error.userMessage);
         return { ok: false };
       }
+      if (controller.signal.aborted) return { ok: false };
       throw cause;
     } finally {
+      progressTicker.stop();
+      void wakeLock.release();
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+      }
       endRun(controller);
     }
   }, [announce, beginRun, dispatch, endRun, router, session]);
@@ -137,8 +168,24 @@ export function usePhotoRun(): PhotoRun {
       // Set when the reading could not be made, so the run still shows the transcript it did read
       // (P-08) and says which of the two sentences the person is hearing.
       let degraded: AppError | undefined;
+      let backgrounded = false;
+      const progressTicker = createProgressTicker(announce);
+      const wakeLock = createWakeLockManager();
+
+      const onVisibilityChange = () => {
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+          backgrounded = true;
+          controller.abort();
+        }
+      };
 
       try {
+        void wakeLock.acquire();
+        progressTicker.start();
+        if (typeof document !== 'undefined') {
+          document.addEventListener('visibilitychange', onVisibilityChange);
+        }
+
         const assembled = await readPages(session.pages, {
           mode: session.mode,
           // The page model for a live run, the fixture's own name for Mode F (`modelFor`, ADR-24). It is
@@ -152,7 +199,10 @@ export function usePhotoRun(): PhotoRun {
           onTrustRecord: (record) => dispatchLive({ type: 'trust_recorded', record }),
           // §12's cadence is per page rather than per tick: a page is ≈26 s, so this is about one
           // sentence every 26 s, which is what the accessibility rule asks for.
-          onPageStarted: (page, pageCount) => announce(`Reading photograph ${page + 1} of ${pageCount}.`),
+          onPageStarted: (page, pageCount) => {
+            announce(`Reading photograph ${page + 1} of ${pageCount}.`);
+            progressTicker.reset();
+          },
         });
 
         // Forget (P-10) aborts a run that is still going, and a page that answered after it belongs to
@@ -247,6 +297,12 @@ export function usePhotoRun(): PhotoRun {
         router.push('/read');
         return { ok: true };
       } catch (cause) {
+        if (backgrounded) {
+          const error = appError('aborted');
+          dispatch({ type: 'failed', code: error.code });
+          announce(error.userMessage);
+          return { ok: false };
+        }
         if (cause instanceof RunHalt) {
           // A halt caused by the person pressing Forget is not an error to report on a screen they
           // just cleared, and a page refused after some pages were read still writes nothing.
@@ -255,8 +311,14 @@ export function usePhotoRun(): PhotoRun {
           announce(cause.error.userMessage);
           return { ok: false };
         }
+        if (controller.signal.aborted) return { ok: false };
         throw cause;
       } finally {
+        progressTicker.stop();
+        void wakeLock.release();
+        if (typeof document !== 'undefined') {
+          document.removeEventListener('visibilitychange', onVisibilityChange);
+        }
         endRun(controller);
       }
     },

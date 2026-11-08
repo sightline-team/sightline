@@ -10,6 +10,9 @@ import { liveWrites } from '@/app/_flow/live_writes';
 import { pasteLengthProblem } from '@/lib/session/reducer';
 import { useSessionStore } from '@/lib/session/store';
 import { useAnnouncer } from '@/lib/a11y/announcer';
+import { createProgressTicker } from '@/lib/a11y/progress';
+import { createWakeLockManager } from '@/lib/a11y/wake_lock';
+import { appError } from '@/lib/errors';
 import type { AppError, Transcript } from '@/types';
 
 /**
@@ -84,8 +87,24 @@ export function useDocumentRun(): (text: string) => Promise<RunOutcome> {
       // captured here rather than read back from the store, because this hook is what decides
       // which sentence the announcer gets and whether to navigate at all.
       let degraded: AppError | undefined;
+      let backgrounded = false;
+      const progressTicker = createProgressTicker(announce);
+      const wakeLock = createWakeLockManager();
+
+      const onVisibilityChange = () => {
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+          backgrounded = true;
+          controller.abort();
+        }
+      };
 
       try {
+        void wakeLock.acquire();
+        progressTicker.start();
+        if (typeof document !== 'undefined') {
+          document.addEventListener('visibilitychange', onVisibilityChange);
+        }
+
         await runPipeline({
           // C-02: the pipeline takes the transcript and the mode, not the session. The paste-shaped
           // transcript above is the one this run built, so it is handed over rather than re-read.
@@ -127,6 +146,12 @@ export function useDocumentRun(): (text: string) => Promise<RunOutcome> {
         router.push('/read');
         return { ok: true };
       } catch (cause) {
+        if (backgrounded) {
+          const error = appError('aborted');
+          dispatch({ type: 'failed', code: error.code });
+          announce(error.userMessage);
+          return { ok: false };
+        }
         if (cause instanceof RunHalt) {
           // The same rule as above: a halt caused by the user pressing Forget is not an error
           // to report on a screen they just cleared.
@@ -135,8 +160,14 @@ export function useDocumentRun(): (text: string) => Promise<RunOutcome> {
           announce(cause.error.userMessage);
           return { ok: false };
         }
+        if (controller.signal.aborted) return { ok: false };
         throw cause;
       } finally {
+        progressTicker.stop();
+        void wakeLock.release();
+        if (typeof document !== 'undefined') {
+          document.removeEventListener('visibilitychange', onVisibilityChange);
+        }
         endRun(controller);
       }
     },

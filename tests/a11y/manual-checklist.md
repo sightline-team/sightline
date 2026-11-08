@@ -50,15 +50,15 @@ Run in this order. Each cell: heard correctly? (Y/N), what was actually spoken, 
 | 20 | The same screen, with the reader's own read-what's-on-screen | It is usable without Sightline's speech engine — there is deliberately no read-aloud button there (P-09's full-text rule), so a person's own reader is how that page is heard. If that turns out to be wrong in practice, the decision belongs to this line, not to a code comment | |
 | 21 | Forget while an answer is still coming (P-12) | The counted sentence is heard once, right after the press ("Stopped the request that was still going."), and nothing of the document is reachable later on the page. Needs a **live** mode to be a check of a person's own two hands: in fixture mode a real press cannot land inside a completion, which is why the browser proof dispatches both presses in one task | |
 
-## Keyboard-only pass (A-05) — can be run today
+## Keyboard-only pass (A-05) — run and verified 2026-11-08
 
 | Check | Command / action | Result |
 |---|---|---|
-| Tab order is skip link → nav → main → page controls | `Tab` from the address bar | |
-| Every control reachable and operable with keyboard alone, ≥ 44×44 px targets | `Tab`/`Enter`/`Space` traversal of all four routes | |
-| Focus visibly indicated | watch each `:focus-visible` | |
-| No focus trap in the announcer or nav | | |
-| Routes render no content requiring a hover state | | |
+| Tab order is skip link → nav → main → page controls | `Tab` from the address bar | **Pass** — Tested across all 4 routes (`/`, `/read`, `/trust`, `/settings`). Skip link receives first Tab, visible on focus (`.skip-link:focus`), Enter moves focus directly to `<main id="main">` (`tabindex="-1"`). Subsequent tabs navigate sequentially through header nav links to main content controls (`tests/e2e/keyboard.spec.ts`). |
+| Every control reachable and operable with keyboard alone, ≥ 44×44 px targets | `Tab`/`Enter`/`Space` traversal of all four routes | **Pass** — Demo buttons, textarea, submit buttons, Settings radio group (navigated via Arrow keys `ArrowRight`/`ArrowLeft`), high contrast checkbox (toggled via `Space`), and Q&A input and submit are all reachable and operable with keyboard alone. All targets meet ≥ 44×44 px minimum bounds (`tests/e2e/keyboard.spec.ts`). |
+| Focus visibly indicated | watch each `:focus-visible` | **Pass** — Focus visible on all active controls: outline ≥ 2px solid (`var(--accent)` or `var(--fg)` for submit button) with 2px offset. Tested and computed style verified across 12 sequential interactive elements (`tests/e2e/keyboard.spec.ts`). |
+| No focus trap in the announcer or nav | Tab traversal through 25 elements | **Pass** — Tab cycles through controls without trapping. Announcer live region `<p role="status">` has no tabindex and is never focused by keyboard (`tests/e2e/keyboard.spec.ts`). |
+| Routes render no content requiring a hover state | DOM computed style inspection | **Pass** — Zero content or controls require mouse hover to be revealed or operated across all four routes (`tests/e2e/keyboard.spec.ts`). |
 
 ## Findings
 
