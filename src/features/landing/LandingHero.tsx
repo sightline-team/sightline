@@ -100,7 +100,8 @@ export function LandingHero() {
     <section className="landing-hero" aria-label="Sightline overview and interactive privacy simulation">
       {/* Eyebrow Label */}
       <div className="hero-eyebrow">
-        <span className="eyebrow-text">CONFIDENTIAL DOCUMENT ASSISTANT · NEAR AI CLOUD TEE</span>
+        <span className="hero-near-tag">Ⓝ NEAR PROTOCOL</span>
+        <span className="eyebrow-text">CONFIDENTIAL AI · INTEL TDX TEE</span>
       </div>
 
       {/* Hero Header */}
@@ -118,10 +119,10 @@ export function LandingHero() {
 
       {/* Primary Call to Action */}
       <div className="landing-cta-row">
-        <a href="#workbench" className="cta-launch">
+        <a href="#workbench" tabIndex={-1} className="cta-launch">
           Read a document
         </a>
-        <Link href="/trust" className="cta-verify">
+        <Link href="/trust" tabIndex={-1} className="cta-verify">
           Inspect trust receipt
         </Link>
       </div>
@@ -130,13 +131,14 @@ export function LandingHero() {
       <div className="sim-console" role="region" aria-label="Privacy architecture simulator">
         <div className="sim-header">
           <div className="sim-title-group">
-            <span className="sim-badge">{'// PRIVACY_SIMULATOR'}</span>
+            <span className="sim-badge">{'// NEAR_AI_CLOUD: PRIVACY_SIMULATOR'}</span>
             <h3 className="sim-title">Compare What Happens to Your Data</h3>
           </div>
           <div className="sim-toggle" role="tablist" aria-label="Architecture selector">
             <button
               type="button"
               role="tab"
+              tabIndex={-1}
               aria-selected={simMode === 'sightline'}
               className={`sim-tab ${simMode === 'sightline' ? 'is-active' : ''}`}
               onClick={() => setSimMode('sightline')}
@@ -146,6 +148,7 @@ export function LandingHero() {
             <button
               type="button"
               role="tab"
+              tabIndex={-1}
               aria-selected={simMode === 'cloud'}
               className={`sim-tab ${simMode === 'cloud' ? 'is-active' : ''}`}
               onClick={() => setSimMode('cloud')}
@@ -229,6 +232,7 @@ export function LandingHero() {
             <button
               type="button"
               role="tab"
+              tabIndex={-1}
               aria-selected={activeSample === 'nhs'}
               className={`doc-tab ${activeSample === 'nhs' ? 'is-active' : ''}`}
               onClick={() => setActiveSample('nhs')}
@@ -238,6 +242,7 @@ export function LandingHero() {
             <button
               type="button"
               role="tab"
+              tabIndex={-1}
               aria-selected={activeSample === 'tax'}
               className={`doc-tab ${activeSample === 'tax' ? 'is-active' : ''}`}
               onClick={() => setActiveSample('tax')}
@@ -247,6 +252,7 @@ export function LandingHero() {
             <button
               type="button"
               role="tab"
+              tabIndex={-1}
               aria-selected={activeSample === 'bank'}
               className={`doc-tab ${activeSample === 'bank' ? 'is-active' : ''}`}
               onClick={() => setActiveSample('bank')}
@@ -310,7 +316,7 @@ export function LandingHero() {
       {/* HARDWARE ATTESTATION TELEMETRY (Technical Proof Manifest) */}
       <div className="manifest-card" role="region" aria-label="Hardware enclave verification telemetry">
         <div className="manifest-header">
-          <span className="manifest-title">HARDWARE ATTESTATION TELEMETRY</span>
+          <span className="manifest-title">NEAR AI CLOUD ATTESTATION TELEMETRY</span>
           <span className="manifest-status">INTEL TDX · CRYPTOGRAPHIC AUDIT</span>
         </div>
 

@@ -62,10 +62,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <nav aria-label="Sightline sections">
               <div className="nav-inner">
                 <div className="nav-brand-strip">
-                  <Link href="/" className="brand-link">
-                    <span className="brand-glyph" aria-hidden="true">⬡</span>
+                  <Link href="/" tabIndex={-1} className="brand-link">
+                    <span className="brand-glyph" aria-hidden="true">Ⓝ</span>
                     <span className="brand-text">Sightline</span>
-                    <span className="brand-tee">TEE</span>
+                    <span className="brand-tee">NEAR AI CLOUD TEE</span>
                   </Link>
                 </div>
                 <ul>
@@ -94,6 +94,63 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <main id="main" tabIndex={-1}>
               {children}
             </main>
+            <footer className="near-footer" role="contentinfo">
+              <div className="footer-inner">
+                <div className="footer-col footer-col-brand">
+                  <div className="footer-brand">
+                    <span className="footer-near-glyph" aria-hidden="true">Ⓝ</span>
+                    <span className="footer-brand-name">Sightline</span>
+                    <span className="footer-badge">CONFIDENTIAL AI</span>
+                  </div>
+                  <p className="footer-desc">
+                    Non-visual document intelligence powered by Intel TDX hardware enclaves on NEAR AI Cloud.
+                  </p>
+                  <div className="footer-hackathon-track">
+                    <span className="track-tag">NEAR HACKATHON 2026</span>
+                    <span className="track-name">Privacy &amp; Private AI Track</span>
+                  </div>
+                </div>
+
+                <div className="footer-col">
+                  <h3 className="footer-heading">NEAR Ecosystem</h3>
+                  <ul className="footer-links">
+                    <li>
+                      <a href="https://www.near.org/developer-hub" target="_blank" rel="noopener noreferrer">
+                        NEAR Developer Hub ↗
+                      </a>
+                    </li>
+                    <li>
+                      <a href="https://docs.near.org/web3-apps/what-is" target="_blank" rel="noopener noreferrer">
+                        NEAR Protocol Docs ↗
+                      </a>
+                    </li>
+                    <li>
+                      <a href="https://cloud-api.near.ai" target="_blank" rel="noopener noreferrer">
+                        NEAR AI Cloud ↗
+                      </a>
+                    </li>
+                    <li>
+                      <a href="https://github.com/sightline-team/sightline" target="_blank" rel="noopener noreferrer">
+                        GitHub Source (MIT) ↗
+                      </a>
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="footer-col">
+                  <h3 className="footer-heading">Cryptographic Proof</h3>
+                  <ul className="footer-specs">
+                    <li><span>Execution:</span> Intel TDX Enclaves</li>
+                    <li><span>Signatures:</span> Ed25519 Hardware-Bound</li>
+                    <li><span>Server Storage:</span> 0 KB (Zero Custody)</li>
+                    <li><span>Client EXIF:</span> 100% Locally Purged</li>
+                  </ul>
+                </div>
+              </div>
+              <div className="footer-bottom">
+                <p>© 2026 Sightline Team. Open Source MIT. Non-custodial confidential computing infrastructure.</p>
+              </div>
+            </footer>
           </SessionProvider>
         </AnnouncerProvider>
       </body>

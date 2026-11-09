@@ -80,7 +80,10 @@ function PasteForm({ config }: { config: PublicConfig }) {
 
       <div className="stream-bay">
         <div className="stream-bay-header">
-          <span className="stream-badge">{'// STREAM: PLAIN_TEXT_INPUT'}</span>
+          <div className="stream-cmd">
+            <span className="term-dots" aria-hidden="true">● ● ●</span>
+            <span className="stream-badge">{'// STREAM: PLAIN_TEXT_INPUT'}</span>
+          </div>
           <span className="stream-spec">20,000 CHAR MAX</span>
         </div>
         <form onSubmit={onSubmit}>
