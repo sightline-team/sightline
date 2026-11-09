@@ -159,11 +159,18 @@ export function documents(root: string, files: string[]): string[] {
 /** The directory a path token must start from to be a claim about **this** repository's tree. */
 export const OWN_ROOTS = ['src', 'scripts', 'tests', 'docs', 'public', 'fixtures', '.github', '.githooks'];
 
-/** The line numbers inside sections whose own heading says the files are gone. */
+/** The line numbers inside sections whose own heading says the files are gone, or external agent blocks. */
 export function removedSectionLines(md: string): Set<number> {
   const skip = new Set<number>();
   let inside = false;
+  let insideNextBlock = false;
   md.split('\n').forEach((line, i) => {
+    if (line.includes('<!-- BEGIN:nextjs-agent-rules -->')) insideNextBlock = true;
+    if (insideNextBlock) {
+      skip.add(i + 1);
+      if (line.includes('<!-- END:nextjs-agent-rules -->')) insideNextBlock = false;
+      return;
+    }
     if (/^#{1,4} /.test(line)) inside = /^#{1,4} .*\bRemoved\b/.test(line);
     if (inside) skip.add(i + 1);
   });
