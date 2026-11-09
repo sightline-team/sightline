@@ -5,7 +5,7 @@ import { Button } from '@/components/Button';
 import { StatusMessage } from '@/components/StatusMessage';
 import { PageList } from '@/features/capture/PageList';
 import { useCapture } from '@/features/capture/useCapture';
-import { usePhotoRun } from '@/app/_flow/usePhotoRun';
+import { usePhotoRun, type PhotoProgress } from '@/app/_flow/usePhotoRun';
 import { useAnnouncer } from '@/lib/a11y/announcer';
 import { useSessionStore } from '@/lib/session/store';
 import { MAX_PAGES } from '@/lib/session/reducer';
@@ -41,10 +41,13 @@ export function CaptureView() {
 function CaptureForm() {
   const { session } = useSessionStore();
   const capture = useCapture();
-  const { run, continueAnyway } = usePhotoRun();
+  const [progress, setProgress] = useState<PhotoProgress | null>(null);
+  const { run, continueAnyway } = usePhotoRun(setProgress);
   const announce = useAnnouncer().announce;
   const [busy, setBusy] = useState(false);
+  const [loadingSample, setLoadingSample] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const cameraRef = useRef<HTMLInputElement | null>(null);
   const errorRef = useRef<HTMLDivElement | null>(null);
   const retakeHeadingRef = useRef<HTMLHeadingElement | null>(null);
 
@@ -69,6 +72,36 @@ function CaptureForm() {
     try {
       await capture.addFiles(files);
     } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onLoadSampleDocument() {
+    setLoadingSample(true);
+    setBusy(true);
+    try {
+      if (session.pages.length > 0) {
+        capture.clearAll();
+      }
+      const urls = [
+        '/sample-docs/photographs/page-1.jpg',
+        '/sample-docs/photographs/page-2.jpg',
+        '/sample-docs/photographs/page-3.jpg',
+      ];
+      const files = await Promise.all(
+        urls.map(async (url, idx) => {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const blob = await res.blob();
+          return new File([blob], `page-${idx + 1}.jpg`, { type: 'image/jpeg' });
+        }),
+      );
+      await capture.addFiles(files);
+      announce('Sample 3-page document loaded. Choose Read these photographs to continue.');
+    } catch {
+      announce('Could not load sample photographs. Please choose a file instead.');
+    } finally {
+      setLoadingSample(false);
       setBusy(false);
     }
   }
@@ -117,25 +150,58 @@ function CaptureForm() {
           <span className="stream-spec">Up to 5 pages</span>
         </div>
         <form onSubmit={onSubmit}>
-          <p>
-            <label htmlFor="capture-files">Add photographs</label>
-          </p>
-          <p className="muted">
-            This opens whichever thing your device offers for a picture — a camera, or a file picker that
-            can take several at once.
-          </p>
-          <input
-            ref={fileRef}
-            id="capture-files"
-            name="capture-files"
-            type="file"
-            accept="image/*"
-            capture="environment"
-            multiple
-            disabled={busy}
-            aria-describedby="capture-hint"
-            onChange={onFiles}
-          />
+          <div className="capture-inputs-deck">
+            <div className="capture-input-row">
+              <p>
+                <label htmlFor="capture-files">Add photographs</label>
+              </p>
+              <p className="muted">
+                Upload image files from your device storage, photo gallery, or file manager.
+              </p>
+              <input
+                ref={fileRef}
+                id="capture-files"
+                name="capture-files"
+                type="file"
+                accept="image/*"
+                multiple
+                disabled={busy}
+                aria-describedby="capture-hint"
+                onChange={onFiles}
+              />
+            </div>
+
+            <div className="capture-input-row">
+              <p>
+                <label htmlFor="capture-camera">Take photo with camera</label>
+              </p>
+              <p className="muted">
+                Directly opens your device camera to take photographs of each page.
+              </p>
+              <input
+                ref={cameraRef}
+                id="capture-camera"
+                name="capture-camera"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                multiple
+                disabled={busy}
+                onChange={onFiles}
+              />
+            </div>
+          </div>
+
+          <div className="capture-demo-row">
+            <span className="demo-lead-text">Sample document:</span>
+            <Button
+              type="button"
+              disabled={busy}
+              onClick={onLoadSampleDocument}
+            >
+              {loadingSample ? 'Loading sample…' : 'Load sample document (3 photographs)'}
+            </Button>
+          </div>
 
           {pageCount > 0 ? (
             <>
@@ -159,6 +225,40 @@ function CaptureForm() {
               No photographs added yet.
             </p>
           )}
+
+          {busy && progress ? (
+            <div className="reading-progress-card" role="status" aria-label="Reading progress">
+              <div className="progress-header">
+                <div className="progress-title-strip">
+                  <span className="progress-spinner" aria-hidden="true" />
+                  <span className="progress-status-label">{progress.step}</span>
+                </div>
+                <span className="progress-pct-badge">{progress.percent}%</span>
+              </div>
+              <div
+                className="progress-bar-track"
+                role="progressbar"
+                aria-valuenow={progress.percent}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label="Document reading progress"
+              >
+                <div
+                  className="progress-bar-fill"
+                  style={{ width: `${progress.percent}%` }}
+                />
+              </div>
+              <div className="progress-stages-grid">
+                <span className={`stage-step ${progress.percent >= 10 ? 'is-done' : ''}`}>1. TDX Enclave</span>
+                <span className={`stage-step ${progress.percent >= 25 ? 'is-done' : ''}`}>2. Vision OCR</span>
+                <span className={`stage-step ${progress.percent >= 70 ? 'is-done' : ''}`}>3. Fact Grounding</span>
+                <span className={`stage-step ${progress.percent >= 90 ? 'is-done' : ''}`}>4. Ed25519 Signature</span>
+              </div>
+              <p className="progress-subtext muted">
+                Inference runs inside hardware-isolated Intel TDX CPU memory. Zero server disk persistence.
+              </p>
+            </div>
+          ) : null}
 
           {/* Retake offer (C-04): pauses before analysis when severe capture issues (cut-off edges, glare,
               blur, etc.) are reported by the vision model. Rotated/handwriting are informational and carry on. */}

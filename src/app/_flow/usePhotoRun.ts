@@ -49,12 +49,17 @@ import type { AppError } from '@/types';
  * strongest live answer is still `partial` while **B-12** is open, and AGENTS.md §4 rule 5 forbids
  * showing a check as passed when it is not). The action stays for the run that can honestly dispatch it.
  */
+export interface PhotoProgress {
+  step: string;
+  percent: number;
+}
+
 export type PhotoRun = (() => Promise<RunOutcome>) & {
   run: () => Promise<RunOutcome>;
   continueAnyway: () => Promise<RunOutcome>;
 };
 
-export function usePhotoRun(): PhotoRun {
+export function usePhotoRun(onProgress?: (progress: PhotoProgress | null) => void): PhotoRun {
   const { session, dispatch, beginRun, endRun } = useSessionStore();
   const announce = useAnnouncer().announce;
   const router = useRouter();
@@ -63,6 +68,7 @@ export function usePhotoRun(): PhotoRun {
     if (!session.transcript) return { ok: false };
 
     dispatch({ type: 'retake_continued' });
+    onProgress?.({ step: 'Analyzing document structure & grounding facts…', percent: 60 });
     const { transport, gate, verifySignature } = collaboratorsFor(session);
     const controller = beginRun();
     const dispatchLive = liveWrites(controller.signal, dispatch);
@@ -95,7 +101,10 @@ export function usePhotoRun(): PhotoRun {
         verifySignature,
         signal: controller.signal,
         onTranscript: (t) => dispatchLive({ type: 'transcript_received', transcript: t }),
-        onTrustRecord: (record) => dispatchLive({ type: 'trust_recorded', record }),
+        onTrustRecord: (record) => {
+          onProgress?.({ step: 'Verifying enclave signatures & claims…', percent: 88 });
+          dispatchLive({ type: 'trust_recorded', record });
+        },
         onAnalysis: (analysis) => dispatchLive({ type: 'analysis_received', analysis }),
         onDegraded: (error) => {
           degraded = error;
@@ -105,6 +114,7 @@ export function usePhotoRun(): PhotoRun {
 
       if (controller.signal.aborted) return { ok: false };
 
+      onProgress?.({ step: 'Done. Showing what Sightline read.', percent: 100 });
       announce(
         degraded === undefined
           ? 'Done. Showing what Sightline read.'
@@ -128,6 +138,7 @@ export function usePhotoRun(): PhotoRun {
       if (controller.signal.aborted) return { ok: false };
       throw cause;
     } finally {
+      onProgress?.(null);
       progressTicker.stop();
       void wakeLock.release();
       if (typeof document !== 'undefined') {
@@ -135,7 +146,7 @@ export function usePhotoRun(): PhotoRun {
       }
       endRun(controller);
     }
-  }, [announce, beginRun, dispatch, endRun, router, session]);
+  }, [announce, beginRun, dispatch, endRun, onProgress, router, session]);
 
   const run = useCallback(
     async (): Promise<RunOutcome> => {
@@ -164,6 +175,7 @@ export function usePhotoRun(): PhotoRun {
       const dispatchLive = liveWrites(controller.signal, dispatch);
 
       dispatch({ type: 'analysis_started' });
+      onProgress?.({ step: 'Attesting Intel TDX hardware enclave…', percent: 10 });
 
       // Set when the reading could not be made, so the run still shows the transcript it did read
       // (P-08) and says which of the two sentences the person is hearing.
@@ -202,6 +214,8 @@ export function usePhotoRun(): PhotoRun {
           onPageStarted: (page, pageCount) => {
             announce(`Reading photograph ${page + 1} of ${pageCount}.`);
             progressTicker.reset();
+            const pct = 15 + Math.round(((page + 1) / (pageCount + 1)) * 55);
+            onProgress?.({ step: `Reading photograph ${page + 1} of ${pageCount} in enclave…`, percent: pct });
           },
         });
 
@@ -264,6 +278,7 @@ export function usePhotoRun(): PhotoRun {
 
         if (notices.length > 0) announce(notices.join(' '));
 
+        onProgress?.({ step: 'Analyzing document structure & grounding facts…', percent: 75 });
         await runPipeline({
           mode: session.mode,
           // The transcript C-11 joined is the one this reading is about (C-02's dep).
@@ -277,7 +292,10 @@ export function usePhotoRun(): PhotoRun {
           verifySignature,
           signal: controller.signal,
           onTranscript: (t) => dispatchLive({ type: 'transcript_received', transcript: t }),
-          onTrustRecord: (record) => dispatchLive({ type: 'trust_recorded', record }),
+          onTrustRecord: (record) => {
+            onProgress?.({ step: 'Verifying enclave signatures & claims…', percent: 88 });
+            dispatchLive({ type: 'trust_recorded', record });
+          },
           onAnalysis: (analysis) => dispatchLive({ type: 'analysis_received', analysis }),
           onDegraded: (error) => {
             degraded = error;
@@ -287,6 +305,7 @@ export function usePhotoRun(): PhotoRun {
 
         if (controller.signal.aborted) return { ok: false };
 
+        onProgress?.({ step: 'Done. Showing what Sightline read.', percent: 100 });
         // Both outcomes navigate: the transcript is on `/read` either way (P-08). What differs is the
         // sentence — a degraded run must not announce "here is what I read".
         announce(
@@ -314,6 +333,7 @@ export function usePhotoRun(): PhotoRun {
         if (controller.signal.aborted) return { ok: false };
         throw cause;
       } finally {
+        onProgress?.(null);
         progressTicker.stop();
         void wakeLock.release();
         if (typeof document !== 'undefined') {
@@ -322,7 +342,7 @@ export function usePhotoRun(): PhotoRun {
         endRun(controller);
       }
     },
-    [announce, beginRun, dispatch, endRun, router, session],
+    [announce, beginRun, dispatch, endRun, onProgress, router, session],
   );
 
   return Object.assign(run, { run, continueAnyway });

@@ -388,4 +388,37 @@ test.describe('the screen is reachable and honest (AGENTS.md §8)', () => {
       expect(blocking(await new AxeBuilder({ page }).analyze()), `axe clean on ${width}px viewport with photos`).toEqual([]);
     }
   });
+
+  test('both upload file and camera capture controls are offered with accessible inputs', async ({ page }) => {
+    await page.goto('/');
+    const fileUpload = page.locator('#capture-files');
+    const cameraCapture = page.locator('#capture-camera');
+
+    await expect(fileUpload).toBeAttached();
+    await expect(cameraCapture).toBeAttached();
+
+    expect(await fileUpload.getAttribute('type')).toBe('file');
+    expect(await cameraCapture.getAttribute('type')).toBe('file');
+    expect(await cameraCapture.getAttribute('capture')).toBe('environment');
+
+    // Both have visible, accessible labels
+    await expect(page.getByLabel('Add photographs')).toBeAttached();
+    await expect(page.getByLabel('Take photo with camera')).toBeAttached();
+  });
+
+  test('Load sample document button loads 3 synthetic demo photographs and enables reading with progress bar', async ({ page }) => {
+    await page.goto('/');
+
+    const sampleBtn = page.getByRole('button', { name: 'Load sample document (3 photographs)' });
+    await expect(sampleBtn).toBeVisible();
+    await sampleBtn.click();
+
+    // 3 pages loaded
+    await expect(page.getByTestId('capture-count')).toHaveText('3 of 5 photographs added.');
+    await expect(page.getByTestId('announcer')).toHaveText('Sample 3-page document loaded. Choose Read these photographs to continue.');
+
+    // Submit triggers reading with progress indicator and finishes at results
+    await page.getByRole('button', { name: 'Read these photographs' }).click();
+    await expect(page.getByTestId('results-heading')).toBeVisible();
+  });
 });

@@ -725,6 +725,162 @@ section {
   margin: var(--space-2) 0;
 }
 
+/* ---------------------------------------------------------------------------------------------
+ * Capture Inputs, Progress Bar & Sample Document
+ * ------------------------------------------------------------------------------------------- */
+
+.capture-inputs-deck {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+
+.capture-input-row {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: var(--radius);
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.capture-input-row label {
+  font-weight: 700;
+  font-size: 0.9375rem;
+  color: var(--fg);
+}
+
+.capture-input-row input[type='file'] {
+  margin-top: auto;
+}
+
+.capture-demo-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px dashed var(--border);
+  background: var(--bg);
+  border-radius: var(--radius);
+  margin: var(--space-2) 0;
+}
+
+.demo-lead-text {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.reading-progress-card {
+  margin: var(--space-3) 0;
+  padding: var(--space-3);
+  border: 1px solid var(--accent);
+  background: var(--bg);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.progress-title-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.progress-spinner {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 2px solid var(--accent);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.progress-pct-badge {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 800;
+  padding: 0.125rem 0.375rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--fg);
+}
+
+.progress-bar-track {
+  width: 100%;
+  height: 0.625rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.35s ease;
+}
+
+.progress-stages-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-1);
+  margin-top: 0.25rem;
+}
+
+@media (max-width: 40rem) {
+  .progress-stages-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.stage-step {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 0.25rem 0.375rem;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
+  text-align: center;
+}
+
+.stage-step.is-done {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--panel-hover);
+}
+
+.progress-subtext {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  margin: 0;
+}
+
 /* The photographs a person has added (item **C-02**).
  *
  * The markers stay visible on purpose: `list-style: none` on a `display: grid` list is the exact
