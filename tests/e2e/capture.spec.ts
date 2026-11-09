@@ -339,4 +339,53 @@ test.describe('the screen is reachable and honest (AGENTS.md §8)', () => {
     // the control rather than only appearing after a refusal.
     expect(await input.getAttribute('aria-describedby')).toBe('capture-hint');
   });
+
+  test('mobile view: adding photographs does not overflow horizontally and preview is contained within viewport (390px and 320px)', async ({ page }) => {
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 640 });
+      await page.goto('/');
+      // Add portrait and landscape high-res camera captures
+      await addPhotographs(page, [
+        await photo(page, 'page-1.jpg', 1200, 1600),
+        await photo(page, 'page-2.jpg', 1600, 1200),
+      ]);
+
+      const previews = page.locator('.page-preview');
+      await expect(previews).toHaveCount(2);
+
+      for (let i = 0; i < 2; i++) {
+        const preview = previews.nth(i);
+        await expect(preview).toBeVisible();
+        const box = (await preview.boundingBox())!;
+        expect(box.width).toBeLessThanOrEqual(width);
+      }
+
+      // Assert zero horizontal overflow
+      const overflow = await page.evaluate(() => {
+        const docWidth = window.innerWidth;
+        const els = Array.from(document.querySelectorAll('*'));
+        return els
+          .filter((el) => {
+            const rect = el.getBoundingClientRect();
+            return rect.right > docWidth + 1;
+          })
+          .map((el) => `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}${el.className ? '.' + el.className.split(' ').join('.') : ''}`);
+      });
+      expect(overflow, `Zero horizontal overflow on ${width}px viewport`).toEqual([]);
+
+      // Verify touch targets on action buttons meet minimum 44px
+      const buttons = page.locator('.page-actions button');
+      const btnCount = await buttons.count();
+      for (let i = 0; i < btnCount; i++) {
+        const btn = buttons.nth(i);
+        const box = await btn.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box!.height).toBeGreaterThanOrEqual(44);
+      }
+
+      // Verify axe accessibility
+      await nothingIsFading(page);
+      expect(blocking(await new AxeBuilder({ page }).analyze()), `axe clean on ${width}px viewport with photos`).toEqual([]);
+    }
+  });
 });

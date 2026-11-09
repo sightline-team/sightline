@@ -91,6 +91,15 @@
   box-sizing: border-box;
 }
 
+img,
+picture,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
 html {
   -webkit-text-size-adjust: 100%;
 }
@@ -1068,9 +1077,15 @@ section {
   margin: var(--space-2) 0;
 }
 
+/* The photographs a person has added (item **C-02**).
+ *
+ * The markers stay visible on purpose: `list-style: none` on a `display: grid` list is the exact
+ * combination that makes Safari VoiceOver stop announcing it as a list (`tests/a11y/manual-checklist.md`).
+ * Keeping the numbers also gives a sighted helper the same "third of five" the screen reader hears.
+ */
 .page-list {
   display: grid;
-  gap: var(--space-1);
+  gap: var(--space-2);
   padding-left: var(--space-3);
   margin: var(--space-2) 0;
   list-style-position: inside;
@@ -1078,18 +1093,56 @@ section {
 
 .page-list li {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1) var(--space-2);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
   border: 1px solid var(--border);
   background: var(--bg);
   border-radius: var(--radius);
   padding: var(--space-2);
   transition: border-color var(--motion) ease;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .page-list li:hover {
   border-color: var(--accent);
+}
+
+.page-line {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--accent);
+  word-break: break-word;
+}
+
+/* The preview is the prepared JPEG — the bytes that will be sent — so a helper can confirm the page is
+ * legible. Contained within max-height and parent width so high-resolution camera photos never exceed the screen. */
+.page-preview {
+  display: block;
+  max-width: 100%;
+  width: auto;
+  height: auto;
+  max-height: 16rem;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: var(--radius);
+  align-self: flex-start;
+}
+
+.page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  width: 100%;
+}
+
+.page-actions button {
+  min-height: var(--target);
 }
 
 /* ---------------------------------------------------------------------------------------------
@@ -1329,6 +1382,39 @@ section {
 
   .metric-cell:last-child {
     border-bottom: none;
+  }
+
+  .stream-bay {
+    padding: var(--space-2);
+  }
+
+  .stream-bay-header {
+    word-break: break-word;
+  }
+
+  .page-list {
+    padding-left: var(--space-2);
+  }
+
+  .page-preview {
+    max-height: 14rem;
+  }
+
+  .page-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .page-actions button {
+    width: 100%;
+  }
+
+  .retake-offer {
+    padding: var(--space-2);
+  }
+
+  .retake-actions button {
+    width: 100%;
   }
 }
 
