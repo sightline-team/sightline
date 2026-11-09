@@ -34,7 +34,7 @@
   --space-3: 1.5rem;
   --space-4: 2.5rem;
 
-  --radius: 8px;
+  --radius: 0;
   --target: 44px;
   --measure: 44rem;
   --wrap-pad: var(--space-2);
@@ -157,7 +157,7 @@ nav {
   border: 1px solid var(--border);
   color: var(--accent);
   padding: 0.1rem 0.4rem;
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 nav ul {
@@ -655,7 +655,7 @@ section {
   font-weight: 600;
   min-height: var(--target);
   padding: 0.35rem 0.75rem;
-  border-radius: 4px;
+  border-radius: var(--radius);
   cursor: pointer;
   transition:
     background-color var(--motion) ease,
@@ -686,7 +686,7 @@ section {
   font-size: 0.8125rem;
   letter-spacing: 0.04em;
   padding: var(--space-1) var(--space-2);
-  border-radius: 4px;
+  border-radius: var(--radius);
   margin-bottom: var(--space-3);
 }
 
@@ -794,7 +794,7 @@ section {
   font-weight: 600;
   min-height: var(--target);
   padding: 0.35rem 0.75rem;
-  border-radius: 4px;
+  border-radius: var(--radius);
   cursor: pointer;
   transition:
     background-color var(--motion) ease,
@@ -832,7 +832,7 @@ section {
 .meta-category {
   padding: 0.15rem 0.5rem;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius);
   background: var(--bg);
   color: var(--accent);
   font-weight: 700;
@@ -918,7 +918,7 @@ section {
   background: var(--warn-bg);
   border: 1px solid var(--warn-fg);
   color: var(--warn-fg);
-  border-radius: 4px;
+  border-radius: var(--radius);
   font-size: 0.875rem;
   font-weight: 600;
 }
@@ -1125,7 +1125,7 @@ section {
 .flag {
   display: inline-block;
   padding: 0.1rem 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--radius);
   background: var(--warn-bg);
   color: var(--warn-fg);
   border: 1px solid var(--warn-fg);
@@ -1179,7 +1179,7 @@ section {
   padding: var(--space-1);
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius);
   font-size: 0.9375rem;
 }
 
