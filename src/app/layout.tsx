@@ -62,7 +62,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <nav aria-label="Sightline sections">
               <div className="nav-inner">
                 <div className="nav-brand-strip">
-                  <Link href="/" tabIndex={-1} className="brand-link">
+                  <Link href="/" className="brand-link">
                     <span className="brand-glyph" aria-hidden="true">Ⓝ</span>
                     <span className="brand-text">Sightline</span>
                     <span className="brand-tee">NEAR AI CLOUD TEE</span>
@@ -115,22 +115,27 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <h3 className="footer-heading">NEAR Ecosystem</h3>
                   <ul className="footer-links">
                     <li>
-                      <a href="https://www.near.org/developer-hub" target="_blank" rel="noopener noreferrer">
+                      <a href="https://www.near.org/developer-hub" target="_blank" rel="noopener noreferrer" tabIndex={-1}>
                         NEAR Developer Hub ↗
                       </a>
                     </li>
                     <li>
-                      <a href="https://docs.near.org/web3-apps/what-is" target="_blank" rel="noopener noreferrer">
+                      <a href="https://docs.near.org/web3-apps/what-is" target="_blank" rel="noopener noreferrer" tabIndex={-1}>
                         NEAR Protocol Docs ↗
                       </a>
                     </li>
                     <li>
-                      <a href="https://cloud-api.near.ai" target="_blank" rel="noopener noreferrer">
+                      <a href="https://cloud-api.near.ai" target="_blank" rel="noopener noreferrer" tabIndex={-1}>
                         NEAR AI Cloud ↗
                       </a>
                     </li>
                     <li>
-                      <a href="https://github.com/sightline-team/sightline" target="_blank" rel="noopener noreferrer">
+                      <Link href="/architecture" tabIndex={-1}>
+                        Architecture &amp; Comparison ↗
+                      </Link>
+                    </li>
+                    <li>
+                      <a href="https://github.com/sightline-team/sightline" target="_blank" rel="noopener noreferrer" tabIndex={-1}>
                         GitHub Source (MIT) ↗
                       </a>
                     </li>

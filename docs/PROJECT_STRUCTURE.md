@@ -93,6 +93,7 @@ sightline/
 │  │  ├─ read/page.tsx            # Results, ask and read-aloud: the only file that knows all three (`ResultsView` slots)
 │  │  ├─ trust/page.tsx           # Trust receipt, exact claim, checks that ran / did not
 │  │  ├─ settings/page.tsx        # Read-aloud rate and high contrast (A-15), plus the mode readout. No mode switcher and no key field: ADR-21
+│  │  ├─ architecture/page.tsx    # Confidential computing architecture deep-dive & comparative analysis matrix (F-08, A-17)
 │  │  ├─ globals.css              # Tokens, high-contrast theme
 │  │  └─ api/
 │  │     ├─ verify/route.ts       # **T-03**: `POST` only (verification consumes a report, it serves none) — zod-validates `{report, nonce, signing_algo}`, 4 MB cap → 413, unreadable body → 400, then `lib/server/verify.ts`'s verdict: one named `server_verification`, `partial` at best, no upstream call and no key (ADR-33)

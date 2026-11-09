@@ -633,6 +633,28 @@ section {
   margin: 0;
 }
 
+.why-near-nav {
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.why-near-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.why-near-link:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
 /* ---------------------------------------------------------------------------------------------
  * Input Streams & Workbench
  * ------------------------------------------------------------------------------------------- */
@@ -1072,6 +1094,186 @@ section {
 
 .footer-bottom p {
   margin: 0;
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * Confidential Computing Architecture View (/architecture)
+ * ------------------------------------------------------------------------------------------- */
+
+.arch-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  max-width: 64rem;
+  margin: 0 auto;
+}
+
+.arch-header {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: var(--space-3);
+}
+
+.arch-lead {
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  color: var(--fg);
+  max-width: 50rem;
+  margin-top: var(--space-2);
+}
+
+.arch-sec {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.arch-sec h2 {
+  font-size: 1.375rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.comp-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.comp-card {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+}
+
+.comp-dimension {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--accent);
+  margin: 0 0 var(--space-2) 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.comp-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+@media (max-width: 48rem) {
+  .comp-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.comp-side {
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.comp-side.is-near {
+  border-left: 3px solid var(--accent);
+}
+
+.comp-side.is-cloud {
+  border-left: 3px solid var(--border);
+}
+
+.side-label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.comp-side.is-near .side-label {
+  color: var(--accent);
+}
+
+.comp-side strong {
+  font-size: 0.9375rem;
+  color: var(--fg);
+}
+
+.comp-side p {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--muted);
+  margin: 0;
+}
+
+.pipeline-deck {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.pipeline-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: var(--radius);
+}
+
+.pipeline-step-num {
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--accent);
+  line-height: 1;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+}
+
+.pipeline-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.pipeline-step-body h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--fg);
+}
+
+.pipeline-step-body p {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 0;
+}
+
+.pipeline-step-body code {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  padding: 0.125rem 0.25rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--fg);
+}
+
+.arch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
 }
 
 /* ---------------------------------------------------------------------------------------------

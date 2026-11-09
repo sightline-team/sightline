@@ -67,6 +67,12 @@ export function LandingHero() {
             </p>
           </div>
         </div>
+
+        <div className="why-near-nav">
+          <Link href="/architecture" tabIndex={-1} className="why-near-link">
+            Explore Confidential Architecture &amp; Comparison Matrix →
+          </Link>
+        </div>
       </div>
     </section>
   );
