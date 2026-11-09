@@ -24,14 +24,16 @@ npm run dev:fixtures
 
 ---
 
-## Beat 1: The Problem & Eyes-Closed Capture (0:00 – 0:30)
+## Beat 1: The Problem & Eyes-Closed Capture (0:00 – 0:35)
 
 *Focus: A blind or low-vision person handling a sensitive physical document (medical result, council tax bill, bank statement) cannot safely upload it to a public commercial AI vision service.*
 
 ### Audio / Narration
-> "Every week, millions of blind and low-vision people receive physical letters they cannot read—hospital appointments, tax bills, prescriptions. Current AI vision tools require sending these intimate documents to centralized cloud servers where human reviewers or model trainers can see them.
+> "For a blind person, receiving a piece of paper in the mail—a hospital clinic letter, a council tax bill, a prescription, or a bank notice—is one of the most frustrating barriers in daily life. Today, they face an unacceptable tradeoff: ask a neighbour or relative to read their private financial and medical data, or upload it to centralized commercial apps where remote human workers and third-party cloud servers can see their most intimate documents.
 >
-> Sightline was built from scratch for the NEAR Hackathon to solve this. It provides private, verifiable document understanding running inside hardware-attested Confidential Computing enclaves on NEAR AI Cloud."
+> Sightline was architected from the ground up to let a blind person understand that document independently, non-visually, and with verifiable privacy.
+>
+> Rather than treating AI as a black box or trusting corporate cloud promises, Sightline integrates deeply with NEAR AI Cloud's Confidential Computing infrastructure. Sensitive documents are processed exclusively inside Intel TDX CPU-level hardware enclaves, guaranteeing privacy backed by cryptographic math rather than trust."
 
 ### Visual & Interaction Action
 - **Screen:** Sightline home screen (`/`) on `http://localhost:3000`.
@@ -44,12 +46,12 @@ npm run dev:fixtures
 
 ---
 
-## Beat 2: Pre-Upload Hardware Attestation (0:30 – 0:55)
+## Beat 2: Pre-Upload Hardware Attestation (0:35 – 1:00)
 
 *Focus: Sightline proves the model enclave exists and verifies its hardware measurements BEFORE a single byte of document text leaves the machine.*
 
 ### Audio / Narration
-> "Before any document bytes or images leave your device, Sightline generates a cryptographically fresh 32-byte nonce and queries the NEAR AI Cloud Confidential Computing attestation service.
+> "Before a single byte of document data or image leaves your device, Sightline generates a cryptographically fresh 32-byte nonce and queries the NEAR AI Cloud Confidential Computing attestation service.
 >
 > In the browser, Sightline parses the Intel TDX hardware quote, verifies that the enclave is not in debug mode, binds the session nonce to the quote's report data, and confirms that the model's signing key is anchored directly in hardware."
 
@@ -63,7 +65,7 @@ npm run dev:fixtures
 
 ---
 
-## Beat 3: Retake Feedback & Honest Capture Processing (0:55 – 1:25)
+## Beat 3: Retake Feedback & Honest Capture Processing (1:00 – 1:30)
 
 *Focus: Sightline never guesses unreadable text; severe capture issues trigger plain-language retake announcements.*
 
@@ -80,11 +82,11 @@ npm run dev:fixtures
   - Press `Read these photographs`.
   - Focus moves to the processing status landmark.
   - Announcer updates every 10 seconds without spamming: `"Transcribing page 1...", "Extracting key facts..."`.
-  - In fixture mode, sample responses load instantly; in live mode, completions stream from the attested model `Qwen/Qwen3.8-27B`.
+  - In fixture mode, sample responses load instantly; in live mode, completions are requested non-streamed from the attested model `Qwen/Qwen3.8-27B` to preserve enclave-level signatures (ADR-22).
 
 ---
 
-## Beat 4: Honest Results Presentation (1:25 – 1:55)
+## Beat 4: Honest Results Presentation (1:30 – 1:55)
 
 *Focus: Results follow a fixed, screen-reader-optimized heading hierarchy. Safety notices flag medication, money, and deadlines. Every fact carries source grounding.*
 
