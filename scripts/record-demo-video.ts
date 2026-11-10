@@ -350,9 +350,9 @@ async function record() {
   await setupHUDAndCursor();
 
   // ==========================================
-  // BEAT 1: THE PRIVACY DILEMMA (0:00 - 0:20 | 20s)
+  // BEAT 1: THE PRIVACY DILEMMA (0:00 - 0:17 | 17s)
   // ==========================================
-  console.log('🎬 Recording Beat 1: The Privacy Dilemma (0:00 - 0:20)...');
+  console.log('🎬 Recording Beat 1: The Privacy Dilemma (0:00 - 0:17)...');
   await updateHUD(
     'BEAT 1 / 6 · THE PRIVACY DILEMMA',
     'Private Document Intelligence for Blind & Low-Vision Users',
@@ -399,9 +399,9 @@ async function record() {
   }
 
   // ==========================================
-  // BEAT 2: PRE-UPLOAD HARDWARE ATTESTATION (0:20 - 0:40 | 20s)
+  // BEAT 2: PRE-UPLOAD HARDWARE ATTESTATION (0:17 - 0:29 | 12s)
   // ==========================================
-  console.log('🎬 Recording Beat 2: Pre-Upload Hardware Attestation (0:20 - 0:40)...');
+  console.log('🎬 Recording Beat 2: Pre-Upload Hardware Attestation (0:17 - 0:29)...');
   await updateHUD(
     'BEAT 2 / 6 · HARDWARE ATTESTATION',
     'Intel TDX Enclave Proof & Fresh Session Nonce',
@@ -436,9 +436,9 @@ async function record() {
   await page.waitForTimeout(3000);
 
   // ==========================================
-  // BEAT 3: MULTI-PAGE CAPTURE & LOCAL EXIF PURGE (0:40 - 1:00 | 20s)
+  // BEAT 3: MULTI-PAGE CAPTURE & LOCAL EXIF PURGE (0:29 - 0:44 | 15s)
   // ==========================================
-  console.log('🎬 Recording Beat 3: Capture & Transcription Pipeline (0:40 - 1:00)...');
+  console.log('🎬 Recording Beat 3: Capture & Transcription Pipeline (0:29 - 0:44)...');
   await updateHUD(
     'BEAT 3 / 6 · MULTI-PAGE CAPTURE',
     '3-Page Document Loading with Local EXIF Purge',
@@ -492,9 +492,9 @@ async function record() {
   await setupHUDAndCursor(); // Re-inject HUD and cursor on /read
 
   // ==========================================
-  // BEAT 4: VERIFIABLE HIERARCHY & FACT GROUNDING (1:00 - 1:25 | 25s)
+  // BEAT 4: VERIFIABLE HIERARCHY & FACT GROUNDING (0:44 - 1:06 | 22s)
   // ==========================================
-  console.log('🎬 Recording Beat 4: Honest Results & Fact Grounding (1:00 - 1:25)...');
+  console.log('🎬 Recording Beat 4: Honest Results & Fact Grounding (0:44 - 1:06)...');
   await updateHUD(
     'BEAT 4 / 6 · VERIFIABLE RESULTS',
     'Grounded Facts & Verbatim Quote Disclosures',
@@ -542,9 +542,9 @@ async function record() {
   }
 
   // ==========================================
-  // BEAT 5: GROUNDED Q&A WITH HONEST REFUSAL (1:25 - 1:45 | 20s)
+  // BEAT 5: GROUNDED Q&A WITH HONEST REFUSAL (1:06 - 1:25 | 19s)
   // ==========================================
-  console.log('🎬 Recording Beat 5: Grounded Q&A & Honest Refusal (1:25 - 1:45)...');
+  console.log('🎬 Recording Beat 5: Grounded Q&A & Honest Refusal (1:06 - 1:25)...');
   await updateHUD(
     'BEAT 5 / 6 · INTERACTIVE Q&A',
     'Fail-Closed Grounded Answers & Honest Refusal',
@@ -595,9 +595,9 @@ async function record() {
   }
 
   // ==========================================
-  // BEAT 6: TRUST RECEIPT & ONE-CLICK FORGET (1:45 - 2:06 | 21s)
+  // BEAT 6: TRUST RECEIPT & ONE-CLICK FORGET (1:25 - 1:43 | 18s)
   // ==========================================
-  console.log('🎬 Recording Beat 6: Trust Receipt & Complete Forget (1:45 - 2:06)...');
+  console.log('🎬 Recording Beat 6: Trust Receipt & Complete Forget (1:25 - 1:43)...');
   await updateHUD(
     'BEAT 6 / 6 · TRUST RECEIPT & PURGE',
     'Cryptographic Trust Receipt & One-Click Forget',
