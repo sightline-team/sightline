@@ -12,7 +12,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://sightline-snowy-beta.vercel.app'),
-  title: 'Sightline',
+  title: 'Sightline — Private AI for Sensitive Documents',
   description:
     'Understand a sensitive document with private AI, and see exactly what was verified.',
   alternates: {

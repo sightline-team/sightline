@@ -235,7 +235,7 @@ test.describe('the demo flow, with no credentials (F-09 done-when)', () => {
    */
   test('the app speaks through one region, and every route shares one title', async ({ page }) => {
     await page.goto('/');
-    await expect(page).toHaveTitle('Sightline');
+    await expect(page).toHaveTitle('Sightline — Private AI for Sensitive Documents');
 
     const text = await chooseDemoDocument(page, DEMO.bill);
     await runText(page, text);
@@ -245,10 +245,10 @@ test.describe('the demo flow, with no credentials (F-09 done-when)', () => {
     await expect(page.getByRole('status')).toHaveCount(1);
     await expect(page.getByRole('status')).toHaveText('Done. Showing what Sightline read.');
     // The condition that keeps Next's region silent where it counts: an unchanged title.
-    await expect(page).toHaveTitle('Sightline');
+    await expect(page).toHaveTitle('Sightline — Private AI for Sensitive Documents');
 
     await page.getByRole('link', { name: 'Verification' }).click();
-    await expect(page).toHaveTitle('Sightline');
+    await expect(page).toHaveTitle('Sightline — Private AI for Sensitive Documents');
     await expect(page.getByRole('status')).toHaveCount(1);
   });
 
