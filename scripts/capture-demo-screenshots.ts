@@ -67,11 +67,29 @@ async function capture() {
   if (await askHeading.isVisible()) {
     await askHeading.scrollIntoViewIfNeeded();
   }
-  await page.fill('#question', 'What is my dosage?');
+  const q1Btn = page.getByRole('button', { name: 'What reference number is on these pages?' });
+  if (await q1Btn.isVisible()) {
+    await q1Btn.click();
+  } else {
+    await page.fill('#question', 'What reference number is on these pages?');
+  }
   const askBtn = page.getByRole('button', { name: /^ask$/i });
   if (await askBtn.isVisible()) {
     await askBtn.click();
     await page.waitForTimeout(1500);
+  }
+  const q2Btn = page.getByRole('button', { name: 'Is there a payment deadline in this document?' });
+  if (await q2Btn.isVisible()) {
+    await q2Btn.click();
+    if (await askBtn.isVisible()) {
+      await askBtn.click();
+      await page.waitForTimeout(1500);
+    }
+  }
+  const answersList = page.locator('[data-testid="answers"]');
+  if (await answersList.isVisible()) {
+    await answersList.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(800);
   }
   await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'beat-5-grounded-qa.png') });
 

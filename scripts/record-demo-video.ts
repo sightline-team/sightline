@@ -270,7 +270,7 @@ async function record() {
   console.log('🎬 Recording Beat 4: Honest Results & Fact Grounding (1:00 - 1:25)...');
   await updateHUD(
     'BEAT 4 / 6 · VERIFIABLE RESULTS',
-    'Grounded Facts & Structured Clinical Warnings',
+    'Grounded Facts & Verbatim Quote Disclosures',
     'Results follow an invariant, accessible hierarchy: Summary, Key Facts, Actions, Safety Notices, and Verbatim Quotes.',
     75,
   );
@@ -309,23 +309,42 @@ async function record() {
   if (await askHeading.isVisible()) {
     await askHeading.scrollIntoViewIfNeeded();
   }
-  await page.waitForTimeout(2000);
+  await page.waitForTimeout(1500);
 
-  // Question 1: Grounded query
-  await typeSlowly('#question', 'What is my dosage?', 50);
-  await page.waitForTimeout(800);
+  // Question 1: Grounded query (reference number)
+  const q1Btn = page.getByRole('button', { name: 'What reference number is on these pages?' });
+  if (await q1Btn.isVisible()) {
+    await q1Btn.click();
+    await page.waitForTimeout(800);
+  } else {
+    await typeSlowly('#question', 'What reference number is on these pages?', 40);
+    await page.waitForTimeout(600);
+  }
   const askButton = page.getByRole('button', { name: /^ask$/i });
   if (await askButton.isVisible()) {
     await askButton.click();
-    await page.waitForTimeout(5500);
+    await page.waitForTimeout(4500);
   }
 
-  // Question 2: Unanswerable query to demonstrate honest refusal
-  await typeSlowly('#question', 'Can I drive while taking this?', 50);
-  await page.waitForTimeout(800);
+  // Question 2: Unanswerable query to demonstrate honest refusal (payment deadline)
+  const q2Btn = page.getByRole('button', { name: 'Is there a payment deadline in this document?' });
+  if (await q2Btn.isVisible()) {
+    await q2Btn.click();
+    await page.waitForTimeout(800);
+  } else {
+    await typeSlowly('#question', 'Is there a payment deadline in this document?', 40);
+    await page.waitForTimeout(600);
+  }
   if (await askButton.isVisible()) {
     await askButton.click();
-    await page.waitForTimeout(6000);
+    await page.waitForTimeout(4500);
+  }
+
+  // Scroll to showcase both answers in the Answers region
+  const answersSection = page.locator('[data-testid="answers"]');
+  if (await answersSection.isVisible()) {
+    await answersSection.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(3000);
   }
 
   // ==========================================

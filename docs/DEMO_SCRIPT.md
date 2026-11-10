@@ -86,19 +86,19 @@ A timing-cued narrator script and video synchronization guide for the official *
 ---
 
 ### Beat 4: Verifiable Hierarchy & Fact Grounding (1:00 – 1:25)
-*Duration: 25 seconds · Word count: ~56 words*
+*Duration: 25 seconds · Word count: ~54 words*
 
 **Visual on Screen:**
 - Results screen (`/read`) mounts with immediate screen-reader focus on the primary heading.
 - Lower third displays: `BEAT 4 / 6 · VERIFIABLE RESULTS`.
 - Smooth scroll through the invariant hierarchy: **Summary**, **Key facts**, and **Safety notices**.
-- Cursor expands the fact disclosure on *"Amoxicillin 500mg capsules"* revealing the exact highlighted quote: *"take 500mg capsules three times daily"* with confirmation tag `"Quote found in document transcript"`.
-- Highlights the clinical safety banner warning the patient to confirm prescription dosages with a doctor.
+- Cursor expands the fact disclosure on *"Reference: NC-0000-SYN"* revealing the exact highlighted quote: *"Northgate Example Trust Reference NC-0000-SYN PAGE 1 OF 3"* with confirmation tag `"Quote found in document transcript"`.
+- Highlights the transparent grounded fact extraction and financial notice.
 
 **Voiceover Narration:**
 > *"Results render in a fixed, accessible hierarchy: Summary, Key Facts, Actions, and Safety Notices.
 >
-> Every fact is grounded in the transcript: clicking a fact discloses the exact verbatim quote from the page. If a medication is detected—like Amoxicillin five hundred milligrams—Sightline highlights a clinical safety notice advising confirmation with a doctor."*
+> Every fact is grounded in the transcript: clicking a fact discloses the exact verbatim quote from the page—such as reference NC-zero-zero-zero-zero-SYN. Sightline highlights what is verified and surfaces safety notices clearly."*
 
 ---
 
@@ -108,13 +108,13 @@ A timing-cued narrator script and video synchronization guide for the official *
 **Visual on Screen:**
 - Focus transitions smoothly to **"Ask a question"** (`#ask-heading`).
 - Lower third displays: `BEAT 5 / 6 · INTERACTIVE Q&A`.
-- Types: `"What is my dosage?"` → clicks **Ask** → displays verified clinic answer with paragraph citation: *"Amoxicillin 500mg capsules, three times daily for 7 days"*.
-- Types unanswerable query: `"Can I drive while taking this?"` → clicks **Ask** → displays instant, honest fail-closed refusal: *"The document does not answer this question."*
+- Selects: `"What reference number is on these pages?"` → clicks **Ask** → displays verified invoice answer with verbatim quote citation: *"The reference number on the pages is NC-0000-SYN. — quoted from the text: 'Northgate Example Trust Reference NC-0000-SYN PAGE 1 OF 3'"*.
+- Selects unanswerable query: `"Is there a payment deadline in this document?"` → clicks **Ask** → displays instant, honest fail-closed refusal: *"No. The document is a synthetic invoice containing only line items... There is no payment deadline, due date, or payment terms mentioned anywhere in the transcript. — the document does not answer this."*
 
 **Voiceover Narration:**
 > *"Users can ask interactive follow-up questions. But unlike general chat bots, Sightline fails closed.
 >
-> For 'What is my dosage?', it answers with the exact clinic instructions. But when asked 'Can I drive?', which isn't in the letter, Sightline refuses honestly without hallucinating."*
+> For 'What reference number is on these pages?', it answers with the exact invoice reference and quote. But when asked 'Is there a payment deadline?', Sightline refuses honestly, confirming no deadline exists in the document."*
 
 ---
 
