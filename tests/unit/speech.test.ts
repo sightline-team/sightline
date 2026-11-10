@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   chunkForSpeech,
   MAX_UTTERANCE_CHARS,
+  selectSpeechVoice,
   speak,
   speakSupported,
   stopSpeaking,
@@ -223,5 +224,18 @@ describe('the words a press speaks', () => {
     // The other half of this claim — nothing is spoken before a press — is an e2e test, because
     // "auto-play" is a property of the wiring, not of this string.
     expect(SPEAK_LABEL).toBe('Read the answer aloud');
+  });
+
+  it('prefers localService voices over cloud/remote network voices for privacy', () => {
+    const voices = [
+      { name: 'Cloud Neural Voice', localService: false },
+      { name: 'System Local Voice', localService: true },
+    ];
+    const chosen = selectSpeechVoice(voices);
+    expect(chosen?.name).toBe('System Local Voice');
+    expect(chosen?.localService).toBe(true);
+
+    const noLocal = [{ name: 'Cloud Voice', localService: false }];
+    expect(selectSpeechVoice(noLocal)).toBeUndefined();
   });
 });

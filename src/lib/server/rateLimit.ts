@@ -97,7 +97,9 @@ function bucketKey(ip: string, windowStartMinute: number): string {
  * does nothing, and inventing an address would mean the limit silently does something wrong.
  */
 export function clientIp(headers: Headers): string {
+  const realIp = headers.get('x-real-ip')?.trim();
+  if (realIp && realIp.length > 0) return realIp;
   const forwarded = headers.get('x-forwarded-for');
   if (forwarded !== null && forwarded.trim().length > 0) return forwarded.split(',')[0]!.trim();
-  return headers.get('x-real-ip')?.trim() ?? 'unproxied';
+  return 'unproxied';
 }

@@ -330,10 +330,12 @@ export function createNearClient(config: NearClientConfig): NearClient {
       if (!response.ok) {
         // 404 on a GET is the documented transient for signatures ("cached on the node that
         // served your completion"; report retrieval is free and non-billable), so retrying it
-        // once is what ADR-19 needs. A 404 on a POST is not transient — the model is not there.
+        // with backoff across cluster cache nodes is what ADR-19 needs. A 404 on a POST is not transient — the model is not there.
         const transientGet404 = method === 'GET' && response.status === 404;
-        if (mayRetry && (isRetryableStatus(response.status) || transientGet404)) {
-          await waitOrAbort(path, retryDelay(response.headers, baseRetryDelay), init.signal);
+        const maxAttempts = transientGet404 ? 4 : 2;
+        if (attempts < maxAttempts && (isRetryableStatus(response.status) || transientGet404)) {
+          const delay = transientGet404 ? baseRetryDelay * attempts : retryDelay(response.headers, baseRetryDelay);
+          await waitOrAbort(path, delay, init.signal);
           continue;
         }
         throw new NearError(path, appErrorForStatus(path, response.status), response.status);

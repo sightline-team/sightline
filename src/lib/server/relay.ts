@@ -4,6 +4,7 @@ import { createNearClient, type NearClient } from '@/lib/near-ai/client';
 import { isAllowed, readModelMetadata, type ModelMetadata } from '@/lib/near-ai/models';
 import {
   inspectCompletionBody,
+  isAllowedOrigin,
   isModelAllowed,
   resolveRequest,
   statusFor,
@@ -79,6 +80,8 @@ export async function handleRelay(request: Request, deps: RelayDeps = {}): Promi
   // Config first, because a relay with no key and no list has nothing it could correctly forward, and
   // `serverConfig` has already decided that in production. The body is never read on this path.
   if (!config.relayEnabled) return disabled(config);
+
+  if (!isAllowedOrigin(request.headers)) return refuse('origin_not_allowed');
 
   const resolved = resolveRequest(new URL(request.url), request.method);
   if (!resolved.ok) return refuse(resolved.reason);
@@ -170,12 +173,14 @@ async function forward(request: Request, target: RelayTarget, body: Uint8Array<A
   };
 
   let upstream: Response;
+  const timeoutSignal = AbortSignal.timeout(55_000);
+  const signal = request.signal ? AbortSignal.any([request.signal, timeoutSignal]) : timeoutSignal;
   try {
     upstream = await fetchImpl(target.url, {
       method: target.method,
       headers,
       ...(body === undefined ? {} : { body }),
-      ...(request.signal === undefined ? {} : { signal: request.signal }),
+      signal,
     });
   } catch {
     // Deliberately uninformative: an undici failure message can carry the URL it tried, and this one

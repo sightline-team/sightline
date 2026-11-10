@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   inspectCompletionBody,
   type BodyDecision,
+  isAllowedOrigin,
   isModelAllowed,
   MAX_BODY_BYTES,
   resolveRequest,
@@ -230,14 +231,29 @@ describe('the hourly bucket', () => {
 });
 
 describe('whose address is it', () => {
-  it('reads the proxy header, first entry wins', () => {
+  it('reads the proxy header, preferring unforgeable x-real-ip over client-supplied x-forwarded-for', () => {
     expect(clientIp(new Headers({ 'x-forwarded-for': '203.0.113.7, 70.41.3.18' }))).toBe('203.0.113.7');
     expect(clientIp(new Headers({ 'x-real-ip': '198.51.100.4' }))).toBe('198.51.100.4');
+    expect(clientIp(new Headers({ 'x-forwarded-for': '203.0.113.7', 'x-real-ip': '198.51.100.4' }))).toBe('198.51.100.4');
   });
 
   it('says so plainly when nothing fronted the request', () => {
     // Local development has no proxy header. Sharing one bucket is the honest fallback: pretending to
     // invent an address would make the limit look enforced when it is not.
     expect(clientIp(new Headers())).toBe('unproxied');
+  });
+});
+
+describe('origin validation for relay requests', () => {
+  it('refuses cross-site calls and origin mismatches', () => {
+    expect(isAllowedOrigin(new Headers({ 'sec-fetch-site': 'cross-site' }))).toBe(false);
+    expect(isAllowedOrigin(new Headers({ origin: 'https://evil.com', host: 'sightline.app' }))).toBe(false);
+    expect(isAllowedOrigin(new Headers({ origin: 'https://sightline.app', host: 'sightline.app' }))).toBe(true);
+    expect(isAllowedOrigin(new Headers({ 'sec-fetch-site': 'same-origin' }))).toBe(true);
+    expect(isAllowedOrigin(new Headers())).toBe(true);
+  });
+
+  it('assigns 403 to origin_not_allowed', () => {
+    expect(statusFor('origin_not_allowed')).toBe(403);
   });
 });

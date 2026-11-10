@@ -106,6 +106,11 @@ function breakPoint(text: string, limit: number): number {
   return limit;
 }
 
+/** Selects a local offline voice when available to avoid sending document text to cloud speech engines. */
+export function selectSpeechVoice<T extends { localService?: boolean }>(voices: readonly T[]): T | undefined {
+  return voices.find((v) => v.localService === true);
+}
+
 function windowSynthesizer(): Synthesizer | null {
   if (typeof window === 'undefined') return null;
   const engine = window.speechSynthesis;
@@ -115,6 +120,10 @@ function windowSynthesizer(): Synthesizer | null {
     speak({ text, rate, onEnd }) {
       const utterance = new window.SpeechSynthesisUtterance(text);
       utterance.rate = rate;
+      if (typeof engine.getVoices === 'function') {
+        const localVoice = selectSpeechVoice(engine.getVoices());
+        if (localVoice) utterance.voice = localVoice;
+      }
       if (onEnd !== null) utterance.onend = () => onEnd();
       engine.speak(utterance);
     },

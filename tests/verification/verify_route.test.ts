@@ -145,6 +145,16 @@ describe('what the handler refuses to read at all', () => {
     expect(answer.body).toEqual({ error: 'body_too_large', item: 'T-03' });
   });
 
+  it('refuses early when content-length header exceeds cap before buffering stream', async () => {
+    const res = await POST(new Request('http://localhost/api/verify', {
+      method: 'POST',
+      headers: { 'content-length': String(5 * 1024 * 1024) },
+      body: 'small body but huge header',
+    }));
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: 'body_too_large', item: 'T-03' });
+  });
+
   it('measures the cap in bytes, because a limit a caller can negotiate is not a limit', async () => {
     // Two bytes per character on the wire, under the cap in `raw.length`: a caller that picks its
     // alphabet should not be able to double the size of what the handler agrees to parse.

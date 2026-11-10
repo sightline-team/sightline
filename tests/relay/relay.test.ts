@@ -228,6 +228,32 @@ describe('A-09: an oversized body', () => {
   });
 });
 
+describe('cross-site & origin validation (pre-launch hardening)', () => {
+  it('refuses cross-site browser requests at 403', async () => {
+    const { impl, calls } = recorder();
+    const res = await relay('/api/relay/v1/chat/completions', {
+      body: completionBody(),
+      headers: { 'sec-fetch-site': 'cross-site' },
+      deps: { fetchImpl: impl },
+    });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe('origin_not_allowed');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses mismatching origin at 403', async () => {
+    const { impl, calls } = recorder();
+    const res = await relay('/api/relay/v1/chat/completions', {
+      body: completionBody(),
+      headers: { origin: 'https://attacker.site', host: 'localhost:3000' },
+      deps: { fetchImpl: impl },
+    });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe('origin_not_allowed');
+    expect(calls).toHaveLength(0);
+  });
+});
+
 describe('A-09: the rate limit', () => {
   it('refuses the request after the hour’s budget is gone, with a Retry-After', async () => {
     const store = createInMemoryStore();

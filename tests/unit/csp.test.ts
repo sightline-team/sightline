@@ -69,6 +69,10 @@ describe('network assertion and CSP (A-02)', () => {
         }
 
         // Ancillary security headers
+        expect(headerMap.get('Strict-Transport-Security')).toBe(
+          'max-age=63072000; includeSubDomains; preload'
+        );
+        expect(headerMap.get('X-Frame-Options')).toBe('DENY');
         expect(headerMap.get('X-Content-Type-Options')).toBe('nosniff');
         expect(headerMap.get('Referrer-Policy')).toBe('no-referrer');
         expect(headerMap.get('Cross-Origin-Opener-Policy')).toBe('same-origin');

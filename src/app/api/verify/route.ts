@@ -51,6 +51,9 @@ function refuse(status: number, reason: string): Response {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const contentLength = Number(request.headers.get('content-length') ?? '0');
+  if (contentLength > MAX_REPORT_BODY_BYTES) return refuse(413, 'body_too_large');
+
   const raw = await request.text();
   // Bytes, not characters: a body of multi-byte text is longer on the wire than `raw.length` claims,
   // and a cap that a caller can negotiate is not a cap.

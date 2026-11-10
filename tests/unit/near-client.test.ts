@@ -251,12 +251,16 @@ describe('one retry, on transient failures only (fail closed, rule 6)', () => {
     expect(calls).toHaveLength(1);
   });
 
-  test('a 404 on a signature lookup is retried once, because the cache is per-node (ADR-19)', async () => {
-    const { calls, impl } = mockFetch([jsonResponse({ error: 'Chat id not found or expired' }, { status: 404 }), jsonResponse({ text: 'x' })]);
-    const c = client({ mode: 'relay', baseUrl: RELAY_BASE, fetchImpl: impl });
+  test('a 404 on a signature lookup is retried with backoff across node cache replication (ADR-19)', async () => {
+    const { calls, impl } = mockFetch([
+      jsonResponse({ error: 'Chat id not found' }, { status: 404 }),
+      jsonResponse({ error: 'Chat id not found' }, { status: 404 }),
+      jsonResponse({ text: 'signature-ready' }),
+    ]);
+    const c = client({ mode: 'relay', baseUrl: RELAY_BASE, fetchImpl: impl, retryDelayMs: 1 });
     const res = await c.get('signature/{chat_id}', { chatId: 'chat-9' });
     expect(res.status).toBe(200);
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
   });
 
   test('a 404 on a completion is not transient — the model is not there', async () => {

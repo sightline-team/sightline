@@ -55,12 +55,13 @@ export type Rejection =
   | 'model_not_allowed'
   | 'streaming_not_supported'
   | 'too_many_pages'
-  | 'rate_limited';
+  | 'rate_limited'
+  | 'origin_not_allowed';
 
 /**
  * A refusal the relay answers with, and the status it answers it at.
  *
- * `path_not_allowed` and `model_not_allowed` are **403**, not 404: a 404 on a GET is the documented
+ * `path_not_allowed`, `model_not_allowed` and `origin_not_allowed` are **403**, not 404: a 404 on a GET is the documented
  * transient the client retries once, so refusing a path with the status used for "not cached yet"
  * would make every refusal cost two requests and muddy a real signal. `rate_limited` is 429 because
  * that is the one status the client already honours with `Retry-After`.
@@ -68,6 +69,7 @@ export type Rejection =
 const STATUS_FOR: Record<Rejection, number> = {
   path_not_allowed: 403,
   model_not_allowed: 403,
+  origin_not_allowed: 403,
   method_not_allowed: 405,
   query_not_allowed: 400,
   invalid_json: 400,
@@ -265,3 +267,25 @@ export function inspectCompletionBody(json: unknown): BodyDecision {
 
   return { ok: true, model };
 }
+
+/**
+ * Origin validation for relay requests.
+ * Refuses cross-site calls from external domains to stop unauthorized web clients using the relay
+ * as a free open proxy against the server's NEAR AI Cloud key.
+ */
+export function isAllowedOrigin(headers: Headers): boolean {
+  const secFetchSite = headers.get('sec-fetch-site');
+  if (secFetchSite === 'cross-site') return false;
+
+  const origin = headers.get('origin');
+  const host = headers.get('host') ?? headers.get('x-forwarded-host');
+  if (origin && host) {
+    try {
+      if (new URL(origin).host !== host) return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
