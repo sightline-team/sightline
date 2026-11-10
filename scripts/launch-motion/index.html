@@ -186,8 +186,8 @@
       justify-content: center;
       align-items: center;
       flex-direction: row;
-      gap: 16px;
-      padding: 0 32px;
+      gap: 14px;
+      padding: 0 24px;
     }
     .s1-dot {
       width: 12px;
@@ -195,10 +195,10 @@
       background: var(--accent);
     }
     .s1-text {
-      font-size: 18px;
+      font-size: 17px;
       font-family: var(--font-mono);
       font-weight: 700;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.06em;
       color: var(--fg);
       text-transform: uppercase;
       white-space: nowrap;
@@ -946,16 +946,16 @@
     // ==========================================
     // SCENE TIMINGS (24 Seconds · 120 BPM · 48 Beats)
     // ==========================================
-    const T1 = 0.0;    // State 1: Enclave Capsule Pill (580x52)
-    const T2 = 3.0;    // State 2: Landing Hero Card (800x410)
-    const T3 = 6.8;    // State 3: Optical Input Stream Bay (800x430)
-    const T4 = 10.5;   // State 4: Attestation Proof Deck (820x430)
-    const T5 = 14.5;   // State 5: Results Screen & Audio Read-Aloud (860x470)
-    const T6 = 18.2;   // State 6: Grounded Q&A & Honest Refusal (800x330)
-    const T7 = 21.2;   // State 7: Wordmark Slam (840x310)
+    const T1 = 0.0;    // State 1: Enclave Capsule Pill (940x64)
+    const T2 = 3.0;    // State 2: Landing Hero Card (1360x560)
+    const T3 = 6.8;    // State 3: Optical Input Stream Bay (1360x580)
+    const T4 = 10.5;   // State 4: Attestation Proof Deck (1380x580)
+    const T5 = 14.5;   // State 5: Results Screen & Audio Read-Aloud (1400x650)
+    const T6 = 18.2;   // State 6: Grounded Q&A & Honest Refusal (1360x480)
+    const T7 = 21.2;   // State 7: Wordmark Slam (1380x440)
 
     // Tracks for THE ONE SHAPE (Straight edges, w and h morphing - expanded for mobile legibility)
-    const W = new Track(720)
+    const W = new Track(940)
       .to(T2, 1360, { w: 24, z: 0.84 })
       .to(T3, 1360, { w: 24, z: 0.84 })
       .to(T4, 1380, { w: 24, z: 0.84 })
