@@ -168,7 +168,8 @@ async function runReferenceSdkCrossCheck(): Promise<void> {
   let sdkAvailable = false;
   try {
     // Dynamic import to avoid static require failure when not installed or on older Node
-    const sdk = await import('@nearai/inference-sdk');
+    const specifier = '@nearai/inference-sdk';
+    const sdk = await import(/* webpackIgnore: true */ specifier);
     if (sdk) {
       sdkAvailable = true;
       record('SDK Interop', '@nearai/inference-sdk availability', true, 'SDK dynamically loaded');

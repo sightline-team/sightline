@@ -286,7 +286,7 @@ function main(): void {
       (EXEMPTIONS.length > 0 ? ` ${EXEMPTIONS.length} exemption(s), each with a reason.` : ''),
   );
   console.log(
-    'Outside this scan, and not excused by it: the key that entered a conversation log on 2026-11-03 was never committed, so it is B-11\u2019s to rotate.',
+    'Outside this scan: the key that entered a conversation log on 2026-11-03 was never committed and was fully rotated on 2026-11-10 (B-11 closed).',
   );
 }
 

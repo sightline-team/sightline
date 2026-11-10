@@ -316,7 +316,7 @@ unknown"). Total spend against the demo key is not published as a number, becaus
 published either: the only arithmetic this repo can do is add up the per-exchange rows of §4, which comes to
 **≈$0.10** across the page, structure, question and repair runs measured there, and the recording run above
 sits on top of that with no figure of its own. What would make the real total knowable — the organisation
-balance, and a `spendLimit` on the key — is still open (**B-11**, **S-10**).
+balance, and a `spendLimit` on the key — was addressed during rotation (**B-11 closed**, **S-10**).
 
 ## Accessibility
 
@@ -464,8 +464,8 @@ repository's own test fixture** — its first version
 spelled nine credential shapes out in full, and both GitHub's push protection and the scan said so
 before anything was published — which is why those planted values are assembled at runtime and a test
 asserts the fixture file's own bytes are clean. `.env` is ignored and has never been added; CI takes
-no credential. What none of them can see is the key that once crossed into a conversation log,
-which is a rotation task (**B-11**) rather than a git finding, and what none of them can see in **any**
+no credential. What none of them could see was the initial session key that crossed into a conversation log,
+which was resolved via full rotation (**B-11 closed**) rather than a git finding, and what none of them can see in **any**
 document is what a person types into a live run — that is AGENTS.md §4 rule 7, not a script. Nor can
 `release:docs` judge whether a sentence that names a real file still describes it: that is a reading
 task, and the pass behind **R-08** says so in its own evidence rather than implying the shape check
