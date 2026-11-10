@@ -20,6 +20,7 @@ CLAUDE.local.md
 # Test output
 test-results/
 playwright-report/
+demo_recordings/
 
 # TypeScript
 *.tsbuildinfo

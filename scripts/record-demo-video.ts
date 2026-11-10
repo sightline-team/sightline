@@ -45,6 +45,25 @@ async function record() {
       const existing = document.getElementById('sightline-video-hud');
       if (existing) existing.remove();
 
+      // Inject mobile readability styles: utilize whitespace, enlarge text for mobile UX
+      let mobileTune = document.getElementById('sightline-mobile-ux-tune');
+      if (!mobileTune) {
+        mobileTune = document.createElement('style');
+        mobileTune.id = 'sightline-mobile-ux-tune';
+        mobileTune.textContent = `
+          :root {
+            --measure: 68rem !important;
+          }
+          main, nav, .banner {
+            max-width: var(--measure) !important;
+          }
+          body {
+            zoom: 1.32 !important;
+          }
+        `;
+        document.head.appendChild(mobileTune);
+      }
+
       const hud = document.createElement('div');
       hud.id = 'sightline-video-hud';
       hud.innerHTML = `
@@ -72,70 +91,70 @@ async function record() {
         }
         #hud-top-telemetry {
           position: absolute;
-          top: 20px;
-          right: 36px;
+          top: 24px;
+          right: 44px;
           display: flex;
-          gap: 12px;
+          gap: 14px;
         }
         .hud-pill {
-          background: rgba(4, 4, 7, 0.90);
+          background: rgba(4, 4, 7, 0.92);
           border: 1px solid #232736;
           color: #a0aec0;
-          font-size: 11px;
+          font-size: 14px;
           letter-spacing: 0.08em;
-          padding: 7px 15px;
+          padding: 9px 18px;
           font-weight: 600;
           text-transform: uppercase;
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 10px;
           box-shadow: 0 4px 14px rgba(0,0,0,0.55);
           backdrop-filter: blur(8px);
         }
         .hud-dot {
-          width: 8px;
-          height: 8px;
+          width: 10px;
+          height: 10px;
           background: #00EC97;
           border-radius: 50%;
           box-shadow: 0 0 10px #00EC97;
         }
         #hud-lower-third {
           position: absolute;
-          bottom: 32px;
-          left: 40px;
-          width: 720px;
-          background: rgba(4, 4, 7, 0.94);
+          bottom: 36px;
+          left: 44px;
+          width: 960px;
+          background: rgba(4, 4, 7, 0.95);
           border: 1px solid #232736;
-          border-left: 5px solid #00EC97;
-          padding: 18px 24px;
-          box-shadow: 0 14px 36px rgba(0,0,0,0.75);
+          border-left: 6px solid #00EC97;
+          padding: 22px 30px;
+          box-shadow: 0 16px 40px rgba(0,0,0,0.85);
           backdrop-filter: blur(14px);
           transition: all 0.3s ease;
         }
         #hud-badge-tag {
-          font-size: 11px;
+          font-size: 14px;
           font-weight: 700;
           color: #00EC97;
           letter-spacing: 0.12em;
           text-transform: uppercase;
-          margin-bottom: 4px;
+          margin-bottom: 6px;
         }
         #hud-title-text {
-          font-size: 19px;
+          font-size: 26px;
           font-weight: 700;
           color: #ffffff;
           letter-spacing: -0.01em;
-          margin-bottom: 6px;
+          margin-bottom: 8px;
         }
         #hud-desc-text {
-          font-size: 13.5px;
+          font-size: 18px;
           color: #cbd5e1;
-          line-height: 1.45;
+          line-height: 1.5;
         }
         #hud-progress-bar {
-          margin-top: 12px;
+          margin-top: 14px;
           width: 100%;
-          height: 4px;
+          height: 5px;
           background: #1a1f2e;
           overflow: hidden;
         }
@@ -147,7 +166,7 @@ async function record() {
         }
       `;
       document.head.appendChild(style);
-      document.body.appendChild(hud);
+      document.documentElement.appendChild(hud);
     });
   }
 

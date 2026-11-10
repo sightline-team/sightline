@@ -20,14 +20,38 @@ async function capture() {
     deviceScaleFactor: 2, // Retina 2x for ultra crisp screenshots
   });
 
+  async function applyMobileTune() {
+    await page.evaluate(() => {
+      let mobileTune = document.getElementById('sightline-mobile-ux-tune');
+      if (!mobileTune) {
+        mobileTune = document.createElement('style');
+        mobileTune.id = 'sightline-mobile-ux-tune';
+        mobileTune.textContent = `
+          :root {
+            --measure: 68rem !important;
+          }
+          main, nav, .banner {
+            max-width: var(--measure) !important;
+          }
+          body {
+            zoom: 1.32 !important;
+          }
+        `;
+        document.head.appendChild(mobileTune);
+      }
+    });
+  }
+
   // Beat 1: Hero & Telemetry
   console.log('📸 Beat 1: Hero & Telemetry...');
   await page.goto('http://localhost:3300/', { waitUntil: 'networkidle' });
+  await applyMobileTune();
   await page.waitForTimeout(1000);
   await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'beat-1-hero-telemetry.png') });
 
   // Beat 2: Hardware Attestation / Workbench
   console.log('📸 Beat 2: Hardware Attestation Workbench...');
+  await applyMobileTune();
   await page.locator('#workbench').scrollIntoViewIfNeeded();
   await page.waitForTimeout(800);
   await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'beat-2-hardware-attestation.png') });
@@ -39,6 +63,7 @@ async function capture() {
     await loadSampleBtn.click();
     await page.waitForTimeout(1500);
   }
+  await applyMobileTune();
   await page.locator('#capture-heading').scrollIntoViewIfNeeded();
   await page.waitForTimeout(800);
   await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'beat-3-multipage-capture.png') });
@@ -51,9 +76,11 @@ async function capture() {
     await page.waitForURL('**/read', { timeout: 15000 });
     await page.waitForTimeout(1500);
   }
+  await applyMobileTune();
 
   // Beat 4: Verifiable hierarchy & Fact Grounding (expand disclosure)
   console.log('📸 Beat 4: Grounded Results & Verbatim Quote Disclosure...');
+  await applyMobileTune();
   const factDisclosure = page.locator('details summary').first();
   if (await factDisclosure.isVisible()) {
     await factDisclosure.click();
@@ -101,6 +128,7 @@ async function capture() {
     await page.waitForURL('**/trust', { timeout: 10000 });
     await page.waitForTimeout(1200);
   }
+  await applyMobileTune();
   await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'beat-6-trust-receipt.png') });
 
   await browser.close();
