@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sightline — Product Launch Motion Film</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background: #040407;
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    #stage {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+    }
+
+    /* Ambient background gradient with subtle radial glow */
+    #bg-bloom {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1920px;
+      height: 1080px;
+      background: radial-gradient(circle 800px at 50% 50%, rgba(0, 236, 151, 0.05) 0%, rgba(4, 4, 7, 0) 70%),
+                  radial-gradient(circle 600px at 75% 30%, rgba(0, 145, 253, 0.04) 0%, rgba(4, 4, 7, 0) 65%);
+      pointer-events: none;
+    }
+
+    /* Background technical grid */
+    #grid-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1920px;
+      height: 1080px;
+      opacity: 0.18;
+      background-size: 48px 48px;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+      pointer-events: none;
+    }
+
+    /* Top HUD brand bar */
+    #top-hud {
+      position: absolute;
+      top: 36px;
+      left: 60px;
+      right: 60px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 100;
+    }
+    .hud-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .hud-brand-symbol {
+      width: 28px;
+      height: 28px;
+      background: #00EC97;
+      color: #040407;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      font-weight: 800;
+      border-radius: 4px;
+    }
+    .hud-badges {
+      display: flex;
+      gap: 12px;
+    }
+    .hud-pill {
+      background: rgba(11, 14, 23, 0.85);
+      border: 1px solid #232736;
+      padding: 6px 14px;
+      font-size: 11px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-weight: 600;
+      color: #94a3b8;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 4px;
+    }
+    .hud-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #00EC97;
+      box-shadow: 0 0 8px #00EC97;
+    }
+
+    /* World container (camera transform) */
+    #world {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1920px;
+      height: 1080px;
+      transform-origin: 960px 540px;
+    }
+
+    /* THE ONE SHAPE: Morphing central container */
+    #morph-shape {
+      position: absolute;
+      top: 540px;
+      left: 960px;
+      transform: translate(-50%, -50%);
+      background: #0b0e17;
+      border: 1px solid #232736;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(0, 236, 151, 0.08);
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      will-change: width, height, border-radius;
+    }
+
+    /* State views placed inside the one shape */
+    .state-view {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      padding: 28px 36px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* STATE 1: Capsule Pill */
+    #view-1 {
+      justify-content: center;
+      align-items: center;
+      flex-direction: row;
+      gap: 14px;
+      padding: 0 24px;
+    }
+    .s1-icon {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #00EC97;
+      box-shadow: 0 0 12px #00EC97;
+    }
+    .s1-text {
+      font-size: 15px;
+      font-family: ui-monospace, monospace;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      color: #ffffff;
+      text-transform: uppercase;
+    }
+
+    /* STATE 2: Document Input Stream */
+    .view-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #232736;
+      padding-bottom: 14px;
+      margin-bottom: 20px;
+    }
+    .header-tag {
+      font-size: 11px;
+      font-family: ui-monospace, monospace;
+      color: #00EC97;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+    }
+    .header-badge {
+      font-size: 10px;
+      font-family: ui-monospace, monospace;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 3px 8px;
+      border-radius: 2px;
+      color: #94a3b8;
+    }
+    .dropzone {
+      flex: 1;
+      border: 1px dashed #334155;
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+    .drop-title {
+      font-size: 17px;
+      font-weight: 600;
+      color: #f1f5f9;
+    }
+    .drop-sub {
+      font-size: 12px;
+      color: #64748b;
+      font-family: ui-monospace, monospace;
+    }
+
+    /* STATE 3: Privacy & EXIF Shield */
+    .shield-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 10px;
+    }
+    .shield-card {
+      background: #111522;
+      border: 1px solid #232736;
+      border-radius: 6px;
+      padding: 16px;
+    }
+    .shield-label {
+      font-size: 11px;
+      font-family: ui-monospace, monospace;
+      color: #94a3b8;
+      margin-bottom: 6px;
+    }
+    .shield-val {
+      font-size: 20px;
+      font-weight: 700;
+      font-family: ui-monospace, monospace;
+      color: #00EC97;
+    }
+
+    /* STATE 4: Attestation Proof Deck */
+    .proof-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .proof-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #111522;
+      border: 1px solid #232736;
+      padding: 12px 18px;
+      border-radius: 6px;
+    }
+    .proof-check {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+    .check-mark {
+      color: #00EC97;
+      font-size: 16px;
+      font-weight: 900;
+    }
+    .proof-badge {
+      font-size: 11px;
+      font-family: ui-monospace, monospace;
+      color: #64748b;
+    }
+
+    /* STATE 5: Confidential OCR & Clinical Warning */
+    .ocr-stream {
+      font-family: ui-monospace, monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #94a3b8;
+      background: #07090f;
+      border: 1px solid #1a202c;
+      padding: 16px;
+      border-radius: 6px;
+      margin-bottom: 14px;
+      flex: 1;
+    }
+    .ocr-highlight {
+      color: #00EC97;
+      font-weight: 700;
+      background: rgba(0, 236, 151, 0.1);
+      padding: 2px 4px;
+    }
+    .alert-banner {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid #f59e0b;
+      border-left: 4px solid #f59e0b;
+      padding: 12px 16px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .alert-text {
+      font-size: 12px;
+      font-weight: 600;
+      color: #fbbf24;
+      letter-spacing: 0.02em;
+    }
+
+    /* STATE 6: Verbatim Grounding Disclosure */
+    .fact-card {
+      background: #111522;
+      border: 1px solid #232736;
+      border-radius: 6px;
+      padding: 20px;
+    }
+    .fact-header {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .quote-box {
+      background: #07090f;
+      border-left: 3px solid #00EC97;
+      padding: 12px 16px;
+      font-size: 13.5px;
+      font-style: italic;
+      color: #cbd5e1;
+      line-height: 1.5;
+      margin-top: 8px;
+    }
+    .quote-status {
+      display: inline-block;
+      margin-top: 10px;
+      font-size: 10.5px;
+      font-family: ui-monospace, monospace;
+      color: #00EC97;
+      background: rgba(0, 236, 151, 0.12);
+      padding: 3px 8px;
+      border-radius: 2px;
+    }
+
+    /* STATE 7: Q&A Prompt & Refusal */
+    .qa-box {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .query-pill {
+      background: #111522;
+      border: 1px solid #334155;
+      padding: 12px 18px;
+      border-radius: 6px;
+      font-size: 15px;
+      font-weight: 500;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .refusal-card {
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-left: 4px solid #ef4444;
+      padding: 12px 18px;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #fca5a5;
+      line-height: 1.4;
+    }
+
+    /* STATE 8: Wordmark Slam */
+    #view-8 {
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      gap: 16px;
+    }
+    .slam-title {
+      font-size: 44px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .slam-title span {
+      color: #00EC97;
+    }
+    .slam-sub {
+      font-size: 16px;
+      color: #94a3b8;
+      max-width: 580px;
+      line-height: 1.5;
+    }
+    .slam-badges {
+      display: flex;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .slam-badge {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid #232736;
+      padding: 6px 14px;
+      font-size: 11px;
+      font-family: ui-monospace, monospace;
+      color: #00EC97;
+      border-radius: 4px;
+    }
+
+    /* PROGRAMMATIC MOUSE CURSOR */
+    #cursor {
+      position: absolute;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      z-index: 1000;
+      transform-origin: 0 0;
+      transition: none;
+    }
+    .cursor-svg {
+      width: 24px;
+      height: 24px;
+      filter: drop-shadow(0 4px 8px rgba(0,0,0,0.6));
+    }
+    .cursor-pill {
+      position: absolute;
+      top: 18px;
+      left: 18px;
+      background: #00EC97;
+      color: #040407;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 12px;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    }
+    .cursor-ripple {
+      position: absolute;
+      top: -16px;
+      left: -16px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 2px solid #00EC97;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* Lower HUD progress ticker */
+    #bottom-hud {
+      position: absolute;
+      bottom: 36px;
+      left: 60px;
+      right: 60px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      color: #64748b;
+      z-index: 100;
+    }
+    .ticker-highlight {
+      color: #00EC97;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <div id="bg-bloom"></div>
+    <div id="grid-canvas"></div>
+
+    <!-- Top HUD Navigation Bar -->
+    <div id="top-hud">
+      <div class="hud-brand">
+        <div class="hud-brand-symbol">Ⓝ</div>
+        <span>Sightline</span>
+      </div>
+      <div class="hud-badges">
+        <div class="hud-pill"><span class="hud-dot"></span>NEAR AI CLOUD TEE</div>
+        <div class="hud-pill">INTEL TDX HARDWARE ENCLAVE</div>
+        <div class="hud-pill">ZERO SERVER STORAGE</div>
+      </div>
+    </div>
+
+    <!-- The 3D World (Camera transformed) -->
+    <div id="world">
+      <!-- THE ONE SHAPE -->
+      <div id="morph-shape">
+        <!-- View 1: Initial Capsule Pill -->
+        <div id="view-1" class="state-view">
+          <div class="s1-icon"></div>
+          <div class="s1-text">Hardware Enclave Attested</div>
+        </div>
+
+        <!-- View 2: Input Stream & Document Tray -->
+        <div id="view-2" class="state-view">
+          <div class="view-header">
+            <span class="header-tag">// STREAM: OPTICAL_DOCUMENT_INPUT</span>
+            <span class="header-badge">CLIENT EXIF PURGED</span>
+          </div>
+          <div class="dropzone">
+            <div style="font-size: 28px;">📄</div>
+            <div class="drop-title">NHS Clinic Letter (3 Pages)</div>
+            <div class="drop-sub">100% EXIF & GPS stripped in-browser before transmit</div>
+          </div>
+        </div>
+
+        <!-- View 3: Cryptographic Shield -->
+        <div id="view-3" class="state-view">
+          <div class="view-header">
+            <span class="header-tag">CRYPTO SHIELD · LOCAL INTEGRITY</span>
+            <span class="header-badge">STRICT SEQUENCE</span>
+          </div>
+          <div class="shield-grid">
+            <div class="shield-card">
+              <div class="shield-label">METADATA STATUS</div>
+              <div class="shield-val" id="val-exif">100% PURGED</div>
+            </div>
+            <div class="shield-card">
+              <div class="shield-label">SERVER PERSISTENCE</div>
+              <div class="shield-val" id="val-storage">0.00 KB</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- View 4: Hardware Attestation Handshake -->
+        <div id="view-4" class="state-view">
+          <div class="view-header">
+            <span class="header-tag">INTEL TDX HARDWARE ATTESTATION</span>
+            <span class="header-badge">PRE-UPLOAD PROOF</span>
+          </div>
+          <div class="proof-list">
+            <div class="proof-row">
+              <div class="proof-check"><span class="check-mark">✓</span> Hardware Quote Valid (TDX)</div>
+              <div class="proof-badge">PASSED</div>
+            </div>
+            <div class="proof-row">
+              <div class="proof-check"><span class="check-mark">✓</span> 32-Byte Session Nonce Bound</div>
+              <div class="proof-badge">PASSED</div>
+            </div>
+            <div class="proof-row">
+              <div class="proof-check"><span class="check-mark">✓</span> Ed25519 Model Signature Echo</div>
+              <div class="proof-badge">PASSED</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- View 5: Confidential Vision Transcription -->
+        <div id="view-5" class="state-view">
+          <div class="view-header">
+            <span class="header-tag">CONFIDENTIAL TEE VISION OCR</span>
+            <span class="header-badge">QWEN-3.8-27B TEE</span>
+          </div>
+          <div class="ocr-stream">
+            Patient: John Doe · NHS 987-654-3210<br>
+            Prescription details: <span class="ocr-highlight">Amoxicillin 500mg capsules</span>, three times daily for 7 days.<br>
+            Review Date: 24 November 2026 at Queen Square Clinic.
+          </div>
+          <div class="alert-banner">
+            <span style="font-size: 16px;">⚠️</span>
+            <span class="alert-text">MEDICATION DETECTED: Confirm all prescription dosages with a doctor.</span>
+          </div>
+        </div>
+
+        <!-- View 6: Fact Grounding -->
+        <div id="view-6" class="state-view">
+          <div class="view-header">
+            <span class="header-tag">VERIFIABLE FACT GROUNDING</span>
+            <span class="header-badge">VERBATIM MATCH</span>
+          </div>
+          <div class="fact-card">
+            <div class="fact-header">
+              <span>Amoxicillin 500mg</span>
+              <span style="color: #00EC97;">100% Grounded</span>
+            </div>
+            <div class="quote-box">
+              "take 500mg capsules three times daily with meals"
+            </div>
+            <div class="quote-status">✓ Quote found in verified document transcript</div>
+          </div>
+        </div>
+
+        <!-- View 7: Q&A & Refusal -->
+        <div id="view-7" class="state-view">
+          <div class="view-header">
+            <span class="header-tag">FAIL-CLOSED GROUNDED Q&A</span>
+            <span class="header-badge">HONEST REFUSAL</span>
+          </div>
+          <div class="qa-box">
+            <div class="query-pill">
+              <span style="color: #64748b;">Q:</span> Can I drive while taking this medication?
+            </div>
+            <div class="refusal-card">
+              <strong>Honest Refusal:</strong> The document does not answer this question. Sightline refuses without hallucination.
+            </div>
+          </div>
+        </div>
+
+        <!-- View 8: Wordmark Slam -->
+        <div id="view-8" class="state-view">
+          <div class="slam-title">
+            <span>Ⓝ</span> Sightline
+          </div>
+          <div class="slam-sub">
+            Private document intelligence for sensitive records. Powered by NEAR AI Cloud Intel TDX hardware enclaves.
+          </div>
+          <div class="slam-badges">
+            <div class="slam-badge">0 KB CUSTODY</div>
+            <div class="slam-badge">INTEL TDX ENCLAVE</div>
+            <div class="slam-badge">WCAG 2.2 AA</div>
+            <div class="slam-badge">OPEN SOURCE MIT</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mouse Cursor Stage Prop -->
+    <div id="cursor">
+      <svg class="cursor-svg" viewBox="0 0 24 24" fill="none">
+        <path d="M5.65376 12.3673H5.46026L5.31717 12.4976L0.500002 16.8829L0.500002 1.19841L11.7841 12.3673H5.65376Z" fill="#00EC97" stroke="#040407" stroke-width="1.5"/>
+      </svg>
+      <div id="cursor-pill" class="cursor-pill">You</div>
+      <div id="cursor-ripple" class="cursor-ripple"></div>
+    </div>
+
+    <!-- Lower HUD Ticker -->
+    <div id="bottom-hud">
+      <div>RUNTIME: <span id="ticker-time" class="ticker-highlight">00:00.00</span> · FPS: 60</div>
+      <div>NEAR HACKATHON 2026 · PRIVACY & PRIVATE AI TRACK</div>
+    </div>
+  </div>
+
+  <script>
+    // ==========================================
+    // CLOSED-FORM DAMPED HARMONIC SPRING
+    // ==========================================
+    function stepR(tau, { w, z }) {
+      if (tau <= 0) return 0;
+      if (z >= 1) {
+        const x = w * tau;
+        return 1 - Math.exp(-x) * (1 + x);
+      }
+      const wd = w * Math.sqrt(1 - z * z);
+      return 1 - Math.exp(-z * w * tau) * (Math.cos(wd * tau) + (z * w / wd) * Math.sin(wd * tau));
+    }
+
+    class Track {
+      constructor(v0) {
+        this.v0 = v0;
+        this.cur = v0;
+        this.ev = [];
+      }
+      to(t, v, sp = { w: 26, z: 0.85 }) {
+        if (v !== this.cur) {
+          this.ev.push([t, v - this.cur, sp]);
+          this.cur = v;
+        }
+        return this;
+      }
+      at(t) {
+        let v = this.v0;
+        for (const [ti, d, sp] of this.ev) {
+          v += d * stepR(t - ti, sp);
+        }
+        return v;
+      }
+    }
+
+    function clamp(x, a = 0, b = 1) {
+      return Math.max(a, Math.min(b, x));
+    }
+
+    // Short blur content swap
+    function vis(t, tin, tout, dOut = 0.16) {
+      const e = stepR(t - tin, { w: 28, z: 0.95 });
+      const x = tout == null ? 0 : clamp((t - tout) / dOut);
+      const xo = x * x;
+      const o = e * (1 - xo);
+      const b = (1 - e) * 12 + xo * 12;
+      const dy = (1 - e) * 18 - xo * 14;
+      return { o, b, dy, e };
+    }
+
+    // ==========================================
+    // SCENE TIMINGS (24 Seconds · 120 BPM · 48 Beats)
+    // ==========================================
+    const T1 = 0.0;    // State 1: Capsule Pill
+    const T2 = 3.0;    // State 2: Document Input Stream
+    const T3 = 6.2;    // State 3: Privacy & EXIF Shield
+    const T4 = 9.5;    // State 4: Attestation Proof Deck
+    const T5 = 13.0;   // State 5: Confidential OCR & Clinical Warning
+    const T6 = 16.5;   // State 6: Verbatim Grounding Disclosure
+    const T7 = 19.8;   // State 7: Q&A & Refusal
+    const T8 = 22.2;   // State 8: Wordmark Slam
+
+    // Animation Tracks for THE ONE SHAPE
+    const W = new Track(340)
+      .to(T2, 680, { w: 24, z: 0.84 })
+      .to(T3, 560, { w: 26, z: 0.84 })
+      .to(T4, 680, { w: 24, z: 0.84 })
+      .to(T5, 780, { w: 24, z: 0.84 })
+      .to(T6, 640, { w: 26, z: 0.84 })
+      .to(T7, 660, { w: 26, z: 0.84 })
+      .to(T8, 760, { w: 28, z: 0.82 });
+
+    const H = new Track(56)
+      .to(T2, 340, { w: 24, z: 0.84 })
+      .to(T3, 260, { w: 26, z: 0.84 })
+      .to(T4, 340, { w: 24, z: 0.84 })
+      .to(T5, 380, { w: 24, z: 0.84 })
+      .to(T6, 280, { w: 26, z: 0.84 })
+      .to(T7, 260, { w: 26, z: 0.84 })
+      .to(T8, 280, { w: 28, z: 0.82 });
+
+    const R = new Track(28)
+      .to(T2, 12, { w: 24, z: 0.85 })
+      .to(T3, 16, { w: 24, z: 0.85 })
+      .to(T4, 12, { w: 24, z: 0.85 })
+      .to(T5, 10, { w: 24, z: 0.85 })
+      .to(T6, 12, { w: 24, z: 0.85 })
+      .to(T7, 14, { w: 24, z: 0.85 })
+      .to(T8, 16, { w: 28, z: 0.82 });
+
+    // Camera Zoom & Position (world translate/scale)
+    const Zoom = new Track(1.0)
+      .to(T2, 1.05, { w: 18, z: 1.0 })
+      .to(T4, 1.12, { w: 18, z: 1.0 })
+      .to(T5, 1.05, { w: 18, z: 1.0 })
+      .to(T7, 1.10, { w: 18, z: 1.0 })
+      .to(T8, 1.0, { w: 24, z: 0.9 });
+
+    // Cursor Tracks
+    const CurX = new Track(1200)
+      .to(1.2, 980, { w: 18, z: 0.88 })
+      .to(T2 - 0.4, 960, { w: 22, z: 0.88 })
+      .to(T2 + 1.2, 860, { w: 20, z: 0.88 })
+      .to(T3 + 0.8, 1080, { w: 22, z: 0.88 })
+      .to(T4 + 1.0, 960, { w: 20, z: 0.88 })
+      .to(T6 + 0.6, 960, { w: 22, z: 0.88 })
+      .to(T7 + 0.8, 1120, { w: 24, z: 0.88 })
+      .to(T8 + 0.5, 960, { w: 20, z: 0.88 });
+
+    const CurY = new Track(750)
+      .to(1.2, 560, { w: 18, z: 0.88 })
+      .to(T2 - 0.4, 540, { w: 22, z: 0.88 })
+      .to(T2 + 1.2, 520, { w: 20, z: 0.88 })
+      .to(T3 + 0.8, 540, { w: 22, z: 0.88 })
+      .to(T4 + 1.0, 500, { w: 20, z: 0.88 })
+      .to(T6 + 0.6, 560, { w: 22, z: 0.88 })
+      .to(T7 + 0.8, 560, { w: 24, z: 0.88 })
+      .to(T8 + 0.5, 620, { w: 20, z: 0.88 });
+
+    // Click Timestamps for ripple and cursor press
+    const CLICKS = [T2 - 0.2, T4 + 0.8, T6 + 0.6, T7 + 0.7];
+
+    // DOM Elements
+    const morphShape = document.getElementById('morph-shape');
+    const world = document.getElementById('world');
+    const cursor = document.getElementById('cursor');
+    const cursorPill = document.getElementById('cursor-pill');
+    const cursorRipple = document.getElementById('cursor-ripple');
+    const tickerTime = document.getElementById('ticker-time');
+
+    const views = [
+      document.getElementById('view-1'),
+      document.getElementById('view-2'),
+      document.getElementById('view-3'),
+      document.getElementById('view-4'),
+      document.getElementById('view-5'),
+      document.getElementById('view-6'),
+      document.getElementById('view-7'),
+      document.getElementById('view-8')
+    ];
+
+    // ==========================================
+    // PURE SEEK(T) FUNCTION
+    // ==========================================
+    window.seek = function(t) {
+      // Format ticker
+      const min = Math.floor(t / 60);
+      const sec = Math.floor(t % 60);
+      const ms = Math.floor((t % 1) * 100);
+      tickerTime.textContent = `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}.${String(ms).padStart(2, '0')}`;
+
+      // Update The One Shape dimensions
+      const curW = W.at(t);
+      const curH = H.at(t);
+      const curR = R.at(t);
+      morphShape.style.width = `${curW}px`;
+      morphShape.style.height = `${curH}px`;
+      morphShape.style.borderRadius = `${curR}px`;
+
+      // Update Camera
+      const curZ = Zoom.at(t);
+      world.style.transform = `scale(${curZ})`;
+
+      // Update Cursor position & velocity lean
+      const cx = CurX.at(t);
+      const cy = CurY.at(t);
+      const dt = 0.02;
+      const vx = (CurX.at(t + dt) - CurX.at(t - dt)) / (2 * dt);
+      const lean = clamp(-vx * 0.035, -16, 16);
+
+      // Cursor press on clicks
+      let pressScale = 1.0;
+      let rippleScale = 0;
+      let rippleOpacity = 0;
+      for (const tc of CLICKS) {
+        if (t >= tc && t <= tc + 0.4) {
+          pressScale = 1 - 0.22 * Math.exp(-Math.pow((t - tc) / 0.05, 2));
+          const p = (t - tc) / 0.4;
+          rippleScale = 1 + p * 2.8;
+          rippleOpacity = (1 - p);
+        }
+      }
+
+      cursor.style.transform = `translate3d(${cx}px, ${cy}px, 0) rotate(${lean}deg) scale(${pressScale})`;
+      cursorRipple.style.transform = `scale(${rippleScale})`;
+      cursorRipple.style.opacity = rippleOpacity;
+
+      if (t > T4) {
+        cursorPill.textContent = 'Ⓝ Sightline TEE';
+      } else {
+        cursorPill.textContent = 'You';
+      }
+
+      // Update States inside the One Shape (Content swap with blur)
+      const vWindows = [
+        vis(t, T1, T2),
+        vis(t, T2, T3),
+        vis(t, T3, T4),
+        vis(t, T4, T5),
+        vis(t, T5, T6),
+        vis(t, T6, T7),
+        vis(t, T7, T8),
+        vis(t, T8, null)
+      ];
+
+      for (let i = 0; i < views.length; i++) {
+        const v = vWindows[i];
+        const el = views[i];
+        if (v.o > 0.001) {
+          el.style.opacity = v.o;
+          el.style.filter = `blur(${v.b.toFixed(1)}px)`;
+          el.style.transform = `translateY(${v.dy.toFixed(1)}px)`;
+          el.style.pointerEvents = 'auto';
+        } else {
+          el.style.opacity = '0';
+          el.style.pointerEvents = 'none';
+        }
+      }
+    };
+
+    // Initialize to frame 0
+    window.seek(0);
+  </script>
+</body>
+</html>

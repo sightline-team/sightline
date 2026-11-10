@@ -49,7 +49,9 @@ sightline/
 │  ├─ robots.txt                  # Standard crawler instructions referencing sitemap.xml
 │  ├─ sitemap.xml                 # XML sitemap covering all canonical routes (/, /read, /trust, /settings, /architecture)
 │  ├─ sightline-demo-video.mp4    # X-02: 1080p demo video (2:03 duration) covering all six demo beats
+│  ├─ sightline-product-launch.mp4 # Product launch motion film (24s, 1080p) showcasing Sightline with pure seek(t) springs
 │  ├─ screenshots/                # X-02: High-resolution retina screenshots covering all six demo beats
+│  ├─ launch-motion/              # Storyboard stills and frames from the launch motion render
 │  ├─ icons/icon.svg              # The manifest + favicon icon
 │  └─ sample-docs/                # Synthetic documents only, incl. deliberately bad photos
 │     └─ photographs/             # BUILT (S-11): the three JPEGs Demo mode answers for — `page-1.jpg`, `page-2.jpg`, `page-3.jpg`
@@ -77,6 +79,7 @@ sightline/
 │  ├─ docs-audit.ts               # **R-08** and **R-15**. The mechanical half of AGENTS §9, in six checks a script can decide: **F1** no document may name a file that is not in the tree (filename-shaped tokens, resolved by basename against `git ls-files`); **F2** every file under `scripts/`, `tests/unit/`, `tests/e2e/`, one directory per feature and one per `src/lib` module and every route handler under `src/app/api/` must be *named* in this document; **F3** every npm script has a row in §5, every command in that table exists, and every `npm run <x>` written anywhere in the docs/README/CI is a real script; **F4** §17's ADR rows are a gap-free ascending sequence each with a rejected alternative and a reason, every `ADR-n` reference resolves, and the newest appears in `ARCHITECTURE_ESSENTIALS.md`; **F5** every item-shaped reference (`R-08`, `A-17`, `T-03`…) matches a `ROADMAP.md` checkbox line; **F6** every `Unverified` marker names, in its own unit — a paragraph, one table row, one line of a fenced tree — the item or the §8 blocker that could close it, and an owner carrying two or more says somewhere what the answer would change (a marker written in backticks is the word, and a block opening `Markers:` is a document defining its vocabulary; `ROADMAP.md` is read up to its append-only §10). `EXEMPTIONS`-style silence is not the design: `docs/SPIKE_RESULTS.md` is out of F1's scope **by name and with its reason printed**, because it records hypotheses and mutation filenames that were never files. Prints what it cannot check (whether a sentence naming a real file still describes it) rather than implying the prose is proven. `-- --verbose` per-check counts, `-- --json` machine-readable findings
 │  ├─ record-demo-video.ts        # **X-02**: Playwright-driven 1080p demo recording synchronized to DEMO_SCRIPT.md
 │  ├─ capture-demo-screenshots.ts # **X-02**: Chromium-driven high-resolution screenshot capture across all six beats
+│  ├─ launch-motion/              # Product launch motion design (index.html pure seek(t) canvas and render.ts 1080p pipeline)
 │  └─ roadmap-check.ts            # F-11 gate: commits must touch ROADMAP.md, `[x]` needs Evidence, IDs unique, dashboard must equal §6, §2/§8/§10 shape.
 │                                 # `-- --write` refreshes §1, `-- --staged` for the hook, `-- --range=<git range>` for CI. Ledger rules are `checkLedger(text)`, tested in tests/unit/roadmap-check.test.ts
 │
