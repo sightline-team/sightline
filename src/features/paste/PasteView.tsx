@@ -84,6 +84,18 @@ function PasteForm({ config }: { config: PublicConfig }) {
           <span className="stream-spec">20,000 character limit</span>
         </div>
         <form onSubmit={onSubmit}>
+          <div style={{ display: 'none' }} aria-hidden="true">
+            <label htmlFor="hp-paste">Leave this field blank</label>
+            <input
+              id="hp-paste"
+              type="text"
+              name="_honeypot"
+              tabIndex={-1}
+              autoComplete="off"
+              value=""
+              readOnly
+            />
+          </div>
           <label htmlFor="document-text">Paste the text of your document</label>
           <p className="muted" id="paste-hint">
             Words copied from a screen or a PDF work best. Sightline reads up to{' '}

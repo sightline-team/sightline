@@ -46,6 +46,8 @@ sightline/
 │
 ├─ public/
 │  ├─ manifest.webmanifest        # Icons only; no offline mode (referenced from layout metadata)
+│  ├─ robots.txt                  # Standard crawler instructions referencing sitemap.xml
+│  ├─ sitemap.xml                 # XML sitemap covering all canonical routes (/, /read, /trust, /settings, /architecture)
 │  ├─ icons/icon.svg              # The manifest + favicon icon
 │  └─ sample-docs/                # Synthetic documents only, incl. deliberately bad photos
 │     └─ photographs/             # BUILT (S-11): the three JPEGs Demo mode answers for — `page-1.jpg`, `page-2.jpg`, `page-3.jpg`

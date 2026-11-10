@@ -11,9 +11,37 @@ import { SessionProvider } from '@/lib/session/store';
 import './globals.css';
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://sightline-snowy-beta.vercel.app'),
   title: 'Sightline',
   description:
     'Understand a sensitive document with private AI, and see exactly what was verified.',
+  alternates: {
+    canonical: '/',
+  },
+  openGraph: {
+    title: 'Sightline — Private AI for Sensitive Documents',
+    description:
+      'Understand a sensitive document with private AI on NEAR AI Cloud hardware enclaves, and see exactly what was verified.',
+    url: 'https://sightline-snowy-beta.vercel.app',
+    siteName: 'Sightline',
+    locale: 'en_US',
+    type: 'website',
+    images: [
+      {
+        url: '/icons/icon.svg',
+        width: 512,
+        height: 512,
+        alt: 'Sightline Logo',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Sightline — Private AI for Sensitive Documents',
+    description:
+      'Understand a sensitive document with private AI on NEAR AI Cloud hardware enclaves, and see exactly what was verified.',
+    images: ['/icons/icon.svg'],
+  },
   // No third-party scripts, fonts or analytics may be added here (AGENTS.md §7).
   // PRD §7 asks for an installable manifest with icons and no offline mode; the manifest is
   // static JSON in `public/`, so it cannot carry a privacy sentence.
@@ -25,6 +53,22 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   // Text must stay zoomable: maximumScale would break the 200% zoom requirement.
+};
+
+const JSON_LD = {
+  '@context': 'https://schema.org',
+  '@type': 'WebApplication',
+  name: 'Sightline',
+  url: 'https://sightline-snowy-beta.vercel.app',
+  description:
+    'Understand a sensitive document with private AI on NEAR AI Cloud hardware enclaves, and see exactly what was verified.',
+  applicationCategory: 'UtilitiesApplication',
+  operatingSystem: 'All',
+  offers: {
+    '@type': 'Offer',
+    price: '0',
+    priceCurrency: 'USD',
+  },
 };
 
 /**
@@ -44,6 +88,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
+        />
         <SkipLink />
         {/* Renders nothing of its own: it puts A-15's stored theme onto `<html>`, which sits outside
             React's tree, so the choice holds on every route and updates the moment it is made. */}
@@ -125,7 +173,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                       </a>
                     </li>
                     <li>
-                      <a href="https://cloud-api.near.ai" target="_blank" rel="noopener noreferrer" tabIndex={-1}>
+                      <a href="https://cloud.near.ai" target="_blank" rel="noopener noreferrer" tabIndex={-1}>
                         NEAR AI Cloud ↗
                       </a>
                     </li>

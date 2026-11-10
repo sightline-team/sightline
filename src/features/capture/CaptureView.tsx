@@ -150,6 +150,18 @@ function CaptureForm() {
           <span className="stream-spec">Up to 5 pages</span>
         </div>
         <form onSubmit={onSubmit}>
+          <div style={{ display: 'none' }} aria-hidden="true">
+            <label htmlFor="hp-capture">Leave this field blank</label>
+            <input
+              id="hp-capture"
+              type="text"
+              name="_honeypot"
+              tabIndex={-1}
+              autoComplete="off"
+              value=""
+              readOnly
+            />
+          </div>
           <div className="capture-inputs-deck">
             <div className="capture-input-row">
               <p>

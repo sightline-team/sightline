@@ -77,6 +77,18 @@ export function AskPanel() {
             say, it says so rather than filling in an answer.
           </p>
           <form onSubmit={onSubmit}>
+            <div style={{ display: 'none' }} aria-hidden="true">
+              <label htmlFor="hp-ask">Leave this field blank</label>
+              <input
+                id="hp-ask"
+                type="text"
+                name="_honeypot"
+                tabIndex={-1}
+                autoComplete="off"
+                value=""
+                readOnly
+              />
+            </div>
             <label htmlFor="question">Your question</label>
             <p className="muted" id="question-hint">
               If you dictate instead of typing, that is your device&rsquo;s own speech service.
