@@ -11,7 +11,7 @@ async function record() {
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
   }
 
-  console.log('🎬 Starting Playwright browser for 1080p demo recording (60fps smooth scrolling, cursor, exact 2:06 sync)...');
+  console.log('🎬 Starting Playwright browser for 1080p demo recording (pinpoint cursor accuracy, 60fps smooth scrolling)...');
   const browser = await chromium.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--font-render-hinting=none'],
@@ -79,7 +79,7 @@ async function record() {
         </div>
       `;
 
-      // Custom animated pointer cursor
+      // Custom animated pointer cursor (appended to documentElement to avoid body zoom scaling!)
       const cursor = document.createElement('div');
       cursor.id = 'demo-cursor';
       cursor.dataset.x = '960';
@@ -205,7 +205,8 @@ async function record() {
       `;
       document.head.appendChild(style);
       document.documentElement.appendChild(hud);
-      document.body.appendChild(cursor);
+      // NOTE: Append directly to documentElement so it uses root viewport space!
+      document.documentElement.appendChild(cursor);
     });
   }
 
@@ -225,7 +226,7 @@ async function record() {
     );
   }
 
-  // Smooth cursor glide using requestAnimationFrame easing
+  // Smooth cursor glide using requestAnimationFrame easing in root viewport space
   async function moveCursor(x: number, y: number, durationMs = 600) {
     await page.evaluate(
       ({ x, y, durationMs }) => {
@@ -308,37 +309,38 @@ async function record() {
     await smoothScrollTo(targetScrollY, durationMs);
   }
 
-  // Glide cursor to an element and click with visible ripple
-  async function clickWithCursor(locator: Locator, durationMs = 600, offsetX = 0, offsetY = 0) {
-    const box = await locator.boundingBox();
-    if (box) {
-      const targetX = Math.round(box.x + box.width / 2 + offsetX);
-      const targetY = Math.round(box.y + box.height / 2 + offsetY);
-      await moveCursor(targetX, targetY, durationMs);
-      await page.evaluate(() => {
-        const cursor = document.getElementById('demo-cursor');
-        if (!cursor) return;
-        const x = parseFloat(cursor.dataset.x || '960');
-        const y = parseFloat(cursor.dataset.y || '540');
-        const ripple = document.createElement('div');
-        ripple.className = 'demo-click-ripple';
-        ripple.style.left = `${x}px`;
-        ripple.style.top = `${y}px`;
-        document.body.appendChild(ripple);
-        setTimeout(() => ripple.remove(), 600);
-      });
-      await page.waitForTimeout(100);
-      await locator.click();
-    }
-  }
-
-  // Glide cursor to hover an element
+  // Glide cursor to an element with surgical pointer precision
   async function glideToLocator(locator: Locator, durationMs = 600, offsetX = 0, offsetY = 0) {
     const box = await locator.boundingBox();
     if (box) {
-      const targetX = Math.round(box.x + box.width / 2 + offsetX);
-      const targetY = Math.round(box.y + box.height / 2 + offsetY);
-      await moveCursor(targetX, targetY, durationMs);
+      const targetX = box.x + box.width / 2 + offsetX;
+      const targetY = box.y + box.height / 2 + offsetY;
+      // Cursor SVG tip is at (3.5, 3.5), so offset div by -3.5 to hit exact center
+      await moveCursor(targetX - 3.5, targetY - 3.5, durationMs);
+    }
+  }
+
+  // Glide cursor to an element and click with visible ripple at the exact arrow tip
+  async function clickWithCursor(locator: Locator, durationMs = 600, offsetX = 0, offsetY = 0) {
+    const box = await locator.boundingBox();
+    if (box) {
+      const targetX = box.x + box.width / 2 + offsetX;
+      const targetY = box.y + box.height / 2 + offsetY;
+      await moveCursor(targetX - 3.5, targetY - 3.5, durationMs);
+      await page.evaluate(
+        ({ rippleX, rippleY }) => {
+          const ripple = document.createElement('div');
+          ripple.className = 'demo-click-ripple';
+          ripple.style.left = `${rippleX}px`;
+          ripple.style.top = `${rippleY}px`;
+          // Append to documentElement so ripple coordinates are unscaled
+          document.documentElement.appendChild(ripple);
+          setTimeout(() => ripple.remove(), 600);
+        },
+        { rippleX: targetX, rippleY: targetY },
+      );
+      await page.waitForTimeout(120);
+      await locator.click();
     }
   }
 
@@ -359,28 +361,42 @@ async function record() {
   );
 
   // Initial glide towards top telemetry indicators
-  await moveCursor(1350, 48, 1200);
-  await page.waitForTimeout(1500);
-
-  // Hover telemetry pills
-  await moveCursor(1580, 48, 1000);
-  await page.waitForTimeout(1500);
+  const pill1 = page.locator('#hud-top-telemetry .hud-pill').nth(0);
+  const pill2 = page.locator('#hud-top-telemetry .hud-pill').nth(1);
+  if (await pill1.isVisible()) {
+    await glideToLocator(pill1, 1000);
+    await page.waitForTimeout(1500);
+  }
+  if (await pill2.isVisible()) {
+    await glideToLocator(pill2, 800);
+    await page.waitForTimeout(1500);
+  }
 
   // Smooth scroll down to 4-pillar cryptographic guarantee cards
   await smoothScrollTo(460, 1600);
-  await moveCursor(480, 520, 1000);
-  await page.waitForTimeout(2000);
-  await moveCursor(880, 520, 1000);
-  await page.waitForTimeout(2000);
+  const card1 = page.getByRole('heading', { name: 'Zero Server Storage' });
+  const card2 = page.getByRole('heading', { name: /Intel TDX Hardware Enclaves/i });
+  if (await card1.isVisible()) {
+    await glideToLocator(card1, 1000);
+    await page.waitForTimeout(2000);
+  }
+  if (await card2.isVisible()) {
+    await glideToLocator(card2, 1000);
+    await page.waitForTimeout(2000);
+  }
 
   // Smooth scroll down to architecture & execution pipeline
   await smoothScrollTo(1050, 1600);
-  await moveCursor(400, 480, 1000);
-  await page.waitForTimeout(1200);
-  await moveCursor(960, 480, 1200);
-  await page.waitForTimeout(1200);
-  await moveCursor(1400, 480, 1200);
-  await page.waitForTimeout(2000);
+  const pipelineSection = page.locator('section').filter({ hasText: /Execution Pipeline|Architecture/i }).first();
+  if (await pipelineSection.isVisible()) {
+    await glideToLocator(pipelineSection, 1200, -180, -40);
+    await page.waitForTimeout(1500);
+    await glideToLocator(pipelineSection, 1200, 180, -40);
+    await page.waitForTimeout(2000);
+  } else {
+    await moveCursor(960, 480, 1000);
+    await page.waitForTimeout(3000);
+  }
 
   // ==========================================
   // BEAT 2: PRE-UPLOAD HARDWARE ATTESTATION (0:20 - 0:40 | 20s)
@@ -396,15 +412,21 @@ async function record() {
   // Smooth scroll to input streams workbench
   const workbench = page.locator('#workbench');
   await smoothScrollToLocator(workbench, 140, 1600);
-  await moveCursor(550, 320, 1000);
-  await page.waitForTimeout(2000);
-  await moveCursor(950, 320, 1000);
-  await page.waitForTimeout(2000);
+  const stream1 = page.getByText('// STREAM: OPTICAL_DOCUMENT_INPUT').first();
+  const stream2 = page.getByText('// STREAM: PLAIN_TEXT_INPUT').first();
+  if (await stream1.isVisible()) {
+    await glideToLocator(stream1, 1000);
+    await page.waitForTimeout(2000);
+  }
+  if (await stream2.isVisible()) {
+    await glideToLocator(stream2, 1000);
+    await page.waitForTimeout(2000);
+  }
 
   // Scroll to Document capture stream
   const captureHeading = page.locator('#capture-heading');
   await smoothScrollToLocator(captureHeading, 140, 1400);
-  await moveCursor(720, 360, 1000);
+  await glideToLocator(captureHeading, 1000);
   await page.waitForTimeout(2500);
 
   // Scroll smoothly to "Load sample document" button
@@ -424,23 +446,32 @@ async function record() {
     50,
   );
 
-  // Click Load Sample Document button with cursor
+  // Click Load Sample Document button with pinpoint cursor accuracy
   if (await loadSampleBtn.isVisible()) {
     await clickWithCursor(loadSampleBtn, 700);
     await page.waitForTimeout(1600);
   }
 
   // Observe the 3 loaded pages in the tray
-  await moveCursor(520, 580, 1000);
-  await page.waitForTimeout(1800);
-  await moveCursor(780, 580, 1000);
-  await page.waitForTimeout(1800);
-  await moveCursor(1040, 580, 1000);
-  await page.waitForTimeout(1800);
+  const page1 = page.locator('[data-testid="capture-page-1"]');
+  const page2 = page.locator('[data-testid="capture-page-2"]');
+  const page3 = page.locator('[data-testid="capture-page-3"]');
+  if (await page1.isVisible()) {
+    await glideToLocator(page1, 900);
+    await page.waitForTimeout(1800);
+  }
+  if (await page2.isVisible()) {
+    await glideToLocator(page2, 900);
+    await page.waitForTimeout(1800);
+  }
+  if (await page3.isVisible()) {
+    await glideToLocator(page3, 900);
+    await page.waitForTimeout(1800);
+  }
 
   // Scroll down to "Read these photographs" button
   const readPhotosBtn = page.getByRole('button', { name: /read these photographs/i });
-  await smoothScrollToLocator(readPhotosBtn, 520, 1200);
+  await smoothScrollToLocator(readPhotosBtn, 500, 1200);
   await page.waitForTimeout(1200);
 
   // Press Read these photographs
@@ -472,33 +503,43 @@ async function record() {
   );
 
   // Screen reader focus on main heading
-  await moveCursor(640, 260, 1000);
-  await page.waitForTimeout(2500);
+  const mainHeading = page.getByRole('heading', { name: /what sightline read/i });
+  if (await mainHeading.isVisible()) {
+    await glideToLocator(mainHeading, 900);
+    await page.waitForTimeout(2500);
+  }
 
   // View summary card
   await smoothScrollTo(280, 1200);
-  await moveCursor(720, 420, 1200);
-  await page.waitForTimeout(2500);
+  const summaryHeading = page.getByRole('heading', { name: 'Summary' });
+  if (await summaryHeading.isVisible()) {
+    await glideToLocator(summaryHeading, 900);
+    await page.waitForTimeout(2500);
+  }
 
   // Smooth scroll to Key facts
   const keyFactsHeading = page.getByRole('heading', { name: 'Key facts' });
   await smoothScrollToLocator(keyFactsHeading, 140, 1400);
-  await moveCursor(680, 360, 1000);
-  await page.waitForTimeout(2500);
+  const refFact = page.getByText(/Reference/i).first();
+  if (await refFact.isVisible()) {
+    await glideToLocator(refFact, 900);
+    await page.waitForTimeout(2500);
+  }
 
   // Expand "Show the other facts" or details disclosure to demonstrate grounding
   const showMoreFacts = page.locator('details summary').first();
   if (await showMoreFacts.isVisible()) {
     await clickWithCursor(showMoreFacts, 800);
-    await moveCursor(680, 460, 1200);
     await page.waitForTimeout(2500);
   }
 
   // Scroll smoothly to Safety Notices & Warnings
   const warningsHeading = page.getByRole('heading', { name: 'Warnings' });
   await smoothScrollToLocator(warningsHeading, 140, 1400);
-  await moveCursor(700, 380, 1000);
-  await page.waitForTimeout(2500);
+  if (await warningsHeading.isVisible()) {
+    await glideToLocator(warningsHeading, 900);
+    await page.waitForTimeout(2500);
+  }
 
   // ==========================================
   // BEAT 5: GROUNDED Q&A WITH HONEST REFUSAL (1:25 - 1:45 | 20s)
@@ -514,6 +555,7 @@ async function record() {
   // Scroll to Ask a question section
   const askHeading = page.locator('#ask-heading');
   await smoothScrollToLocator(askHeading, 140, 1200);
+  await glideToLocator(askHeading, 800);
   await page.waitForTimeout(1500);
 
   // Question 1: Grounded query (reference number)
@@ -525,8 +567,11 @@ async function record() {
     await clickWithCursor(askButton, 700);
     await page.waitForTimeout(1800);
     // Cursor glides to the answered quote
-    await moveCursor(700, 520, 1000);
-    await page.waitForTimeout(2200);
+    const ans1Quote = page.locator('[data-testid="answers"]').getByText(/NC-0000-SYN/i).first();
+    if (await ans1Quote.isVisible()) {
+      await glideToLocator(ans1Quote, 900);
+      await page.waitForTimeout(2200);
+    }
   }
 
   // Question 2: Unanswerable query to demonstrate honest refusal (payment deadline)
@@ -541,8 +586,11 @@ async function record() {
     const answersSection = page.locator('[data-testid="answers"]');
     if (await answersSection.isVisible()) {
       await smoothScrollToLocator(answersSection, 180, 1000);
-      await moveCursor(720, 480, 1000);
-      await page.waitForTimeout(2600);
+      const refusalText = answersSection.getByText(/no payment deadline/i).first();
+      if (await refusalText.isVisible()) {
+        await glideToLocator(refusalText, 900);
+        await page.waitForTimeout(2600);
+      }
     }
   }
 
@@ -576,25 +624,26 @@ async function record() {
 
   // Review the verification checklist
   await smoothScrollTo(320, 1200);
-  await moveCursor(680, 360, 1000);
-  await page.waitForTimeout(1500);
-  await moveCursor(680, 420, 1000);
-  await page.waitForTimeout(1500);
-  await moveCursor(680, 480, 1000);
-  await page.waitForTimeout(2000);
+  const checkItem1 = page.getByText(/Intel TDX/i).first();
+  const checkItem2 = page.getByText(/Nonce/i).first();
+  if (await checkItem1.isVisible()) {
+    await glideToLocator(checkItem1, 900);
+    await page.waitForTimeout(1500);
+  }
+  if (await checkItem2.isVisible()) {
+    await glideToLocator(checkItem2, 900);
+    await page.waitForTimeout(1800);
+  }
 
-  // Scroll down to "Forget this document" button
+  // Scroll back to header or view "Forget this document" button
+  await smoothScrollTo(0, 800);
   const forgetBtn = page.getByRole('button', { name: /forget this document/i });
-  await smoothScrollToLocator(forgetBtn, 480, 1100);
-  await page.waitForTimeout(1000);
-
-  // Press Forget this document
   if (await forgetBtn.isVisible()) {
     await clickWithCursor(forgetBtn, 700);
     await page.waitForTimeout(1500);
   }
 
-  // Return to homepage
+  // Return to homepage via Sightline home brand link
   const homeLink = page.getByRole('link', { name: /sightline/i }).first();
   if (await homeLink.isVisible()) {
     await clickWithCursor(homeLink, 700);
