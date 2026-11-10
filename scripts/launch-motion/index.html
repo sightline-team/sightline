@@ -4,18 +4,44 @@
   <meta charset="UTF-8">
   <title>Sightline — Product Launch Motion Film</title>
   <style>
+    /* 
+     * Sightline Brand System: Web3 Land-book Modernist Brutalism
+     * 1. ZERO GRADIENTS: 100% solid flat surfaces and crisp 1px solid borders.
+     * 2. ZERO ROUNDED CORNERS: --radius: 0 (100% straight geometric edges).
+     * 3. ZERO AI SLOP: Honest, verifiable technical language and real status indicators.
+     */
+    :root {
+      --bg: #040407;
+      --fg: #f5f6f9;
+      --muted: #9ba3b8;
+      --accent: #00ec97;
+      --accent-hover: #05f8a0;
+      --accent-blue: #0091fd;
+      --on-accent: #040407;
+      --panel: #0d0f17;
+      --panel-hover: #151824;
+      --border: #232736;
+      --warn-bg: #241804;
+      --warn-fg: #fbbf24;
+      --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Monaco, Consolas, monospace;
+      --radius: 0px !important;
+    }
+
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
+      border-radius: 0 !important; /* Non-negotiable straight edges */
     }
+
     html, body {
       width: 1920px;
       height: 1080px;
       overflow: hidden;
-      background: #040407;
-      color: #ffffff;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-sans);
       -webkit-font-smoothing: antialiased;
     }
 
@@ -24,91 +50,105 @@
       width: 1920px;
       height: 1080px;
       overflow: hidden;
+      background: var(--bg);
     }
 
-    /* Ambient background gradient with subtle radial glow */
-    #bg-bloom {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 1920px;
-      height: 1080px;
-      background: radial-gradient(circle 800px at 50% 50%, rgba(0, 236, 151, 0.05) 0%, rgba(4, 4, 7, 0) 70%),
-                  radial-gradient(circle 600px at 75% 30%, rgba(0, 145, 253, 0.04) 0%, rgba(4, 4, 7, 0) 65%);
-      pointer-events: none;
-    }
-
-    /* Background technical grid */
+    /* Crisp technical 1px background grid (solid lines, zero gradient bloom) */
     #grid-canvas {
       position: absolute;
       top: 0;
       left: 0;
       width: 1920px;
       height: 1080px;
-      opacity: 0.18;
-      background-size: 48px 48px;
+      opacity: 0.14;
+      background-size: 40px 40px;
       background-image: 
-        linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
-        linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+        linear-gradient(to right, #232736 1px, transparent 1px),
+        linear-gradient(to bottom, #232736 1px, transparent 1px);
       pointer-events: none;
     }
 
-    /* Top HUD brand bar */
-    #top-hud {
+    /* Top Navigation Shell (exact replica of website layout.tsx) */
+    #top-nav {
       position: absolute;
-      top: 36px;
-      left: 60px;
-      right: 60px;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 64px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
       display: flex;
       justify-content: space-between;
       align-items: center;
+      padding: 0 48px;
       z-index: 100;
     }
-    .hud-brand {
+
+    .brand-link {
       display: flex;
       align-items: center;
       gap: 12px;
-      font-size: 18px;
+      font-size: 16px;
       font-weight: 700;
-      letter-spacing: -0.02em;
+      letter-spacing: 0.05em;
+      text-decoration: none;
+      color: var(--fg);
     }
-    .hud-brand-symbol {
+
+    .brand-glyph {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--accent);
       width: 28px;
       height: 28px;
-      background: #00EC97;
-      color: #040407;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 15px;
+      font-size: 16px;
       font-weight: 800;
-      border-radius: 4px;
     }
-    .hud-badges {
-      display: flex;
-      gap: 12px;
+
+    .brand-text {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      letter-spacing: 0.06em;
     }
-    .hud-pill {
-      background: rgba(11, 14, 23, 0.85);
-      border: 1px solid #232736;
-      padding: 6px 14px;
+
+    .brand-tee {
+      font-family: var(--font-mono);
       font-size: 11px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-weight: 600;
-      color: #94a3b8;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--accent);
+      padding: 4px 10px;
       letter-spacing: 0.08em;
-      text-transform: uppercase;
-      display: flex;
+      display: inline-flex;
       align-items: center;
       gap: 8px;
-      border-radius: 4px;
+      text-transform: uppercase;
+      font-weight: 700;
     }
-    .hud-dot {
+
+    .brand-tee::before {
+      content: '';
+      display: inline-block;
       width: 6px;
       height: 6px;
-      border-radius: 50%;
-      background: #00EC97;
-      box-shadow: 0 0 8px #00EC97;
+      background: var(--accent);
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 24px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .nav-item.active {
+      color: var(--accent);
+      border-bottom: 2px solid var(--accent);
+      padding-bottom: 2px;
     }
 
     /* World container (camera transform) */
@@ -121,23 +161,26 @@
       transform-origin: 960px 540px;
     }
 
-    /* THE ONE SHAPE: Morphing central container */
+    /* ==========================================
+     * THE ONE SHAPE: Morphing Brutalist Container
+     * 100% straight corners, solid surface, crisp border
+     * ========================================== */
     #morph-shape {
       position: absolute;
       top: 540px;
       left: 960px;
       transform: translate(-50%, -50%);
-      background: #0b0e17;
-      border: 1px solid #232736;
-      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(0, 236, 151, 0.08);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.95);
       overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
-      will-change: width, height, border-radius;
+      will-change: width, height;
     }
 
-    /* State views placed inside the one shape */
+    /* State views inside The One Shape */
     .state-view {
       position: absolute;
       top: 0;
@@ -146,282 +189,372 @@
       height: 100%;
       display: flex;
       flex-direction: column;
-      padding: 28px 36px;
+      padding: 32px 36px;
       opacity: 0;
       pointer-events: none;
     }
 
-    /* STATE 1: Capsule Pill */
+    /* STATE 1: Initial Enclave Capsule */
     #view-1 {
       justify-content: center;
       align-items: center;
       flex-direction: row;
       gap: 14px;
-      padding: 0 24px;
+      padding: 0 28px;
     }
-    .s1-icon {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      background: #00EC97;
-      box-shadow: 0 0 12px #00EC97;
+    .s1-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--accent);
     }
     .s1-text {
-      font-size: 15px;
-      font-family: ui-monospace, monospace;
+      font-size: 13px;
+      font-family: var(--font-mono);
       font-weight: 700;
-      letter-spacing: 0.1em;
-      color: #ffffff;
+      letter-spacing: 0.12em;
+      color: var(--fg);
       text-transform: uppercase;
     }
 
-    /* STATE 2: Document Input Stream */
-    .view-header {
+    /* STATE 2: Landing Hero Card */
+    #view-2 {
+      justify-content: space-between;
+    }
+    .hero-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      text-transform: uppercase;
+    }
+    .hero-near-tag {
+      background: #151824;
+      border: 1px solid var(--border);
+      padding: 2px 8px;
+      color: #ffffff;
+      font-weight: 800;
+    }
+    .landing-headline {
+      font-size: 32px;
+      font-weight: 700;
+      line-height: 1.2;
+      letter-spacing: -0.025em;
+      color: var(--fg);
+      margin-top: 12px;
+      margin-bottom: 10px;
+    }
+    .landing-description {
+      font-size: 15px;
+      line-height: 1.5;
+      color: var(--muted);
+      max-width: 580px;
+    }
+    .landing-cta-row {
+      display: flex;
+      gap: 16px;
+      margin-top: 16px;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: var(--on-accent);
+      border: 2px solid var(--accent);
+      padding: 10px 24px;
+      font-size: 14px;
+      font-weight: 700;
+      font-family: var(--font-sans);
+      letter-spacing: 0.02em;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-secondary {
+      background: var(--panel);
+      color: var(--fg);
+      border: 2px solid var(--border);
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: var(--font-sans);
+    }
+
+    /* Terminal window header */
+    .stream-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      border-bottom: 1px solid #232736;
-      padding-bottom: 14px;
-      margin-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+      margin-bottom: 18px;
     }
-    .header-tag {
-      font-size: 11px;
-      font-family: ui-monospace, monospace;
-      color: #00EC97;
-      letter-spacing: 0.08em;
+    .stream-tag {
+      font-family: var(--font-mono);
+      font-size: 12px;
       font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.08em;
     }
-    .header-badge {
-      font-size: 10px;
-      font-family: ui-monospace, monospace;
-      background: rgba(255, 255, 255, 0.08);
+    .stream-status {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      background: #151824;
+      border: 1px solid var(--border);
       padding: 3px 8px;
-      border-radius: 2px;
-      color: #94a3b8;
+      color: var(--muted);
     }
-    .dropzone {
+
+    /* STATE 3: Optical Input Stream Bay */
+    .stream-dropzone {
       flex: 1;
-      border: 1px dashed #334155;
-      background: rgba(255, 255, 255, 0.02);
-      border-radius: 6px;
+      border: 2px dashed #334155;
+      background: rgba(255, 255, 255, 0.015);
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       gap: 12px;
-    }
-    .drop-title {
-      font-size: 17px;
-      font-weight: 600;
-      color: #f1f5f9;
-    }
-    .drop-sub {
-      font-size: 12px;
-      color: #64748b;
-      font-family: ui-monospace, monospace;
-    }
-
-    /* STATE 3: Privacy & EXIF Shield */
-    .shield-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-      margin-top: 10px;
-    }
-    .shield-card {
-      background: #111522;
-      border: 1px solid #232736;
-      border-radius: 6px;
-      padding: 16px;
-    }
-    .shield-label {
-      font-size: 11px;
-      font-family: ui-monospace, monospace;
-      color: #94a3b8;
-      margin-bottom: 6px;
-    }
-    .shield-val {
-      font-size: 20px;
-      font-weight: 700;
-      font-family: ui-monospace, monospace;
-      color: #00EC97;
-    }
-
-    /* STATE 4: Attestation Proof Deck */
-    .proof-list {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      margin-top: 8px;
-    }
-    .proof-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: #111522;
-      border: 1px solid #232736;
-      padding: 12px 18px;
-      border-radius: 6px;
-    }
-    .proof-check {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      font-size: 14px;
-      font-weight: 600;
-      color: #e2e8f0;
-    }
-    .check-mark {
-      color: #00EC97;
-      font-size: 16px;
-      font-weight: 900;
-    }
-    .proof-badge {
-      font-size: 11px;
-      font-family: ui-monospace, monospace;
-      color: #64748b;
-    }
-
-    /* STATE 5: Confidential OCR & Clinical Warning */
-    .ocr-stream {
-      font-family: ui-monospace, monospace;
-      font-size: 13px;
-      line-height: 1.6;
-      color: #94a3b8;
-      background: #07090f;
-      border: 1px solid #1a202c;
-      padding: 16px;
-      border-radius: 6px;
-      margin-bottom: 14px;
-      flex: 1;
-    }
-    .ocr-highlight {
-      color: #00EC97;
-      font-weight: 700;
-      background: rgba(0, 236, 151, 0.1);
-      padding: 2px 4px;
-    }
-    .alert-banner {
-      background: rgba(245, 158, 11, 0.12);
-      border: 1px solid #f59e0b;
-      border-left: 4px solid #f59e0b;
-      padding: 12px 16px;
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .alert-text {
-      font-size: 12px;
-      font-weight: 600;
-      color: #fbbf24;
-      letter-spacing: 0.02em;
-    }
-
-    /* STATE 6: Verbatim Grounding Disclosure */
-    .fact-card {
-      background: #111522;
-      border: 1px solid #232736;
-      border-radius: 6px;
       padding: 20px;
     }
-    .fact-header {
-      font-size: 16px;
+    .drop-doc-icon {
+      font-size: 32px;
+    }
+    .drop-doc-title {
+      font-size: 18px;
       font-weight: 700;
-      margin-bottom: 12px;
+      color: var(--fg);
+    }
+    .drop-doc-meta {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--muted);
       display: flex;
-      justify-content: space-between;
+      gap: 16px;
     }
-    .quote-box {
-      background: #07090f;
-      border-left: 3px solid #00EC97;
-      padding: 12px 16px;
-      font-size: 13.5px;
-      font-style: italic;
-      color: #cbd5e1;
-      line-height: 1.5;
-      margin-top: 8px;
-    }
-    .quote-status {
-      display: inline-block;
-      margin-top: 10px;
-      font-size: 10.5px;
-      font-family: ui-monospace, monospace;
-      color: #00EC97;
-      background: rgba(0, 236, 151, 0.12);
-      padding: 3px 8px;
-      border-radius: 2px;
+    .meta-tag {
+      color: var(--accent);
     }
 
-    /* STATE 7: Q&A Prompt & Refusal */
-    .qa-box {
+    /* STATE 4: Pre-Upload Attestation Proof Deck */
+    .proof-grid {
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 10px;
+      flex: 1;
     }
-    .query-pill {
-      background: #111522;
-      border: 1px solid #334155;
+    .proof-item {
+      background: #111420;
+      border: 1px solid var(--border);
       padding: 12px 18px;
-      border-radius: 6px;
-      font-size: 15px;
-      font-weight: 500;
-      color: #ffffff;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .proof-title {
+      font-size: 14px;
+      font-weight: 600;
       display: flex;
       align-items: center;
       gap: 10px;
+      color: var(--fg);
     }
-    .refusal-card {
-      background: rgba(239, 68, 68, 0.08);
-      border: 1px solid rgba(239, 68, 68, 0.3);
-      border-left: 4px solid #ef4444;
-      padding: 12px 18px;
-      border-radius: 4px;
+    .proof-tag-ok {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      background: rgba(0, 236, 151, 0.1);
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      padding: 3px 8px;
+    }
+    .metrics-bar {
+      display: flex;
+      gap: 16px;
+      border-top: 1px solid var(--border);
+      padding-top: 14px;
+      margin-top: 10px;
+    }
+    .metric-cell {
+      flex: 1;
+      background: #111420;
+      border: 1px solid var(--border);
+      padding: 10px 14px;
+    }
+    .metric-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--muted);
+      margin-bottom: 4px;
+      letter-spacing: 0.06em;
+    }
+    .metric-value {
+      font-family: var(--font-mono);
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    /* STATE 5: Results Screen & Clinical Notice */
+    .results-hierarchy {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      flex: 1;
+    }
+    .fact-card {
+      background: #111420;
+      border: 1px solid var(--border);
+      padding: 16px 20px;
+    }
+    .fact-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .fact-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--fg);
+    }
+    .fact-verdict {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent);
+      font-weight: 700;
+    }
+    .quote-block {
+      background: var(--bg);
+      border-left: 3px solid var(--accent);
+      padding: 10px 14px;
       font-size: 13px;
-      color: #fca5a5;
+      font-style: italic;
+      color: #cbd5e1;
+      margin-top: 6px;
+    }
+    .quote-badge {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      color: var(--accent);
+      margin-top: 6px;
+      display: block;
+    }
+    .banner-warning {
+      background: var(--warn-bg);
+      border: 2px solid var(--warn-fg);
+      color: var(--warn-fg);
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 12.5px;
+      font-weight: 600;
       line-height: 1.4;
     }
 
-    /* STATE 8: Wordmark Slam */
-    #view-8 {
+    /* STATE 6: Grounded Q&A & Honest Refusal */
+    .qa-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      flex: 1;
+    }
+    .query-field {
+      background: var(--bg);
+      border: 2px solid var(--border);
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 15px;
+    }
+    .query-text {
+      color: var(--fg);
+      font-weight: 500;
+    }
+    .query-ask-btn {
+      background: var(--accent);
+      color: var(--on-accent);
+      border: none;
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+    }
+    .refusal-box {
+      background: #1c0d0d;
+      border: 1px solid #ef4444;
+      border-left: 4px solid #ef4444;
+      padding: 14px 18px;
+      font-size: 13px;
+      color: #fca5a5;
+      line-height: 1.45;
+    }
+    .refusal-bold {
+      font-weight: 700;
+      color: #ffffff;
+      font-family: var(--font-mono);
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    /* STATE 7: Final Wordmark Slam */
+    #view-7 {
       align-items: center;
       justify-content: center;
       text-align: center;
       gap: 16px;
     }
-    .slam-title {
-      font-size: 44px;
-      font-weight: 800;
-      letter-spacing: -0.03em;
+    .slam-header {
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 14px;
+      font-size: 48px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
     }
-    .slam-title span {
-      color: #00EC97;
+    .slam-glyph {
+      background: var(--panel);
+      border: 2px solid var(--border);
+      color: var(--accent);
+      width: 54px;
+      height: 54px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+    }
+    .slam-headline {
+      color: var(--fg);
+    }
+    .slam-headline span {
+      color: var(--accent);
     }
     .slam-sub {
       font-size: 16px;
-      color: #94a3b8;
-      max-width: 580px;
+      color: var(--muted);
+      max-width: 600px;
       line-height: 1.5;
     }
-    .slam-badges {
+    .slam-badge-strip {
       display: flex;
-      gap: 12px;
-      margin-top: 8px;
+      gap: 10px;
+      margin-top: 10px;
     }
-    .slam-badge {
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid #232736;
+    .badge-cell {
+      background: var(--panel);
+      border: 1px solid var(--border);
       padding: 6px 14px;
+      font-family: var(--font-mono);
       font-size: 11px;
-      font-family: ui-monospace, monospace;
-      color: #00EC97;
-      border-radius: 4px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.08em;
     }
 
-    /* PROGRAMMATIC MOUSE CURSOR */
+    /* PROGRAMMATIC STRAIGHT-EDGED CURSOR */
     #cursor {
       position: absolute;
       top: 0;
@@ -432,219 +565,234 @@
       transition: none;
     }
     .cursor-svg {
-      width: 24px;
-      height: 24px;
-      filter: drop-shadow(0 4px 8px rgba(0,0,0,0.6));
+      width: 26px;
+      height: 26px;
+      filter: drop-shadow(0 4px 6px rgba(0,0,0,0.8));
     }
     .cursor-pill {
       position: absolute;
-      top: 18px;
-      left: 18px;
-      background: #00EC97;
-      color: #040407;
+      top: 20px;
+      left: 20px;
+      background: var(--accent);
+      color: var(--on-accent);
       font-size: 10px;
+      font-family: var(--font-mono);
       font-weight: 800;
-      padding: 3px 8px;
-      border-radius: 12px;
-      letter-spacing: 0.05em;
+      padding: 2px 7px;
+      letter-spacing: 0.06em;
       white-space: nowrap;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+      border: 1px solid #000000;
     }
-    .cursor-ripple {
+    .cursor-box-ripple {
       position: absolute;
-      top: -16px;
-      left: -16px;
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      border: 2px solid #00EC97;
+      top: -12px;
+      left: -12px;
+      width: 24px;
+      height: 24px;
+      border: 2px solid var(--accent);
       opacity: 0;
       pointer-events: none;
     }
 
-    /* Lower HUD progress ticker */
-    #bottom-hud {
+    /* Bottom Technical Footer */
+    #bottom-footer {
       position: absolute;
-      bottom: 36px;
-      left: 60px;
-      right: 60px;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 48px;
+      border-top: 1px solid var(--border);
+      background: var(--bg);
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-family: ui-monospace, monospace;
+      padding: 0 48px;
+      font-family: var(--font-mono);
       font-size: 11px;
-      color: #64748b;
+      color: var(--muted);
       z-index: 100;
     }
-    .ticker-highlight {
-      color: #00EC97;
+    .footer-hi {
+      color: var(--accent);
       font-weight: 700;
     }
   </style>
 </head>
 <body>
   <div id="stage">
-    <div id="bg-bloom"></div>
     <div id="grid-canvas"></div>
 
-    <!-- Top HUD Navigation Bar -->
-    <div id="top-hud">
-      <div class="hud-brand">
-        <div class="hud-brand-symbol">Ⓝ</div>
-        <span>Sightline</span>
+    <!-- Top Navigation Bar -->
+    <div id="top-nav">
+      <div class="brand-link">
+        <div class="brand-glyph">Ⓝ</div>
+        <span class="brand-text">Sightline</span>
+        <span class="brand-tee">NEAR AI CLOUD TEE</span>
       </div>
-      <div class="hud-badges">
-        <div class="hud-pill"><span class="hud-dot"></span>NEAR AI CLOUD TEE</div>
-        <div class="hud-pill">INTEL TDX HARDWARE ENCLAVE</div>
-        <div class="hud-pill">ZERO SERVER STORAGE</div>
+      <div class="nav-links">
+        <span class="nav-item active">Document</span>
+        <span class="nav-item">Verification</span>
+        <span class="nav-item">Architecture</span>
+        <span class="nav-item">Settings</span>
       </div>
     </div>
 
-    <!-- The 3D World (Camera transformed) -->
+    <!-- World container for camera moves -->
     <div id="world">
-      <!-- THE ONE SHAPE -->
+      <!-- THE ONE SHAPE (Brutalist straight edges) -->
       <div id="morph-shape">
         <!-- View 1: Initial Capsule Pill -->
         <div id="view-1" class="state-view">
-          <div class="s1-icon"></div>
-          <div class="s1-text">Hardware Enclave Attested</div>
+          <div class="s1-dot"></div>
+          <div class="s1-text">NEAR AI Cloud · Intel TDX Attested</div>
         </div>
 
-        <!-- View 2: Input Stream & Document Tray -->
+        <!-- View 2: Landing Hero Card -->
         <div id="view-2" class="state-view">
-          <div class="view-header">
-            <span class="header-tag">// STREAM: OPTICAL_DOCUMENT_INPUT</span>
-            <span class="header-badge">CLIENT EXIF PURGED</span>
+          <div>
+            <div class="hero-eyebrow">
+              <span class="hero-near-tag">Ⓝ NEAR PROTOCOL</span>
+              <span>CONFIDENTIAL AI · INTEL TDX TEE</span>
+            </div>
+            <h1 class="landing-headline">Private AI for sensitive documents.</h1>
+            <p class="landing-description">
+              Read medical letters, council tax bills, and bank statements independently. Zero server storage. Cryptographic proof, not corporate promises.
+            </p>
           </div>
-          <div class="dropzone">
-            <div style="font-size: 28px;">📄</div>
-            <div class="drop-title">NHS Clinic Letter (3 Pages)</div>
-            <div class="drop-sub">100% EXIF & GPS stripped in-browser before transmit</div>
+          <div class="landing-cta-row">
+            <div class="btn-primary">Add a document →</div>
+            <div class="btn-secondary">Inspect trust receipt</div>
           </div>
         </div>
 
-        <!-- View 3: Cryptographic Shield -->
+        <!-- View 3: Document Input Stream Bay -->
         <div id="view-3" class="state-view">
-          <div class="view-header">
-            <span class="header-tag">CRYPTO SHIELD · LOCAL INTEGRITY</span>
-            <span class="header-badge">STRICT SEQUENCE</span>
+          <div class="stream-header">
+            <span class="stream-tag">// STREAM: OPTICAL_DOCUMENT_INPUT</span>
+            <span class="stream-status">■ ■ ■ LOCAL PRIVACY SHIELD</span>
           </div>
-          <div class="shield-grid">
-            <div class="shield-card">
-              <div class="shield-label">METADATA STATUS</div>
-              <div class="shield-val" id="val-exif">100% PURGED</div>
+          <div class="stream-dropzone">
+            <div class="drop-doc-icon">📄</div>
+            <div class="drop-doc-title">NHS Clinic Letter (3 Pages)</div>
+            <div class="drop-doc-meta">
+              <span>EXIF: <strong class="meta-tag">PURGED</strong></span>
+              <span>GPS: <strong class="meta-tag">STRIPPED</strong></span>
+              <span>STORAGE: <strong class="meta-tag">0 KB</strong></span>
             </div>
-            <div class="shield-card">
-              <div class="shield-label">SERVER PERSISTENCE</div>
-              <div class="shield-val" id="val-storage">0.00 KB</div>
-            </div>
+            <div class="btn-primary" style="margin-top: 8px;">Read these photographs</div>
           </div>
         </div>
 
-        <!-- View 4: Hardware Attestation Handshake -->
+        <!-- View 4: Hardware Attestation Proof Deck -->
         <div id="view-4" class="state-view">
-          <div class="view-header">
-            <span class="header-tag">INTEL TDX HARDWARE ATTESTATION</span>
-            <span class="header-badge">PRE-UPLOAD PROOF</span>
+          <div class="stream-header">
+            <span class="stream-tag">INTEL TDX HARDWARE ATTESTATION</span>
+            <span class="stream-status">PRE-UPLOAD GATE</span>
           </div>
-          <div class="proof-list">
-            <div class="proof-row">
-              <div class="proof-check"><span class="check-mark">✓</span> Hardware Quote Valid (TDX)</div>
-              <div class="proof-badge">PASSED</div>
+          <div class="proof-grid">
+            <div class="proof-item">
+              <span class="proof-title">Intel TDX Hardware Quote Valid</span>
+              <span class="proof-tag-ok">PASSED</span>
             </div>
-            <div class="proof-row">
-              <div class="proof-check"><span class="check-mark">✓</span> 32-Byte Session Nonce Bound</div>
-              <div class="proof-badge">PASSED</div>
+            <div class="proof-item">
+              <span class="proof-title">32-Byte Session Nonce Bound</span>
+              <span class="proof-tag-ok">PASSED</span>
             </div>
-            <div class="proof-row">
-              <div class="proof-check"><span class="check-mark">✓</span> Ed25519 Model Signature Echo</div>
-              <div class="proof-badge">PASSED</div>
+            <div class="proof-item">
+              <span class="proof-title">Ed25519 Hardware Signature Echo</span>
+              <span class="proof-tag-ok">PASSED</span>
+            </div>
+          </div>
+          <div class="metrics-bar">
+            <div class="metric-cell">
+              <div class="metric-label">SERVER CUSTODY</div>
+              <div class="metric-value">0.00 KB</div>
+            </div>
+            <div class="metric-cell">
+              <div class="metric-label">IN-BROWSER CHECKS</div>
+              <div class="metric-value">12 / 12 PASSED</div>
+            </div>
+            <div class="metric-cell">
+              <div class="metric-label">FAIL-CLOSED GATE</div>
+              <div class="metric-value">ACTIVE</div>
             </div>
           </div>
         </div>
 
-        <!-- View 5: Confidential Vision Transcription -->
+        <!-- View 5: Results & Clinical Notice -->
         <div id="view-5" class="state-view">
-          <div class="view-header">
-            <span class="header-tag">CONFIDENTIAL TEE VISION OCR</span>
-            <span class="header-badge">QWEN-3.8-27B TEE</span>
+          <div class="stream-header">
+            <span class="stream-tag">DOCUMENT READING · VERIFIED TRANSCRIPT</span>
+            <span class="stream-status">WCAG 2.2 AA ORDER</span>
           </div>
-          <div class="ocr-stream">
-            Patient: John Doe · NHS 987-654-3210<br>
-            Prescription details: <span class="ocr-highlight">Amoxicillin 500mg capsules</span>, three times daily for 7 days.<br>
-            Review Date: 24 November 2026 at Queen Square Clinic.
-          </div>
-          <div class="alert-banner">
-            <span style="font-size: 16px;">⚠️</span>
-            <span class="alert-text">MEDICATION DETECTED: Confirm all prescription dosages with a doctor.</span>
+          <div class="results-hierarchy">
+            <div class="fact-card">
+              <div class="fact-title-row">
+                <span class="fact-title">Medication: Amoxicillin 500mg</span>
+                <span class="fact-verdict">100% GROUNDED</span>
+              </div>
+              <div class="quote-block">
+                "take 500mg capsules three times daily with meals for 7 days"
+              </div>
+              <span class="quote-badge">✓ Verbatim quote found in verified document transcript</span>
+            </div>
+            <div class="banner-warning">
+              <span style="font-size: 18px;">⚠️</span>
+              <span>MEDICATION DETECTED: Confirm all prescription dosages and administration schedules with a doctor or pharmacist.</span>
+            </div>
           </div>
         </div>
 
-        <!-- View 6: Fact Grounding -->
+        <!-- View 6: Grounded Q&A & Honest Refusal -->
         <div id="view-6" class="state-view">
-          <div class="view-header">
-            <span class="header-tag">VERIFIABLE FACT GROUNDING</span>
-            <span class="header-badge">VERBATIM MATCH</span>
+          <div class="stream-header">
+            <span class="stream-tag">// STREAM: INTERACTIVE_QA</span>
+            <span class="stream-status">FAIL-CLOSED PROTOCOL</span>
           </div>
-          <div class="fact-card">
-            <div class="fact-header">
-              <span>Amoxicillin 500mg</span>
-              <span style="color: #00EC97;">100% Grounded</span>
+          <div class="qa-stack">
+            <div class="query-field">
+              <span class="query-text">Can I drive while taking this medication?</span>
+              <div class="query-ask-btn">ASK</div>
             </div>
-            <div class="quote-box">
-              "take 500mg capsules three times daily with meals"
+            <div class="refusal-box">
+              <span class="refusal-bold">HONEST OUT-OF-SCOPE REFUSAL</span>
+              The document does not answer this question. Sightline refuses without hallucination or ungrounded speculation.
             </div>
-            <div class="quote-status">✓ Quote found in verified document transcript</div>
           </div>
         </div>
 
-        <!-- View 7: Q&A & Refusal -->
+        <!-- View 7: Wordmark Slam -->
         <div id="view-7" class="state-view">
-          <div class="view-header">
-            <span class="header-tag">FAIL-CLOSED GROUNDED Q&A</span>
-            <span class="header-badge">HONEST REFUSAL</span>
+          <div class="slam-header">
+            <div class="slam-glyph">Ⓝ</div>
+            <div class="slam-headline">Sightline</div>
           </div>
-          <div class="qa-box">
-            <div class="query-pill">
-              <span style="color: #64748b;">Q:</span> Can I drive while taking this medication?
-            </div>
-            <div class="refusal-card">
-              <strong>Honest Refusal:</strong> The document does not answer this question. Sightline refuses without hallucination.
-            </div>
-          </div>
-        </div>
-
-        <!-- View 8: Wordmark Slam -->
-        <div id="view-8" class="state-view">
-          <div class="slam-title">
-            <span>Ⓝ</span> Sightline
-          </div>
-          <div class="slam-sub">
-            Private document intelligence for sensitive records. Powered by NEAR AI Cloud Intel TDX hardware enclaves.
-          </div>
-          <div class="slam-badges">
-            <div class="slam-badge">0 KB CUSTODY</div>
-            <div class="slam-badge">INTEL TDX ENCLAVE</div>
-            <div class="slam-badge">WCAG 2.2 AA</div>
-            <div class="slam-badge">OPEN SOURCE MIT</div>
+          <p class="slam-sub">
+            Private AI for sensitive documents. Integrated deeply with NEAR AI Cloud’s Confidential Computing infrastructure.
+          </p>
+          <div class="slam-badge-strip">
+            <div class="badge-cell">0 KB SERVER STORAGE</div>
+            <div class="badge-cell">INTEL TDX ENCLAVES</div>
+            <div class="badge-cell">WCAG 2.2 AA COMPLIANT</div>
+            <div class="badge-cell">OPEN SOURCE MIT</div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Mouse Cursor Stage Prop -->
+    <!-- Programmatic Brutalist Mouse Cursor -->
     <div id="cursor">
       <svg class="cursor-svg" viewBox="0 0 24 24" fill="none">
         <path d="M5.65376 12.3673H5.46026L5.31717 12.4976L0.500002 16.8829L0.500002 1.19841L11.7841 12.3673H5.65376Z" fill="#00EC97" stroke="#040407" stroke-width="1.5"/>
       </svg>
       <div id="cursor-pill" class="cursor-pill">You</div>
-      <div id="cursor-ripple" class="cursor-ripple"></div>
+      <div id="cursor-box-ripple" class="cursor-box-ripple"></div>
     </div>
 
-    <!-- Lower HUD Ticker -->
-    <div id="bottom-hud">
-      <div>RUNTIME: <span id="ticker-time" class="ticker-highlight">00:00.00</span> · FPS: 60</div>
-      <div>NEAR HACKATHON 2026 · PRIVACY & PRIVATE AI TRACK</div>
+    <!-- Bottom Technical Bar -->
+    <div id="bottom-footer">
+      <div>TIMELINE: <span id="ticker-time" class="footer-hi">00:00.00</span> · 30 FPS</div>
+      <div>NEAR HACKATHON 2026 · PRIVACY & PRIVATE AI TRACK · MIT LICENSE</div>
     </div>
   </div>
 
@@ -695,88 +843,74 @@
       const xo = x * x;
       const o = e * (1 - xo);
       const b = (1 - e) * 12 + xo * 12;
-      const dy = (1 - e) * 18 - xo * 14;
+      const dy = (1 - e) * 16 - xo * 12;
       return { o, b, dy, e };
     }
 
     // ==========================================
     // SCENE TIMINGS (24 Seconds · 120 BPM · 48 Beats)
     // ==========================================
-    const T1 = 0.0;    // State 1: Capsule Pill
-    const T2 = 3.0;    // State 2: Document Input Stream
-    const T3 = 6.2;    // State 3: Privacy & EXIF Shield
-    const T4 = 9.5;    // State 4: Attestation Proof Deck
-    const T5 = 13.0;   // State 5: Confidential OCR & Clinical Warning
-    const T6 = 16.5;   // State 6: Verbatim Grounding Disclosure
-    const T7 = 19.8;   // State 7: Q&A & Refusal
-    const T8 = 22.2;   // State 8: Wordmark Slam
+    const T1 = 0.0;    // State 1: Enclave Capsule Pill (340x52)
+    const T2 = 3.0;    // State 2: Landing Hero Card (720x350)
+    const T3 = 6.8;    // State 3: Optical Input Stream Bay (740x380)
+    const T4 = 10.5;   // State 4: Attestation Proof Deck (780x380)
+    const T5 = 14.5;   // State 5: Results Screen & Clinical Notice (820x410)
+    const T6 = 18.2;   // State 6: Grounded Q&A & Honest Refusal (740x290)
+    const T7 = 21.2;   // State 7: Wordmark Slam (780x280)
 
-    // Animation Tracks for THE ONE SHAPE
-    const W = new Track(340)
-      .to(T2, 680, { w: 24, z: 0.84 })
-      .to(T3, 560, { w: 26, z: 0.84 })
-      .to(T4, 680, { w: 24, z: 0.84 })
-      .to(T5, 780, { w: 24, z: 0.84 })
-      .to(T6, 640, { w: 26, z: 0.84 })
-      .to(T7, 660, { w: 26, z: 0.84 })
-      .to(T8, 760, { w: 28, z: 0.82 });
+    // Tracks for THE ONE SHAPE (Straight edges, w and h morphing)
+    const W = new Track(360)
+      .to(T2, 720, { w: 24, z: 0.84 })
+      .to(T3, 740, { w: 24, z: 0.84 })
+      .to(T4, 780, { w: 24, z: 0.84 })
+      .to(T5, 820, { w: 24, z: 0.84 })
+      .to(T6, 740, { w: 26, z: 0.84 })
+      .to(T7, 780, { w: 28, z: 0.82 });
 
-    const H = new Track(56)
-      .to(T2, 340, { w: 24, z: 0.84 })
-      .to(T3, 260, { w: 26, z: 0.84 })
-      .to(T4, 340, { w: 24, z: 0.84 })
-      .to(T5, 380, { w: 24, z: 0.84 })
-      .to(T6, 280, { w: 26, z: 0.84 })
-      .to(T7, 260, { w: 26, z: 0.84 })
-      .to(T8, 280, { w: 28, z: 0.82 });
+    const H = new Track(52)
+      .to(T2, 350, { w: 24, z: 0.84 })
+      .to(T3, 380, { w: 24, z: 0.84 })
+      .to(T4, 380, { w: 24, z: 0.84 })
+      .to(T5, 410, { w: 24, z: 0.84 })
+      .to(T6, 290, { w: 26, z: 0.84 })
+      .to(T7, 280, { w: 28, z: 0.82 });
 
-    const R = new Track(28)
-      .to(T2, 12, { w: 24, z: 0.85 })
-      .to(T3, 16, { w: 24, z: 0.85 })
-      .to(T4, 12, { w: 24, z: 0.85 })
-      .to(T5, 10, { w: 24, z: 0.85 })
-      .to(T6, 12, { w: 24, z: 0.85 })
-      .to(T7, 14, { w: 24, z: 0.85 })
-      .to(T8, 16, { w: 28, z: 0.82 });
-
-    // Camera Zoom & Position (world translate/scale)
+    // Camera Zoom (world scale)
     const Zoom = new Track(1.0)
-      .to(T2, 1.05, { w: 18, z: 1.0 })
-      .to(T4, 1.12, { w: 18, z: 1.0 })
-      .to(T5, 1.05, { w: 18, z: 1.0 })
-      .to(T7, 1.10, { w: 18, z: 1.0 })
-      .to(T8, 1.0, { w: 24, z: 0.9 });
+      .to(T2, 1.04, { w: 18, z: 1.0 })
+      .to(T4, 1.10, { w: 18, z: 1.0 })
+      .to(T5, 1.06, { w: 18, z: 1.0 })
+      .to(T6, 1.08, { w: 18, z: 1.0 })
+      .to(T7, 1.0, { w: 24, z: 0.9 });
 
     // Cursor Tracks
-    const CurX = new Track(1200)
-      .to(1.2, 980, { w: 18, z: 0.88 })
-      .to(T2 - 0.4, 960, { w: 22, z: 0.88 })
-      .to(T2 + 1.2, 860, { w: 20, z: 0.88 })
-      .to(T3 + 0.8, 1080, { w: 22, z: 0.88 })
-      .to(T4 + 1.0, 960, { w: 20, z: 0.88 })
-      .to(T6 + 0.6, 960, { w: 22, z: 0.88 })
-      .to(T7 + 0.8, 1120, { w: 24, z: 0.88 })
-      .to(T8 + 0.5, 960, { w: 20, z: 0.88 });
+    const CurX = new Track(1180)
+      .to(1.2, 960, { w: 18, z: 0.88 })
+      .to(T2 + 1.2, 720, { w: 22, z: 0.88 })
+      .to(T3 + 1.0, 960, { w: 22, z: 0.88 })
+      .to(T4 + 1.0, 1080, { w: 20, z: 0.88 })
+      .to(T5 + 1.0, 960, { w: 22, z: 0.88 })
+      .to(T6 + 0.8, 1260, { w: 24, z: 0.88 })
+      .to(T7 + 0.6, 960, { w: 20, z: 0.88 });
 
-    const CurY = new Track(750)
-      .to(1.2, 560, { w: 18, z: 0.88 })
-      .to(T2 - 0.4, 540, { w: 22, z: 0.88 })
-      .to(T2 + 1.2, 520, { w: 20, z: 0.88 })
-      .to(T3 + 0.8, 540, { w: 22, z: 0.88 })
-      .to(T4 + 1.0, 500, { w: 20, z: 0.88 })
-      .to(T6 + 0.6, 560, { w: 22, z: 0.88 })
-      .to(T7 + 0.8, 560, { w: 24, z: 0.88 })
-      .to(T8 + 0.5, 620, { w: 20, z: 0.88 });
+    const CurY = new Track(720)
+      .to(1.2, 540, { w: 18, z: 0.88 })
+      .to(T2 + 1.2, 650, { w: 22, z: 0.88 })
+      .to(T3 + 1.0, 680, { w: 22, z: 0.88 })
+      .to(T4 + 1.0, 520, { w: 20, z: 0.88 })
+      .to(T5 + 1.0, 530, { w: 22, z: 0.88 })
+      .to(T6 + 0.8, 520, { w: 24, z: 0.88 })
+      .to(T7 + 0.6, 620, { w: 20, z: 0.88 });
 
     // Click Timestamps for ripple and cursor press
-    const CLICKS = [T2 - 0.2, T4 + 0.8, T6 + 0.6, T7 + 0.7];
+    const CLICKS = [T2 + 1.2, T3 + 1.0, T6 + 0.8];
 
     // DOM Elements
     const morphShape = document.getElementById('morph-shape');
     const world = document.getElementById('world');
     const cursor = document.getElementById('cursor');
     const cursorPill = document.getElementById('cursor-pill');
-    const cursorRipple = document.getElementById('cursor-ripple');
+    const cursorRipple = document.getElementById('cursor-box-ripple');
     const tickerTime = document.getElementById('ticker-time');
 
     const views = [
@@ -786,8 +920,7 @@
       document.getElementById('view-4'),
       document.getElementById('view-5'),
       document.getElementById('view-6'),
-      document.getElementById('view-7'),
-      document.getElementById('view-8')
+      document.getElementById('view-7')
     ];
 
     // ==========================================
@@ -800,13 +933,12 @@
       const ms = Math.floor((t % 1) * 100);
       tickerTime.textContent = `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}.${String(ms).padStart(2, '0')}`;
 
-      // Update The One Shape dimensions
+      // Update The One Shape dimensions (Straight brutalist edges)
       const curW = W.at(t);
       const curH = H.at(t);
-      const curR = R.at(t);
       morphShape.style.width = `${curW}px`;
       morphShape.style.height = `${curH}px`;
-      morphShape.style.borderRadius = `${curR}px`;
+      morphShape.style.borderRadius = '0px';
 
       // Update Camera
       const curZ = Zoom.at(t);
@@ -850,8 +982,7 @@
         vis(t, T4, T5),
         vis(t, T5, T6),
         vis(t, T6, T7),
-        vis(t, T7, T8),
-        vis(t, T8, null)
+        vis(t, T7, null)
       ];
 
       for (let i = 0; i < views.length; i++) {
