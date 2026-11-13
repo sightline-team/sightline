@@ -1,0 +1,5 @@
+# Working artefacts: large and reproducible from the committed sources.
+build/*.wav
+build/story/
+/frames/
+/stills/

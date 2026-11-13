@@ -1,0 +1,124 @@
+{
+  "duration": 112.18,
+  "beats": [
+    1.0,
+    11.31,
+    25.15,
+    34.99,
+    51.76,
+    68.29,
+    84.3,
+    95.63
+  ],
+  "sceneStarts": [
+    1.0,
+    10.76,
+    24.6,
+    34.44,
+    51.21,
+    67.74,
+    83.75,
+    95.08
+  ],
+  "sceneEnds": [
+    10.61,
+    24.45,
+    34.29,
+    51.06,
+    67.59,
+    83.6,
+    94.93,
+    109.08
+  ],
+  "scenes": [
+    {
+      "id": "b1",
+      "start": 1.0,
+      "vo": 1.0,
+      "end": 10.61,
+      "line": "This is a letter about you. Your health. Your money. Your business. And right now, to read it, someone else has to hold it."
+    },
+    {
+      "id": "b2",
+      "start": 10.76,
+      "vo": 11.31,
+      "end": 24.45,
+      "line": "Ask a person, and your privacy is gone. Ask a typical AI, and your privacy is gone too. Two billion people live with a vision impairment. They deserve a third option."
+    },
+    {
+      "id": "b3",
+      "start": 24.6,
+      "vo": 25.15,
+      "end": 34.29,
+      "line": "So here it is. Photograph the letter. It gets explained, privately, inside a sealed hardware enclave on NEAR AI Cloud."
+    },
+    {
+      "id": "b4",
+      "start": 34.44,
+      "vo": 34.99,
+      "end": 51.06,
+      "line": "Before a single byte leaves your device, your browser checks the hardware itself. A fresh session nonce. A signed Intel TDX quote. The enclave's own key. If a check fails, nothing is sent."
+    },
+    {
+      "id": "b5",
+      "start": 51.21,
+      "vo": 51.76,
+      "end": 67.59,
+      "line": "Inside that sealed memory, an AI reads every page and explains it. A summary. The key facts. What you may need to do. Warnings. In a fixed order a screen reader can follow."
+    },
+    {
+      "id": "b6",
+      "start": 67.74,
+      "vo": 68.29,
+      "end": 83.6,
+      "line": "Every fact points back to the line it came from. Ask a question in your own words, and the answer arrives with its quote. If the letter doesn't say it, Sightline says so. It does not guess."
+    },
+    {
+      "id": "b7",
+      "start": 83.75,
+      "vo": 84.3,
+      "end": 94.93,
+      "line": "Each answer is signed by the enclave that produced it, and the receipt shows which checks ran, and which could not. Proof, not promises."
+    },
+    {
+      "id": "b8",
+      "start": 95.08,
+      "vo": 95.63,
+      "end": 109.08,
+      "line": "Then press Forget. The pages vanish from memory. Nothing is stored, and no account is holding your documents. Sightline. Built on NEAR. Verify, don't trust."
+    }
+  ],
+  "marks": {
+    "letterOn": 0.25,
+    "redact1": 12.0,
+    "redact2": 15.4,
+    "statLine": 19.3,
+    "shutter": 27.55,
+    "seal": 31.35,
+    "scanIn": 35.99,
+    "checks": [
+      38.39,
+      39.34,
+      40.29,
+      41.24,
+      42.19,
+      43.14,
+      44.09,
+      45.04,
+      45.99,
+      46.94,
+      47.89,
+      48.84
+    ],
+    "zeroBytes": 49.19,
+    "resultsIn": 52.96,
+    "quoteReveal": 71.29,
+    "askType": 73.29,
+    "answer1": 76.29,
+    "answer2": 79.89,
+    "receiptIn": 85.3,
+    "signature": 87.7,
+    "forget": 97.23,
+    "wordmark": 104.03
+  }
+}

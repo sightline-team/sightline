@@ -1,0 +1,55 @@
+{
+  "voice": "onwK4e9ZLuTAKqWW03F9",
+  "model": "eleven_multilingual_v2",
+  "beats": [
+    {
+      "id": "b1",
+      "text": "This is a letter about you. Your health. Your money. Your business. And right now, to read it, someone else has to hold it.",
+      "file": "audio/vo/b1.mp3",
+      "duration": 9.61
+    },
+    {
+      "id": "b2",
+      "text": "Ask a person, and your privacy is gone. Ask a typical AI, and your privacy is gone too. Two billion people live with a vision impairment. They deserve a third option.",
+      "file": "audio/vo/b2.mp3",
+      "duration": 13.14
+    },
+    {
+      "id": "b3",
+      "text": "So here it is. Photograph the letter. It gets explained, privately, inside a sealed hardware enclave on NEAR AI Cloud.",
+      "file": "audio/vo/b3.mp3",
+      "duration": 9.14
+    },
+    {
+      "id": "b4",
+      "text": "Before a single byte leaves your device, your browser checks the hardware itself. A fresh session nonce. A signed Intel TDX quote. The enclave's own key. If a check fails, nothing is sent.",
+      "file": "audio/vo/b4.mp3",
+      "duration": 16.07
+    },
+    {
+      "id": "b5",
+      "text": "Inside that sealed memory, an AI reads every page and explains it. A summary. The key facts. What you may need to do. Warnings. In a fixed order a screen reader can follow.",
+      "file": "audio/vo/b5.mp3",
+      "duration": 15.83
+    },
+    {
+      "id": "b6",
+      "text": "Every fact points back to the line it came from. Ask a question in your own words, and the answer arrives with its quote. If the letter doesn't say it, Sightline says so. It does not guess.",
+      "file": "audio/vo/b6.mp3",
+      "duration": 15.31
+    },
+    {
+      "id": "b7",
+      "text": "Each answer is signed by the enclave that produced it, and the receipt shows which checks ran, and which could not. Proof, not promises.",
+      "file": "audio/vo/b7.mp3",
+      "duration": 10.63
+    },
+    {
+      "id": "b8",
+      "text": "Then press Forget. The pages vanish from memory. Nothing is stored, and no account is holding your documents. Sightline. Built on NEAR. Verify, don't trust.",
+      "file": "audio/vo/b8.mp3",
+      "duration": 13.45
+    }
+  ],
+  "chars": 1248
+}
