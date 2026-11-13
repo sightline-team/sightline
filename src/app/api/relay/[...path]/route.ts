@@ -22,9 +22,13 @@ import { handleRelay, type RelayDeps } from '@/lib/server/relay';
  *   unstored, and the claims ladder says so.
  */
 export const dynamic = 'force-dynamic';
-// Sized for TEE inference latency (SPIKE_RESULTS §4: page transcription ≈26–32 s, analysis ≈45–60 s, multi-page up to 118.6 s).
-// Vercel serverless functions default to 15 s without this, which cuts off enclave responses with 504.
-export const maxDuration = 120;
+// Sized for TEE inference latency (SPIKE_RESULTS §4: page transcription ≈26–32 s, analysis measured at
+// 81.4 s, 118.6 s, 136.8 s and 226.6 s). Vercel serverless functions default to 15 s without this, and
+// 120 s was shorter than two of those four measurements — every one of them arrived as a 504 while the
+// enclave was still working. 300 s is the largest ceiling a Vercel plan offers; a plan that caps lower
+// clamps this and the call still dies, which is why `relay.ts` states the platform limit rather than
+// hiding it behind this constant.
+export const maxDuration = 300;
 
 export async function GET(request: Request): Promise<Response> {
   return handleRelay(request);

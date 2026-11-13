@@ -1,6 +1,7 @@
 import { attestationReportSchema } from '@/lib/near-ai/attestation';
 import type { SigningAlgo } from '@/lib/near-ai/attestation';
 import { verifyReportInput } from '@/lib/server/verify';
+import { clientIp, globalRateLimit, rateLimit } from '@/lib/server/rateLimit';
 import { z } from 'zod';
 
 /**
@@ -27,12 +28,23 @@ export const dynamic = 'force-dynamic';
 
 /**
  * A full live report measured 318,885 bytes (`fixtures/attestation/`, **T-08**) and the un-redacted
- * one is under a megabyte, so this is more than twelve times the largest thing the service has ever
- * answered here. Over it the handler replies 413 rather than parsing, because the report is
- * attacker-shaped input and an unbounded JSON parse on a public route is a free way to spend the
- * machine's time.
+ * one is under a megabyte, so 1 MiB is triple the largest thing the service has ever answered here and
+ * a quarter of the 4 MiB this used to accept. Over it the handler replies 413 rather than parsing,
+ * because the report is attacker-shaped input and an unbounded JSON parse on a public route is a free
+ * way to spend the machine's time.
  */
-const MAX_REPORT_BODY_BYTES = 4 * 1024 * 1024;
+const MAX_REPORT_BODY_BYTES = 1024 * 1024;
+
+/**
+ * How many times one address may ask per hour, and the process-wide ceiling behind it.
+ *
+ * This route makes no upstream call and spends nothing, but it parses up to a megabyte of JSON and
+ * walks it through two schemas, so it is a CPU surface rather than a spend one. The limits are the
+ * same shape the relay uses (`lib/server/rateLimit.ts`, one hour bucket, hashed client) and are
+ * deliberately generous: a single run asks once per model, and a retried page asks again.
+ */
+const VERIFY_PER_IP_PER_HOUR = 120;
+const VERIFY_GLOBAL_PER_HOUR = 600;
 
 const requestSchema = z.object({
   report: attestationReportSchema,
@@ -41,8 +53,10 @@ const requestSchema = z.object({
   signing_algo: z.enum(['ecdsa', 'ed25519']).default('ed25519'),
 });
 
-function json(body: unknown, status: number): Response {
-  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+function json(body: unknown, status: number, headers: Record<string, string> = {}): Response {
+  // `no-store` on every answer, including the verdict: an attestation report names the machine and
+  // the key it asserted, and a cached verdict would be a claim about a machine nobody just asked about.
+  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers } });
 }
 
 /** The failure shapes, all of them readable as a failed check by the client and none of them quoting back what it sent. */
@@ -51,6 +65,22 @@ function refuse(status: number, reason: string): Response {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  // Before the body is touched: an unauthenticated route that parses first and counts later spends
+  // its CPU on the traffic it was meant to refuse.
+  let bucket;
+  let global;
+  try {
+    bucket = await rateLimit(`verify:${clientIp(request.headers)}`, VERIFY_PER_IP_PER_HOUR);
+    global = await globalRateLimit(VERIFY_GLOBAL_PER_HOUR);
+  } catch {
+    return refuse(503, 'rate_limit_unavailable');
+  }
+  if (!bucket.allowed || !global.allowed) {
+    return json({ error: 'rate_limited', item: 'T-03', retry_after_seconds: bucket.retryAfterSeconds }, 429, {
+      'retry-after': String(bucket.retryAfterSeconds),
+    });
+  }
+
   const contentLength = Number(request.headers.get('content-length') ?? '0');
   if (contentLength > MAX_REPORT_BODY_BYTES) return refuse(413, 'body_too_large');
 

@@ -43,6 +43,8 @@ const CONFIG: ServerConfig = {
   // High enough that a test which is not about the bucket cannot run it dry; the rate-limit tests
   // below pass their own limit and their own store.
   rateLimitPerIpPerHour: 1000,
+  // Likewise high: the global bucket is a second limit and a test about something else must not fill it.
+  rateLimitGlobalPerHour: 10_000,
   hasSharedStore: true,
   hasApiKey: true,
 };
@@ -117,7 +119,10 @@ function relay(path: string, init?: { method?: string; body?: string; headers?: 
   const request = new Request(`http://localhost:3000${path}`, {
     method: init?.method ?? (path.includes('chat/completions') ? 'POST' : 'GET'),
     ...(init?.body === undefined ? {} : { body: init.body }),
-    headers: init?.headers,
+    // A browser request, which is what the relay is for: `Origin` and `Host` are always present on a
+    // POST, and `isAllowedOrigin` now requires them (`llowlist.ts`). A test that wants a non-browser
+    // caller passes its own headers and is refused — see "refuses a POST that carries no Origin".
+    headers: { origin: 'http://localhost:3000', host: 'localhost:3000', ...init?.headers },
   });
   return handleRelay(request, { ...DEPS, ...init?.deps });
 }
@@ -252,6 +257,29 @@ describe('cross-site & origin validation (pre-launch hardening)', () => {
     expect((await res.json()).error).toBe('origin_not_allowed');
     expect(calls).toHaveLength(0);
   });
+
+  it('refuses a POST that carries no Origin at all', async () => {
+    // This is the shape a `curl` had: no `Origin`, no `Sec-Fetch-Site`, nothing a browser would omit.
+    // Measured against the deployment, it used to reach the model check and only stop there.
+    const { impl, calls } = recorder();
+    const response = await handleRelay(
+      new Request('http://localhost:3000/api/relay/v1/chat/completions', { method: 'POST', body: completionBody() }),
+      { ...DEPS, fetchImpl: impl },
+    );
+    expect(response.status).toBe(403);
+    expect((await response.json()).error).toBe('origin_not_allowed');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('still forwards a report to a caller with no Origin, because a read is not a spend', async () => {
+    const { impl, calls } = recorder();
+    const response = await handleRelay(
+      new Request('http://localhost:3000/api/relay/v1/attestation/report?model=z-ai%2Fglm-5.3-flash&nonce=ab12&signing_algo=ed25519'),
+      { ...DEPS, fetchImpl: impl },
+    );
+    expect(response.status).toBe(200);
+    expect(calls).toHaveLength(1);
+  });
 });
 
 describe('A-09: the rate limit', () => {
@@ -289,6 +317,29 @@ describe('A-09: the rate limit', () => {
     await relay('/api/relay/v1/chat/completions', { body: completionBody(), headers: { 'x-forwarded-for': '203.0.113.99' }, deps });
     const refused = await relay('/api/relay/v1/chat/completions', { body: completionBody(), headers: { 'x-forwarded-for': '203.0.113.99' }, deps });
     expect(await refused.text()).not.toContain('203.0.113.99');
+  });
+
+  it('refuses a reply budget the app would never ask for, before any call is made', async () => {
+    const { impl, calls } = recorder();
+    const body = JSON.stringify({ model: 'z-ai/glm-5.3-flash', messages: [{ role: 'user', content: 'hi' }], max_tokens: 1_048_576 });
+    const response = await relay('/api/relay/v1/chat/completions', { body, deps: { fetchImpl: impl } });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toBe('max_tokens_too_high');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses once the process-wide budget is gone, whatever address the caller uses', async () => {
+    // The per-IP bucket bounds one address; this bounds address rotation, which is the only way the
+    // per-IP number could be spent without limit.
+    const store = createInMemoryStore();
+    const { impl, calls } = recorder(completionsOnly(() => Response.json({ id: 'x' })));
+    const deps = { fetchImpl: impl, rateStore: store, config: { ...CONFIG, rateLimitGlobalPerHour: 2 } };
+    expect((await relay('/api/relay/v1/chat/completions', { body: completionBody(), headers: { 'x-real-ip': '203.0.113.1' }, deps })).status).toBe(200);
+    expect((await relay('/api/relay/v1/chat/completions', { body: completionBody(), headers: { 'x-real-ip': '203.0.113.2' }, deps })).status).toBe(200);
+    const refused = await relay('/api/relay/v1/chat/completions', { body: completionBody(), headers: { 'x-real-ip': '203.0.113.3' }, deps });
+    expect(refused.status).toBe(429);
+    expect((await refused.json()).error).toBe('global_rate_limited');
+    expect(calls.length).toBe(2);
   });
 
   it('spends a unit on every relayed call, which is what bounds one client’s load on the key', async () => {
@@ -389,6 +440,12 @@ describe('what the relay does when it says yes', () => {
     expect(response.headers.get('content-type')).toBe('application/json');
     expect(response.headers.get('x-upstream-whatever')).toBeNull();
     expect(await response.text()).toBe(upstreamBody);
+  });
+
+  it('marks a document-derived answer as uncacheable', async () => {
+    const { impl } = recorder(completionsOnly(() => Response.json({ id: 'chatcmpl-3', choices: [] })));
+    const response = await relay('/api/relay/v1/chat/completions', { body: completionBody(), deps: { fetchImpl: impl } });
+    expect(response.headers.get('cache-control')).toBe('no-store');
   });
 
   it('keeps a 429 a 429 and hands the Retry-After back to the client that honours it', async () => {

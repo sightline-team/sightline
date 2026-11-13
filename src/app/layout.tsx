@@ -10,6 +10,18 @@ import { AnnouncerProvider } from '@/lib/a11y/announcer';
 import { SessionProvider } from '@/lib/session/store';
 import './globals.css';
 
+/**
+ * Rendered per request, not prerendered.
+ *
+ * The shell decides the mode from the server environment (`serverConfig()` below), and a static
+ * render freezes that decision at build time: measured on 2026-11-13, the deployed `/` carried
+ * `x-nextjs-prerender: 1` and `age: 86000`, so adding, rotating or removing `NEAR_AI_API_KEY` without
+ * a rebuild left the page advertising the old mode — and the fixtures banner, which is a claim about
+ * what the reader is seeing, decided by a build from yesterday. Nothing here is expensive enough to
+ * cache; a page that says what the deployment is doing has to ask the deployment.
+ */
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   metadataBase: new URL('https://sightline-snowy-beta.vercel.app'),
   title: 'Sightline — Private AI for Sensitive Documents',
@@ -163,27 +175,27 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <h3 className="footer-heading">NEAR Ecosystem</h3>
                   <ul className="footer-links">
                     <li>
-                      <a href="https://www.near.org/developer-hub" target="_blank" rel="noopener noreferrer" tabIndex={-1}>
+                      <a href="https://www.near.org/developer-hub" target="_blank" rel="noopener noreferrer">
                         NEAR Developer Hub ↗
                       </a>
                     </li>
                     <li>
-                      <a href="https://docs.near.org/web3-apps/what-is" target="_blank" rel="noopener noreferrer" tabIndex={-1}>
+                      <a href="https://docs.near.org/web3-apps/what-is" target="_blank" rel="noopener noreferrer">
                         NEAR Protocol Docs ↗
                       </a>
                     </li>
                     <li>
-                      <a href="https://cloud.near.ai" target="_blank" rel="noopener noreferrer" tabIndex={-1}>
+                      <a href="https://cloud.near.ai" target="_blank" rel="noopener noreferrer">
                         NEAR AI Cloud ↗
                       </a>
                     </li>
                     <li>
-                      <Link href="/architecture" tabIndex={-1}>
+                      <Link href="/architecture">
                         Architecture &amp; Comparison ↗
                       </Link>
                     </li>
                     <li>
-                      <a href="https://github.com/sightline-team/sightline" target="_blank" rel="noopener noreferrer" tabIndex={-1}>
+                      <a href="https://github.com/sightline-team/sightline" target="_blank" rel="noopener noreferrer">
                         GitHub Source (MIT) ↗
                       </a>
                     </li>

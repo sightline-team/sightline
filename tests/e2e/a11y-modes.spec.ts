@@ -16,6 +16,13 @@ function blockingViolations(results: Awaited<ReturnType<AxeBuilder['analyze']>>)
 }
 
 test.describe('A-08: High-contrast mode', () => {
+  // Four routes, each a `goto` plus a full axe scan, inside one test. Alone that is 13–17 s; with the
+  // whole suite running four workers it passed 30 s and timed out on assertions that were never the
+  // problem (2026-11-13, measured: 159 passed / 3 timed out, and all three pass in isolation). The
+  // deadline is per test, not an assertion — nothing here is relaxed, and the axe/overflow checks are
+  // unchanged.
+  test.setTimeout(90_000);
+
   test('theme toggle enables data-high-contrast attribute and satisfies axe on all routes', async ({ page }) => {
     // 1. Visit /settings and toggle high contrast
     await page.goto('/settings');
@@ -105,6 +112,10 @@ test.describe('A-08: prefers-reduced-motion', () => {
 });
 
 test.describe('A-08: 200% Zoom and 320px Reflow (WCAG 1.4.10)', () => {
+  // Same reason as the high-contrast block above: four routes × axe in one test, 12–13 s alone and
+  // over 30 s under a four-worker full run. Only the deadline moves.
+  test.setTimeout(90_000);
+
   test('no horizontal scrollbar on 320px viewport across all routes', async ({ page }) => {
     // 320px viewport represents 400% zoom on 1280px or 200% zoom on 640px
     await page.setViewportSize({ width: 320, height: 640 });

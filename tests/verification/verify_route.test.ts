@@ -273,3 +273,46 @@ describe('the real handler behind the client fetch, so the composed gate is meas
     expect(outcome.status).toBe('failed');
   });
 });
+
+/**
+ * The route's own guard rails, added 2026-11-13 after review.
+ *
+ * This handler spends no money and calls no service, but it is public and unauthenticated and it
+ * parses whatever it is given — so the two things that bound it are a body cap and a bucket. Both are
+ * asserted here because both were missing: it accepted 4 MiB per request and counted nothing.
+ */
+describe('the route’s public surface', () => {
+  it('marks every answer uncacheable, because a verdict is about a machine asked about just now', async () => {
+    // An empty report is a *finding*, not a malformed body: the schema is loose on purpose because
+    // the inner names are unverified, and the checks report what could not be read.
+    const response = await POST(new Request('http://localhost/api/verify', { method: 'POST', body: JSON.stringify({ report: {}, nonce: 'a'.repeat(64) }) }));
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    // No model attestation at all is a failed set, not a partial one — the check ran and said no.
+    expect((await response.json()).status).toBe('failed');
+  });
+
+  it('refuses a body larger than a live report by a wide margin, before parsing it', async () => {
+    // A measured live report is 318,885 bytes; this cap is 1 MiB, so a body over it is not a report.
+    const oversized = JSON.stringify({ report: {}, nonce: 'a'.repeat(64), pad: 'x'.repeat(1024 * 1024 + 64) });
+    const answer = await ask(oversized);
+    expect(answer.status).toBe(413);
+    expect(answer.body.error).toBe('body_too_large');
+  });
+
+  it('answers 429 with a Retry-After once one address has asked 120 times in the hour', async () => {
+    // Last in the file on purpose: it drains the bucket that every other answer here shares, because
+    // these requests carry no proxy header and so all count as the same client.
+    let refused: Answer | undefined;
+    for (let i = 0; i < 130; i += 1) {
+      const answer = await ask({ report: {}, nonce: 'a'.repeat(64) });
+      if (answer.status === 429) {
+        refused = answer;
+        break;
+      }
+    }
+    expect(refused, 'the bucket never filled').toBeDefined();
+    expect(refused!.body.error).toBe('rate_limited');
+    expect(Number((refused!.body.retry_after_seconds as number) > 0)).toBe(1);
+  });
+});

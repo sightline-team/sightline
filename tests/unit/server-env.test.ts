@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { serverConfig } from '@/lib/server/env';
+import { rateLimitStoreConfig, serverConfig } from '@/lib/server/env';
 
 const KEY = 'a-key-that-must-never-be-printed';
 
@@ -48,7 +48,8 @@ describe('relay configuration fails closed', () => {
     expect(cfg.relayEnabled).toBe(true);
     expect(cfg.relayDisabledReason).toBeNull();
     expect(cfg.allowedModels).toEqual(['org/model-a', 'org/model-b']);
-    expect(cfg.rateLimitPerIpPerHour).toBe(20);
+    expect(cfg.rateLimitPerIpPerHour).toBe(120);
+    expect(cfg.rateLimitGlobalPerHour).toBe(400);
     expect(cfg.hasSharedStore).toBe(true);
   });
 
@@ -84,9 +85,26 @@ describe('relay configuration fails closed', () => {
     expect(Object.keys(cfg)).not.toContain('apiKey');
   });
 
-  it('defaults the hourly limit and rejects a nonsense value', () => {
-    expect(serverConfig({ RATE_LIMIT_PER_IP_PER_HOUR: '' }).rateLimitPerIpPerHour).toBe(20);
+  it('defaults the hourly limits and rejects a nonsense value', () => {
+    // 120 is deliberately above one document's cost: a five-page run is ~15 relay calls, and the old
+    // default of 20 cut runs off mid-document (README "What the hosted relay authenticates").
+    expect(serverConfig({ RATE_LIMIT_PER_IP_PER_HOUR: '' }).rateLimitPerIpPerHour).toBe(120);
+    expect(serverConfig({ RELAY_GLOBAL_PER_HOUR: '' }).rateLimitGlobalPerHour).toBe(400);
     expect(() => serverConfig({ RATE_LIMIT_PER_IP_PER_HOUR: 'zero' })).toThrow();
     expect(() => serverConfig({ RATE_LIMIT_PER_IP_PER_HOUR: '0' })).toThrow();
+  });
+
+  it('hands the shared store its address and token, and never puts either on the config object', () => {
+    const cfg = serverConfig({ NEAR_AI_API_KEY: KEY, RELAY_ENABLED: 'true', RATE_LIMIT_STORE_URL: 'https://kv.example/token-in-url', RATE_LIMIT_STORE_TOKEN: 'store-secret' });
+    expect(JSON.stringify(cfg)).not.toContain('store-secret');
+    expect(JSON.stringify(cfg)).not.toContain('kv.example');
+
+    expect(rateLimitStoreConfig({ RATE_LIMIT_STORE_URL: 'https://kv.example', RATE_LIMIT_STORE_TOKEN: 'store-secret' })).toEqual({
+      url: 'https://kv.example',
+      token: 'store-secret',
+    });
+    // `memory` is the explicit "one process" choice, not a URL to POST to.
+    expect(rateLimitStoreConfig({ RATE_LIMIT_STORE_URL: 'memory' })).toBeUndefined();
+    expect(rateLimitStoreConfig({})).toBeUndefined();
   });
 });

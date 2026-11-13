@@ -13,8 +13,8 @@ import {
   withinSizeCap,
   type Rejection,
 } from '@/lib/server/allowlist';
-import { clientIp, rateLimit, type RateLimitStore } from '@/lib/server/rateLimit';
-import { relayApiKey, serverConfig, type ServerConfig } from '@/lib/server/env';
+import { clientIp, createRestStore, globalRateLimit, rateLimit, type RateLimitStore } from '@/lib/server/rateLimit';
+import { rateLimitStoreConfig, relayApiKey, serverConfig, type ServerConfig } from '@/lib/server/env';
 
 /**
  * The Mode B relay (item **F-05**), as one function with injectable collaborators so the route file
@@ -70,7 +70,19 @@ export interface RelayDeps {
  * page-run's time. A *failed* read is never cached: an unreadable row is a reason to try again on the
  * next request, not a verdict to hold for a quarter of an hour.
  */
-const METADATA_TTL_MS = 15 * 60_000;
+const METADATA_TTL_MS = 60_000;
+
+/**
+ * How long one upstream call may take before the relay gives up on it.
+ *
+ * It used to be 55 s, which was shorter than this app's own measured answers: `SPIKE_RESULTS.md` §4
+ * records analysis replies at **81.4 s, 118.6 s, 136.8 s and 226.6 s**, so every multi-page run was
+ * cut off by the relay and reported as `upstream_unreachable` — a product-shaped failure caused by a
+ * number. The route's `maxDuration` is 300 s and this stays inside it with room for the reply to be
+ * read; a host whose own limit is shorter (Vercel's default is 60 s without Fluid compute) still caps
+ * the call, which is a platform fact rather than something this constant can fix.
+ */
+const UPSTREAM_TIMEOUT_MS = 280_000;
 
 const metadataCache = new Map<string, { metadata: ModelMetadata; at: number }>();
 
@@ -81,14 +93,25 @@ export async function handleRelay(request: Request, deps: RelayDeps = {}): Promi
   // `serverConfig` has already decided that in production. The body is never read on this path.
   if (!config.relayEnabled) return disabled(config);
 
-  if (!isAllowedOrigin(request.headers)) return refuse('origin_not_allowed');
+  if (!isAllowedOrigin(request.headers, request.method)) return refuse('origin_not_allowed');
 
   const resolved = resolveRequest(new URL(request.url), request.method);
   if (!resolved.ok) return refuse(resolved.reason);
 
-  const bucket = await rateLimit(clientIp(request.headers), config.rateLimitPerIpPerHour, deps.rateStore, deps.nowMs);
-  if (!bucket.allowed) {
-    return refuse('rate_limited', { retry_after_seconds: bucket.retryAfterSeconds }, { 'retry-after': String(bucket.retryAfterSeconds) });
+  const store = deps.rateStore ?? sharedStore(config);
+  let bucket;
+  let global;
+  try {
+    bucket = await rateLimit(clientIp(request.headers), config.rateLimitPerIpPerHour, store, deps.nowMs);
+    global = await globalRateLimit(config.rateLimitGlobalPerHour, store, deps.nowMs);
+  } catch {
+    // A configured shared store that cannot answer is an outage of the only control on the key, so
+    // the relay refuses rather than serving unlimited traffic while it is down (AGENTS.md §4 rule 6).
+    return json({ error: 'rate_limit_unavailable', relay_enabled: true }, 503);
+  }
+  if (!bucket.allowed || !global.allowed) {
+    const retryAfter = Math.max(bucket.retryAfterSeconds, global.retryAfterSeconds);
+    return refuse(bucket.allowed ? 'global_rate_limited' : 'rate_limited', { retry_after_seconds: retryAfter }, { 'retry-after': String(retryAfter) });
   }
 
   const apiKey = deps.apiKey ?? relayApiKey();
@@ -132,6 +155,24 @@ interface RelayTarget {
   url: string;
 }
 
+/**
+ * The counter the whole deployment shares, built once per process when one is configured.
+ *
+ * `undefined` means the in-memory store inside `rateLimit`, which is correct for one process and is
+ * what `env.ts` refuses in production unless the operator accepts it by name.
+ */
+let restStore: RateLimitStore | undefined;
+
+function sharedStore(config: ServerConfig): RateLimitStore | undefined {
+  if (!config.hasSharedStore) return undefined;
+  if (restStore === undefined) {
+    const target = rateLimitStoreConfig();
+    if (target === undefined) return undefined;
+    restStore = createRestStore(target);
+  }
+  return restStore;
+}
+
 /** The live verdict for one model id, from the cache when it is fresh and from the catalog when it is not. */
 async function modelMetadata(model: string, apiKey: string, fetchImpl?: typeof fetch): Promise<ModelMetadata | undefined> {
   const hit = metadataCache.get(model);
@@ -173,7 +214,7 @@ async function forward(request: Request, target: RelayTarget, body: Uint8Array<A
   };
 
   let upstream: Response;
-  const timeoutSignal = AbortSignal.timeout(55_000);
+  const timeoutSignal = AbortSignal.timeout(UPSTREAM_TIMEOUT_MS);
   const signal = request.signal ? AbortSignal.any([request.signal, timeoutSignal]) : timeoutSignal;
   try {
     upstream = await fetchImpl(target.url, {
@@ -193,6 +234,9 @@ async function forward(request: Request, target: RelayTarget, body: Uint8Array<A
     status: upstream.status,
     headers: {
       'content-type': upstream.headers.get('content-type') ?? 'application/json',
+      // A completion is document-derived and must not sit in any cache — not the browser's, not an
+      // intermediary's. `no-store` is the one header that says so to all of them.
+      'cache-control': 'no-store',
       ...(retryAfter === null ? {} : { 'retry-after': retryAfter }),
     },
   });

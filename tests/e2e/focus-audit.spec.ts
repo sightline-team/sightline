@@ -132,9 +132,12 @@ test.describe('A-06: Focus-management audit', () => {
     const askButtonFocused = await page.evaluate(() => document.activeElement?.textContent?.trim());
     expect(askButtonFocused).toBe('Ask');
 
-    // Tab reaches Forget button
+    // Tab reaches Forget button. The budget is 20, not 10, because the footer's five links are now
+    // in the tab order (R-18: they carried `tabIndex={-1}` and were unreachable by keyboard, which is
+    // the wrong shape for this app's audience). Forget lives in the nav, so reaching it forward from
+    // the Ask button means wrapping past the footer; the wait is longer, the reachability is the claim.
     let reachedForget = false;
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 20; i++) {
       const activeText = await page.evaluate(() => document.activeElement?.textContent?.trim());
       if (activeText?.includes('Forget')) {
         reachedForget = true;
@@ -143,5 +146,22 @@ test.describe('A-06: Focus-management audit', () => {
       await page.keyboard.press('Tab');
     }
     expect(reachedForget, 'Tab order must reach Forget button').toBe(true);
+  });
+
+  test('the footer’s links are reachable by keyboard, not only by pointer', async ({ page }) => {
+    // R-18: five `<a>`s in the footer carried `tabIndex={-1}`, so a keyboard-only reader could not
+    // open the NEAR docs, the cloud console, the architecture page or the source. This is the
+    // regression guard: the links must be reached by Tab alone, from the top of the document.
+    await page.goto('/');
+    let reachedSource = false;
+    for (let i = 0; i < 40; i += 1) {
+      const focused = await page.evaluate(() => document.activeElement?.textContent?.trim() ?? '');
+      if (focused.includes('GitHub Source')) {
+        reachedSource = true;
+        break;
+      }
+      await page.keyboard.press('Tab');
+    }
+    expect(reachedSource, 'the source link must be in the tab order').toBe(true);
   });
 });

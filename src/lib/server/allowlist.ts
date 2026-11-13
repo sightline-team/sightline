@@ -55,7 +55,9 @@ export type Rejection =
   | 'model_not_allowed'
   | 'streaming_not_supported'
   | 'too_many_pages'
+  | 'max_tokens_too_high'
   | 'rate_limited'
+  | 'global_rate_limited'
   | 'origin_not_allowed';
 
 /**
@@ -76,8 +78,10 @@ const STATUS_FOR: Record<Rejection, number> = {
   missing_model: 400,
   streaming_not_supported: 400,
   too_many_pages: 400,
+  max_tokens_too_high: 400,
   body_too_large: 413,
   rate_limited: 429,
+  global_rate_limited: 429,
 };
 
 export function statusFor(reason: Rejection): number {
@@ -210,6 +214,16 @@ export function withinSizeCap(byteLength: number): RelayDecision {
 }
 
 /**
+ * The largest answer the operator will pay for on one request.
+ *
+ * **ADR-24**'s biggest text-step budget, and the reason it is enforced here rather than trusted from
+ * the client: the app sends 16,384 (`STEP_PLANS`), but a hand-built body can ask for the model's whole
+ * ceiling — `z-ai/glm-5.3-flash` advertises 1,048,576 output tokens, which is ~64× the plan's cost for
+ * one request. The relay holds the key, so the relay is where a caller's arithmetic stops counting.
+ */
+export const MAX_COMPLETION_TOKENS = 16_384;
+
+/**
  * The model check, server-side.
  *
  * Exact, case-sensitive, full-id membership in the operator's list — the same comparison
@@ -251,6 +265,13 @@ export function inspectCompletionBody(json: unknown): BodyDecision {
 
   if (body.stream !== undefined && body.stream !== false) return { ok: false, reason: 'streaming_not_supported' };
 
+  // A budget above the plan's is a caller trying to spend more of our key than a page or an answer
+  // costs. Absent is fine: the service's own default applies, and it is not the ceiling above.
+  const maxTokens = body.max_tokens ?? body.max_completion_tokens;
+  if (typeof maxTokens === 'number' && (!Number.isFinite(maxTokens) || maxTokens > MAX_COMPLETION_TOKENS)) {
+    return { ok: false, reason: 'max_tokens_too_high' };
+  }
+
   const messages = body.messages;
   if (Array.isArray(messages)) {
     let images = 0;
@@ -272,13 +293,30 @@ export function inspectCompletionBody(json: unknown): BodyDecision {
  * Origin validation for relay requests.
  * Refuses cross-site calls from external domains to stop unauthorized web clients using the relay
  * as a free open proxy against the server's NEAR AI Cloud key.
+ *
+ * ### Why a POST must carry `Origin`, and a GET need not
+ *
+ * Every browser sends `Origin` on a non-GET request — same-origin ones included — so requiring it on
+ * `POST` costs a real browser nothing and refuses the plain `curl` that used to reach the completion
+ * forwarder by simply omitting the header (measured against the deployment: a headerless POST was
+ * accepted and only stopped by the model allowlist). The free, document-free reads (`attestation`,
+ * `signature`, `model`) stay reachable without it, because a probe for a report is not a spend and
+ * refusing it would break non-browser tooling for no gain.
+ *
+ * This is a floor, not authentication: anything that can send `Origin` can satisfy it. What actually
+ * bounds the key is the hourly bucket in `lib/server/rateLimit.ts` plus the per-request token ceiling
+ * above — and a real deployment of Mode B beyond a demo needs an authenticated caller, which is
+ * recorded in the README rather than pretended here.
  */
-export function isAllowedOrigin(headers: Headers): boolean {
+export function isAllowedOrigin(headers: Headers, method: string = 'GET'): boolean {
   const secFetchSite = headers.get('sec-fetch-site');
   if (secFetchSite === 'cross-site') return false;
 
   const origin = headers.get('origin');
   const host = headers.get('host') ?? headers.get('x-forwarded-host');
+
+  if (method !== 'GET' && method !== 'HEAD' && (origin === null || host === null)) return false;
+
   if (origin && host) {
     try {
       if (new URL(origin).host !== host) return false;

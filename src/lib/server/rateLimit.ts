@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { isIP } from 'node:net';
 import { sha256 } from '@noble/hashes/sha2.js';
 
 /**
@@ -42,6 +43,47 @@ export interface RateLimitResult {
 /** The process-wide counter development runs on. Never the production control (see `env.ts`). */
 const devStore = createInMemoryStore();
 
+/**
+ * A counter the whole deployment shares, over a REST key-value API (Upstash-compatible).
+ *
+ * `env.ts` has refused to enable a production relay without `RATE_LIMIT_STORE_URL` since **F-06**, and
+ * until now nothing read it: `rateLimit` always fell back to the module-level map, so the "shared"
+ * limit was per warm instance — 20 × N on a serverless host. This is the missing half, built on
+ * `fetch` rather than a client library so it adds no dependency (`AGENTS.md` §5).
+ *
+ * Two commands, not a pipeline: `INCR` answers the count, and only the first call in a window pays for
+ * the `EXPIRE` that stops the key living forever. A store that answers with a shape other than
+ * `{ result: number }` is treated as unavailable, not as zero. What it cannot do is survive a store
+ * that is down: the caller refuses the request (`rate_limit_unavailable`) rather than letting an
+ * outage remove the only control on the key.
+ */
+export function createRestStore(deps: { url: string; token?: string; fetchImpl?: typeof fetch }): RateLimitStore {
+  const doFetch = deps.fetchImpl ?? globalThis.fetch;
+  const endpoint = deps.url.replace(/\/+$/, '');
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    ...(deps.token === undefined || deps.token.length === 0 ? {} : { authorization: `Bearer ${deps.token}` }),
+  };
+
+  async function command(args: (string | number)[]): Promise<unknown> {
+    const response = await doFetch(endpoint, { method: 'POST', headers, body: JSON.stringify(args) });
+    if (!response.ok) throw new Error(`rate limit store answered ${response.status}`);
+    const body = (await response.json()) as { result?: unknown };
+    return body.result;
+  }
+
+  return {
+    async increment(key, windowStartMinute) {
+      // The window is in the key, so a counter never needs to be read across a boundary: the next hour
+      // starts at 1 under a new key and the old one expires on its own.
+      const counted = await command(['INCR', `${key}:${windowStartMinute}`]);
+      if (typeof counted !== 'number' || !Number.isFinite(counted)) throw new Error('rate limit store answered without a count');
+      if (counted === 1) await command(['EXPIRE', `${key}:${windowStartMinute}`, WINDOW_MINUTES * 60 + 60]);
+      return counted;
+    },
+  };
+}
+
 export function createInMemoryStore(): RateLimitStore {
   const buckets = new Map<string, Map<number, number>>();
   return {
@@ -74,11 +116,30 @@ export async function rateLimit(
   store: RateLimitStore = devStore,
   nowMs: number = Date.now(),
 ): Promise<RateLimitResult> {
+  return count(`ip:${ip}`, limitPerHour, store, nowMs);
+}
+
+/**
+ * The process-wide (per instance) ceiling, on top of a client's own bucket.
+ *
+ * Its reason is address rotation: the per-IP bucket is bounded per address, so the budget a stranger
+ * can spend is bounded only if something counts across addresses too. A fixed identifier keeps it
+ * one bucket and no IP, which is also why it can be the one thing an operator sees filling.
+ */
+export async function globalRateLimit(
+  limitPerHour: number,
+  store: RateLimitStore = devStore,
+  nowMs: number = Date.now(),
+): Promise<RateLimitResult> {
+  return count('relay:global', limitPerHour, store, nowMs);
+}
+
+async function count(identifier: string, limitPerHour: number, store: RateLimitStore, nowMs: number): Promise<RateLimitResult> {
   const windowStartMinute = Math.floor(nowMs / (WINDOW_MINUTES * 60_000)) * WINDOW_MINUTES;
-  const key = bucketKey(ip, windowStartMinute);
-  const count = await store.increment(key, windowStartMinute);
+  const key = bucketKey(identifier, windowStartMinute);
+  const count_ = await store.increment(key, windowStartMinute);
   return {
-    allowed: count <= limitPerHour,
+    allowed: count_ <= limitPerHour,
     bucket: `hour:${windowStartMinute}/${key.slice(0, 12)}`,
     retryAfterSeconds: Math.max(1, Math.ceil(((windowStartMinute + WINDOW_MINUTES) * 60_000 - nowMs) / 1000)),
   };
@@ -95,11 +156,29 @@ function bucketKey(ip: string, windowStartMinute: number): string {
  * With no proxy in front (local development) there is no address to read, and every request shares
  * one bucket. That is the honest fallback: refusing to count at all would mean the limit silently
  * does nothing, and inventing an address would mean the limit silently does something wrong.
+ *
+ * ### The last hop, not the first, and only an address
+ *
+ * `x-forwarded-for` is a list a proxy *appends* to, so its first entry is whatever the client claimed
+ * and its last is the hop the trusted edge saw. Reading the first (as this did) let a caller choose
+ * their own bucket anywhere the edge does not overwrite the header — measured safe on Vercel, which
+ * sets `x-real-ip`, and unsound on any host that forwards the list verbatim. A value that is not an
+ * IP literal is refused rather than hashed: `unknown` stands in for it, so one malformed header can
+ * only put its sender in the shared bucket, never in somebody else's.
  */
 export function clientIp(headers: Headers): string {
   const realIp = headers.get('x-real-ip')?.trim();
-  if (realIp && realIp.length > 0) return realIp;
+  if (realIp !== undefined && isIP(realIp) !== 0) return realIp;
+
   const forwarded = headers.get('x-forwarded-for');
-  if (forwarded !== null && forwarded.trim().length > 0) return forwarded.split(',')[0]!.trim();
+  if (forwarded !== null) {
+    const hops = forwarded.split(',').map((hop) => hop.trim()).filter((hop) => hop.length > 0);
+    for (let i = hops.length - 1; i >= 0; i -= 1) {
+      const hop = hops[i]!;
+      // A hop may carry a port (`1.2.3.4:5678`) or brackets (`[::1]`); neither is part of the address.
+      const bare = hop.replace(/^\[/, '').replace(/\](:\d+)?$/, '').replace(/:\d+$/, '');
+      if (isIP(bare) !== 0) return bare;
+    }
+  }
   return 'unproxied';
 }

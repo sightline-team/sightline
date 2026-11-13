@@ -5,11 +5,12 @@ import {
   isAllowedOrigin,
   isModelAllowed,
   MAX_BODY_BYTES,
+  MAX_COMPLETION_TOKENS,
   resolveRequest,
   statusFor,
   withinSizeCap,
 } from '@/lib/server/allowlist';
-import { clientIp, createInMemoryStore, rateLimit } from '@/lib/server/rateLimit';
+import { clientIp, createInMemoryStore, createRestStore, rateLimit } from '@/lib/server/rateLimit';
 
 /**
  * The relay's refusal logic on its own (**F-05**, **F-06**), before any handler is involved.
@@ -170,6 +171,17 @@ describe('what a completion body may ask for', () => {
     expect(reasonOf(inspectCompletionBody(twoPages))).toBe('too_many_pages');
   });
 
+  it('refuses a reply budget larger than the largest one this app sends', () => {
+    // The app sends `STEP_PLANS`' 16,384. A hand-built body can ask for the model's whole ceiling —
+    // glm advertises 1,048,576 output tokens — and one request would cost ~64× a real answer.
+    expect(inspectCompletionBody(body({ max_tokens: MAX_COMPLETION_TOKENS })).ok).toBe(true);
+    expect(reasonOf(inspectCompletionBody(body({ max_tokens: MAX_COMPLETION_TOKENS + 1 })))).toBe('max_tokens_too_high');
+    expect(reasonOf(inspectCompletionBody(body({ max_completion_tokens: 1_048_576 })))).toBe('max_tokens_too_high');
+    expect(reasonOf(inspectCompletionBody(body({ max_tokens: Number.POSITIVE_INFINITY })))).toBe('max_tokens_too_high');
+    // Absent is not an error: the service's own default applies and it is below the ceiling.
+    expect(inspectCompletionBody(body()).ok).toBe(true);
+  });
+
   it('says nothing about the body it read', () => {
     const sentinel = 'The diagnosis said';
     const result = inspectCompletionBody({ model: 'm', messages: [{ role: 'user', content: `${sentinel} something terrible` }] });
@@ -232,9 +244,22 @@ describe('the hourly bucket', () => {
 
 describe('whose address is it', () => {
   it('reads the proxy header, preferring unforgeable x-real-ip over client-supplied x-forwarded-for', () => {
-    expect(clientIp(new Headers({ 'x-forwarded-for': '203.0.113.7, 70.41.3.18' }))).toBe('203.0.113.7');
     expect(clientIp(new Headers({ 'x-real-ip': '198.51.100.4' }))).toBe('198.51.100.4');
     expect(clientIp(new Headers({ 'x-forwarded-for': '203.0.113.7', 'x-real-ip': '198.51.100.4' }))).toBe('198.51.100.4');
+  });
+
+  it('trusts the last hop of x-forwarded-for, not the entry the client wrote', () => {
+    // A proxy *appends*, so the first entry is whatever the caller claimed. Reading it (as this used to)
+    // let a caller pick their own bucket on any host that forwards the list verbatim.
+    expect(clientIp(new Headers({ 'x-forwarded-for': '203.0.113.7, 70.41.3.18' }))).toBe('70.41.3.18');
+  });
+
+  it('refuses a value that is not an address rather than hashing it', () => {
+    // A malformed header can only put its sender in the shared bucket — never in somebody else's.
+    expect(clientIp(new Headers({ 'x-forwarded-for': 'not-an-ip' }))).toBe('unproxied');
+    expect(clientIp(new Headers({ 'x-forwarded-for': '203.0.113.7, garbage' }))).toBe('203.0.113.7');
+    expect(clientIp(new Headers({ 'x-real-ip': 'evil' }))).toBe('unproxied');
+    expect(clientIp(new Headers({ 'x-forwarded-for': '198.51.100.4:41234' }))).toBe('198.51.100.4');
   });
 
   it('says so plainly when nothing fronted the request', () => {
@@ -245,6 +270,16 @@ describe('whose address is it', () => {
 });
 
 describe('origin validation for relay requests', () => {
+  it('refuses a POST that carries no Origin, which no browser sends', () => {
+    // Every browser sends `Origin` on a non-GET request. Requiring it is what stopped a headerless
+    // `curl` from reaching the completion forwarder on the deployment (measured 2026-11-13).
+    expect(isAllowedOrigin(new Headers(), 'POST')).toBe(false);
+    expect(isAllowedOrigin(new Headers({ host: 'sightline.app' }), 'POST')).toBe(false);
+    expect(isAllowedOrigin(new Headers({ origin: 'https://sightline.app', host: 'sightline.app' }), 'POST')).toBe(true);
+    // The document-free reads stay reachable without it: a probe for a report is not a spend.
+    expect(isAllowedOrigin(new Headers(), 'GET')).toBe(true);
+  });
+
   it('refuses cross-site calls and origin mismatches', () => {
     expect(isAllowedOrigin(new Headers({ 'sec-fetch-site': 'cross-site' }))).toBe(false);
     expect(isAllowedOrigin(new Headers({ origin: 'https://evil.com', host: 'sightline.app' }))).toBe(false);
@@ -255,5 +290,44 @@ describe('origin validation for relay requests', () => {
 
   it('assigns 403 to origin_not_allowed', () => {
     expect(statusFor('origin_not_allowed')).toBe(403);
+  });
+});
+
+/**
+ * The shared counter `env.ts` has required in production since F-06 and nothing built.
+ *
+ * Before 2026-11-13 `rateLimit` always fell back to the module-level map, so the "shared store" was
+ * per warm instance — the exact shape `env.ts:67` calls "no limit at all". This is driven against a
+ * fetch double, because no live store is configured here: the wire shape asserted below is
+ * Upstash's `["INCR", key]` / `["EXPIRE", key, seconds]` command form.
+ */
+describe('the shared counter over REST', () => {
+  function double(answers: unknown[]) {
+    const calls: unknown[][] = [];
+    const impl = (async (_url: string, init?: { body?: string }) => {
+      const args = JSON.parse(String(init?.body)) as unknown[];
+      calls.push(args);
+      const answer = answers.shift();
+      if (answer instanceof Error) throw answer;
+      return new Response(JSON.stringify({ result: answer }), { status: answer === 'fail' ? 500 : 200 });
+    }) as unknown as typeof fetch;
+    return { impl, calls };
+  }
+
+  it('counts with INCR and sets one expiry, so a window cannot live forever', async () => {
+    const { impl, calls } = double([1, 1, 2]);
+    const store = createRestStore({ url: 'https://kv.example', token: 't', fetchImpl: impl });
+    expect(await store.increment('abcd', 29_000_000)).toBe(1);
+    expect(await store.increment('abcd', 29_000_000)).toBe(2);
+    expect(calls).toEqual([
+      ['INCR', 'abcd:29000000'],
+      ['EXPIRE', 'abcd:29000000', 3660],
+      ['INCR', 'abcd:29000000'],
+    ]);
+  });
+
+  it('treats an answer without a count as unavailable, not as zero', async () => {
+    const store = createRestStore({ url: 'https://kv.example', fetchImpl: double(['fail']).impl });
+    await expect(store.increment('k', 1)).rejects.toThrow();
   });
 });

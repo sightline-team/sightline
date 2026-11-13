@@ -197,8 +197,10 @@ Everything else is convention, not lint: features may import `lib/*` and `compon
 NEAR_AI_API_KEY=
 RELAY_ENABLED=false
 ALLOWED_MODELS=                    # exact ids, case-sensitive; what F-04's `isAllowed` will accept on top of its own checks. Measured live and answerable: `z-ai/glm-5.3-flash,Qwen/Qwen3.8-27B`
-RATE_LIMIT_PER_IP_PER_HOUR=20
-RATE_LIMIT_STORE_URL=            # shared store; in-memory limits do not work on serverless (or 'memory' / ALLOW_IN_MEMORY_RATE_LIMIT=true with key cap)
+RATE_LIMIT_PER_IP_PER_HOUR=120   # per relayed call (a page is 3: report, completion, signature), so one 5-page document fits
+RELAY_GLOBAL_PER_HOUR=400        # process-wide ceiling, so address rotation cannot spend the key without bound
+RATE_LIMIT_STORE_URL=            # shared store; a REST key-value endpoint the relay POSTs ["INCR", key] to
+RATE_LIMIT_STORE_TOKEN=          # bearer token for that endpoint
 ALLOW_IN_MEMORY_RATE_LIMIT=false # accept in-memory rate limiting with key cap in production
 
 NEXT_PUBLIC_NEAR_AI_BASE_URL=https://cloud-api.near.ai/v1

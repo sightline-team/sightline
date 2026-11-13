@@ -33,11 +33,25 @@ const serverEnvSchema = z.object({
   ALLOWED_MODELS: csvList,
   // An unset or empty value keeps the documented default rather than crashing the
   // app on startup; a non-numeric value is a real configuration error and throws.
+  //
+  // 120, not 20, because one attested page costs three relay calls (report, completion, signature)
+  // plus the client's retry on a transient signature 404: at 20 a *five-page document* could not be
+  // read to the end, and the person met `rate_limited` halfway through their own letter. 120 covers a
+  // five-page run and its questions on one address, and still caps a single client at ~40 completions
+  // an hour (`RATE_LIMIT_PER_IP_PER_HOUR` counts relayed calls, not completions — see `relay.ts`).
   RATE_LIMIT_PER_IP_PER_HOUR: z.preprocess(
-    (v) => (v === undefined || v === '' ? 20 : Number(v)),
+    (v) => (v === undefined || v === '' ? 120 : Number(v)),
+    z.number().int().positive(),
+  ),
+  // One process-wide ceiling, so an abuser who rotates addresses still cannot spend the key without
+  // bound. Per instance on serverless: with N warm instances the true total is N × this.
+  RELAY_GLOBAL_PER_HOUR: z.preprocess(
+    (v) => (v === undefined || v === '' ? 400 : Number(v)),
     z.number().int().positive(),
   ),
   RATE_LIMIT_STORE_URL: z.string().default(''),
+  // Bearer token for the REST counter (`RATE_LIMIT_STORE_URL`), e.g. an Upstash-compatible endpoint.
+  RATE_LIMIT_STORE_TOKEN: z.string().default(''),
   ALLOW_IN_MEMORY_RATE_LIMIT: booleanFromEnv,
   NODE_ENV: z.string().default('development'),
 });
@@ -48,6 +62,8 @@ export interface ServerConfig {
   relayDisabledReason: RelayDisabledReason | null;
   allowedModels: string[];
   rateLimitPerIpPerHour: number;
+  /** Per-process ceiling, on top of the per-client bucket (see `RELAY_GLOBAL_PER_HOUR`). */
+  rateLimitGlobalPerHour: number;
   hasSharedStore: boolean;
   /** True only when a key exists; the key itself is never exposed on this object. */
   hasApiKey: boolean;
@@ -76,6 +92,7 @@ function interpret(env: z.infer<typeof serverEnvSchema>): ServerConfig {
     relayDisabledReason,
     allowedModels: env.ALLOWED_MODELS,
     rateLimitPerIpPerHour: env.RATE_LIMIT_PER_IP_PER_HOUR,
+    rateLimitGlobalPerHour: env.RELAY_GLOBAL_PER_HOUR,
     hasSharedStore,
     hasApiKey: env.NEAR_AI_API_KEY.length > 0,
   };
@@ -83,6 +100,19 @@ function interpret(env: z.infer<typeof serverEnvSchema>): ServerConfig {
 
 export function serverConfig(raw: Record<string, string | undefined> = process.env): ServerConfig {
   return interpret(serverEnvSchema.parse(raw));
+}
+
+/**
+ * The shared counter's address and credential, or `undefined` when none is configured.
+ *
+ * `ServerConfig` deliberately carries only `hasSharedStore`: the URL can hold a token in its userinfo
+ * and the credential is a secret, so neither belongs on an object a page could hold. `relay.ts` asks
+ * for this when it needs to build the store, and it is the only caller.
+ */
+export function rateLimitStoreConfig(raw: Record<string, string | undefined> = process.env): { url: string; token: string } | undefined {
+  const url = (raw.RATE_LIMIT_STORE_URL ?? '').trim();
+  if (url.length === 0 || url === 'memory') return undefined;
+  return { url, token: (raw.RATE_LIMIT_STORE_TOKEN ?? '').trim() };
 }
 
 /** The secret, for the relay's Authorization header only. Never log or return it to a client. */
