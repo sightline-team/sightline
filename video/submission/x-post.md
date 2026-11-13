@@ -3,20 +3,22 @@
 Attach `deliver/sightline-x.mp4`. X plays it muted in the timeline, which is why the first frame is
 already the letter with the redaction moving.
 
-**273 weighted characters** (293 raw; X counts each bare domain as 23, so the two links cost 46 of the
-273). Fits a standard 280 post with 7 to spare — no Premium length needed.
+**276 weighted characters** (296 raw; X counts each bare domain as 23, so the two links cost 46 of the
+276). Fits a standard 280 post with 4 to spare — no Premium length needed. The links are bare domains,
+not `demo:` / `code:` labels: the labels cost 12 characters, and naming the user in line one was worth
+more than the labels.
 
 ---
 
 ## Post
 
-Reading a private letter means handing it to a stranger.
+If you're blind or low-vision, someone else has to read your letters.
 
-Sightline reads it in an attested Intel TDX enclave on NEAR AI Cloud: signed answers, 0 KB kept.
+Sightline reads them in an attested Intel TDX enclave on NEAR AI Cloud: signed answers, 0 KB kept.
 
 Built at @NEARProtocol #NEARHackathon
-demo: sightline-snowy-beta.vercel.app
-code: github.com/sightline-team/sightline
+sightline-snowy-beta.vercel.app
+github.com/sightline-team/sightline
 What would you try?
 
 ---
@@ -43,10 +45,10 @@ receipt, where they can be read at a person's own pace.
 
 | Tip | Where |
 |---|---|
-| Lead with the user problem, understandable cold | Line 1: "Reading a private letter means handing it to a stranger." No jargon, no statistic, no product name. |
+| Lead with the user problem, understandable cold | Line 1 names the reader: "If you're blind or low-vision, someone else has to read your letters." No jargon, no statistic, no product name. |
 | Show one complete moment | The attached film: the photo, the enclave, the reading, a quoted answer, the receipt. |
 | Explain NEAR's role concretely | "an attested Intel TDX enclave on NEAR AI Cloud: signed answers" — NEAR is where the private inference happens, which is why the answer can be verified rather than trusted. Not "powered by NEAR". |
-| Link demo and repo, invite feedback | Both links, labelled `demo:` and `code:`; the closer asks "What would you try?" — a real question about the product, not a generic "thoughts?". |
+| Link demo and repo, invite feedback | Both links (bare domains, so X linkifies them); the closer asks "What would you try?" — a real question about the product, not a generic "thoughts?". |
 | @NEARProtocol and #NEARHackathon, "built at" | "Built at @NEARProtocol #NEARHackathon". @NearLegion / @NearBuilders stay out of the post; they can be tagged in a reply if amplification is wanted. |
 
 ## Posting checklist for the human
