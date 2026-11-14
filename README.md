@@ -6,8 +6,8 @@
 [![Track](https://img.shields.io/badge/NEAR%20Hackathon-Privacy%20%26%20Private%20AI-00EC97?logo=near&logoColor=black)](https://nearhackathon.com)
 [![Hardware Enclave](https://img.shields.io/badge/TEE-Intel%20TDX%20on%20NEAR%20AI%20Cloud-0091FD)](https://cloud.near.ai)
 [![Zero Storage](https://img.shields.io/badge/Server%20Storage-0%20KB%20(In--Memory%20Only)-success)](docs/ARCHITECTURE_ESSENTIALS.md)
-[![Tests](https://img.shields.io/badge/Tests-923%20Vitest%20%7C%20161%20Playwright-brightgreen)](docs/PROJECT_STRUCTURE.md)
-[![Accessibility](https://img.shields.io/badge/Accessibility-WCAG%202.2%20AA-orange)](docs/ACCESSIBILITY_REPORT.md)
+[![Tests](https://img.shields.io/badge/Tests-938%20Vitest%20%7C%20164%20Playwright-brightgreen)](docs/PROJECT_STRUCTURE.md)
+[![Accessibility](https://img.shields.io/badge/Accessibility-axe%20clean%20%7C%20WCAG%202.2%20AA%20target-orange)](docs/ACCESSIBILITY_REPORT.md)
 
 Understand a sensitive document — a benefits letter, a lab result, a bill — with private AI, and
 see exactly what was and was not verified. Built for the **NEAR Hackathon, Privacy & Private AI
@@ -19,7 +19,7 @@ track**. Deadline: **2026-11-14 23:59 UTC**.
 > answering from `fixtures/` instead of the service, with no key; **Mode B** is the app talking to NEAR AI
 > Cloud through this repository's own relay; **Mode A** would be the app asking with *your* key, and it
 > still refuses at the door because there is no field on screen to put one in (**T-13**, held by **B-10**).
-> Mode F completes end to end and is proved doing that in Chromium: **141** browser tests are collected
+> Mode F completes end to end and is proved doing that in Chromium: **164** browser tests are collected
 > against exactly that keyless server and all but two of them run with no credential — the two are the
 > live round trip and they skip themselves when no key is configured. 72 of them are
 > `tests/e2e/flow.spec.ts`, and the photographed half is `tests/e2e/photo-fixtures.spec.ts` (7). The Mode B
@@ -69,7 +69,7 @@ Built strictly for the **NEAR Hackathon — Privacy & Private AI** track. Below 
 | **NEAR Tech Usage** | **35%** | **In the critical path:** All document understanding calls NEAR AI Cloud (`https://cloud-api.near.ai/v1`) via `src/lib/near-ai/client.ts` and `src/lib/server/relay.ts`.<br>• **TEE-hosted model enforcement:** `src/lib/server/allowlist.ts` validates `attestationSupported: true` against official NEAR enclaves (`z-ai/glm-5.3-flash`, `Qwen/Qwen3.8-27B`), strictly rejecting third-party proxies.<br>• **Fresh session nonce:** 32 cryptographically secure random bytes minted per session in `src/lib/near-ai/attestation.ts`, validated in JSON and at byte offset 552–584 of the Intel TDX quote in `src/lib/near-ai/quote.ts`.<br>• **Native quote & signature verifier:** Zero-dependency Intel TDX quote byte indexing (`src/lib/near-ai/quote.ts`, 8 browser checks) and Ed25519 signature checks (`src/lib/near-ai/signatures.ts`).<br>• **Agent API / Smart Contracts:** Operates with zero user balances and no fund custody, thus avoiding redundant or hand-rolled smart contracts (which score lower per track rules). Key budget caps are enforced via NEAR AI Cloud workspace limits. |
 | **Real, Not Simulated** | **25%** | **Live API execution:** Serverless relay (`src/app/api/relay/[...path]/route.ts`) actively forwards authenticated requests to `https://cloud-api.near.ai/v1`.<br>• **Browser E2E round trip:** `tests/e2e/browser-cors.spec.ts` (`npm run test:e2e:live`) performs live network round trips in Chromium against `cloud-api.near.ai`, verifying real TDX quotes and Ed25519 signatures.<br>• **SDK cross-verification tool:** Run `npm run crosscheck` (`scripts/crosscheck.ts`) to independently assert Sightline's native verifier against `@nearai/inference-sdk` and wire format across 18 assertions.<br>• **Keyless evaluation mode:** Alongside the real path, Mode F (`npm run dev:fixtures`) provides zero-credential reproducibility for screening agents without spending funds (explicitly credited in rubric). Contains zero fake transaction hashes or simulated confirmation timers. |
 | **Track Fit** | **20%** | **Answers the brief:** Solves the **Assistive AI Privacy Dilemma** for blind and low-vision individuals reading physical mail (eviction letters, oncology reports, tax bills).<br>• **Hardware-enforced privacy:** Replaces corporate trust with Intel TDX CPU-level memory encryption on NEAR AI Cloud.<br>• **Zero custody shield:** 0 KB server-side document storage, client-side EXIF/GPS metadata stripping in `src/lib/image/prepare.ts`, deterministic transcript grounding preventing dosage/charge hallucinations in `src/features/analysis/grounding.ts`, and instant memory wipe on Forget. |
-| **Execution & Completeness** | **20%** | **Testing rigor:** 923 Vitest tests (46 files) and 161 Playwright E2E and Axe accessibility tests passing.<br>• **Zero leaks:** `npm run release:secrets` scans 800+ git objects with 0 leaks.<br>• **Zero synthetic leaks:** `npm run release:synthetic` audits all sample docs with drama-range phone numbers.<br>• **Docs integrity:** `npm run release:docs` audits 6 mechanical consistency rules with 0 drift.<br>• **Clean checkout:** `npm run release:clean-checkout` proves zero-dependency reproduction from an anonymous clone.<br>• **Live deployment:** Deployed on Vercel at [https://sightline-snowy-beta.vercel.app/](https://sightline-snowy-beta.vercel.app/). |
+| **Execution & Completeness** | **20%** | **Testing rigor:** 938 Vitest tests (46 files) and 164 Playwright E2E and Axe accessibility tests passing.<br>• **Zero leaks:** `npm run release:secrets` scans 800+ git objects with 0 leaks.<br>• **Zero synthetic leaks:** `npm run release:synthetic` audits all sample docs with drama-range phone numbers.<br>• **Docs integrity:** `npm run release:docs` audits 6 mechanical consistency rules with 0 drift.<br>• **Clean checkout:** `npm run release:clean-checkout` proves zero-dependency reproduction from an anonymous clone.<br>• **Live deployment:** Deployed on Vercel at [https://sightline-snowy-beta.vercel.app/](https://sightline-snowy-beta.vercel.app/). |
 
 ### What the hosted relay authenticates, and what it does not
 
@@ -172,7 +172,7 @@ is never put behind the control. The
 fourth letter exists to show the other ending: its reply is not the answer the app asked for, so the
 run makes its one repair retry and then shows the text you gave with no summary on it, which is the
 path most likely to meet a real user and the one `docs/ARCHITECTURE.md` §13 promises. Proved by
-`tests/e2e/flow.spec.ts` (72 of the suite's 141 Playwright tests) against exactly these two commands.
+`tests/e2e/flow.spec.ts` (72 of the suite's 164 Playwright tests) against exactly these two commands.
 All four offered letters are **authored synthetic**; the fifth case — photographed pages, never offered
 to the paste screen — is **recorded** traffic, and the two provenances are labelled separately everywhere
 they appear (`fixtures/README.md`, item **S-11**).
@@ -368,6 +368,12 @@ The target minimum, the contrast ratio and the reduced-motion rest are not a rev
 `tests/e2e/design.spec.ts` (item **A-17**) reads the colours and sizes a browser actually computed for
 the page, in all three palettes, at 1440/768/390, and fails if one pair falls under 4.5:1, if a nav
 target shrinks under 44 px, or if reduced motion leaves a button still moving.
+
+**What that is not:** a conformance certificate. WCAG 2.2 AA is what this repository builds to, and the
+badge above says so rather than claiming it — no screen-reader user has been through these screens yet
+(**A-03**, **A-04**), so what is verified is the automated half: axe clean on every route in all three
+palettes, and the computed contrast and target sizes. `docs/ACCESSIBILITY_REPORT.md` lists what has and
+has not been tested, side by side.
 
 One **read-aloud button** sits at the top of the results screen (item P-09). It is opt-in and off by
 default: nothing is spoken until it is pressed, and it reads Sightline's own summary plus Sightline's
