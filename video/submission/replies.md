@@ -10,22 +10,26 @@ Asked by @playkibble under https://x.com/playkibble/status/2121504330515677622 �
 they are asking, so the answer is the DOM contract, not a reassurance. Post as a **thread of three
 replies** under the demo post (each is under 280 with no link, so X's 23-per-URL rule does not apply).
 
-### 1/ — the mechanism (270)
+Voice: one idea per sentence, no more than 20 words, plain words, no participle piles. A public reply is
+plain prose even under a compression checklist — the terseness is in how much is left out, not in broken
+grammar (the `caveman` skill's own rule 5).
+
+### 1/ — the mechanism (252)
 
 ```
-Not a badge: a sentence. Below the answer, heading "Verification", then "Passed Response signature" and "Passed Signed by Model Enclave" — verdict word first, key and nonce behind a disclosure. It's the last section, so you read on to it; nothing interrupts your reader.
+No badge. It is a sentence. Under the answer you hear a heading, "Verification", and a list. Each item starts with its verdict: "Passed Response signature". The key and the nonce stay in a closed "Technical details" box. Nothing interrupts your reader.
 ```
 
-### 2/ — what it says when it cannot verify (246)
+### 2/ — what it says, both ways (201)
 
 ```
-If a check fails or can't run, the sentence changes: "Partly checked, not verified: 2 could not run. 3 of 5 checks passed." No tick, no green, no badge — the sentence carries the status, and the raw "verified: true" stays in the technical detail.
+When it works it reads: "The AI model was verified as running in a private enclave and each answer was proven to come from it." When a check cannot run: "Partly checked, not verified: 2 could not run."
 ```
 
-### 3/ — the gap, said plainly (191)
+### 3/ — the gap, said plainly (148)
 
 ```
-The gap you're pointing at: no screen-reader user has been through this yet. axe and Playwright prove heading order and text, not what NVDA speaks. A recorded pass with a real reader is next.
+The real gap: no screen-reader user has tried it yet. Our tests check heading order and text, not what NVDA says. A pass with a real reader is next.
 ```
 
 ## What each reply rests on
@@ -36,7 +40,8 @@ The gap you're pointing at: no screen-reader user has been through this yet. axe
 | "Verification" is a heading and the receipt is last | `TrustReceipt` (`h2` → `h3` per call → `h4` "Checks that ran" / "Checks that did not run"); `ResultsView` mounts it last | `flow.spec.ts` `SECTION_ORDER`, `['…', 'Verification']`, asserted in order |
 | "Passed Response signature", "Passed Signed by Model Enclave" | `src/lib/near-ai/signatures.ts` emits check names `response_signature` and `signed_by_model_enclave`; `TrustReceipt.statusWords` prints the verdict first and `humanise` spells the name out | `flow.spec.ts` asserts both `h4` headings under the receipt |
 | Key and nonce are out of the reading flow | `TrustReceipt`'s native `<details><summary>Technical details</summary>`, so the disclosure is a real control in the accessibility tree rather than a hover target | `flow.spec.ts` ("the trust page shows the same receipt…") asserts `fixtures/demo-model` and `verified: false` are **hidden** until that summary is clicked; `design.spec.ts` sweeps axe over `/read` at phone width in all three palettes |
-| "Partly checked, not verified: 2 could not run. 3 of 5 checks passed." | `claims.ts` → `partialCopy(checks)`, generated from `ran`/`passed`, never written by a component | `tests/unit/claims.test.ts`; `flow.spec.ts` asserts no exact-"Verified" node in fixtures |
+| "The AI model was verified as running in a private enclave and each answer was proven to come from it." / "Partly checked, not verified: 2 could not run." | `claims.ts` → `CLAIM_COPY.attested_model_signed_responses` and `partialCopy(checks)`, the latter generated from `ran`/`passed` and never written by a component | `tests/unit/claims.test.ts`; `flow.spec.ts` asserts no exact-"Verified" node in fixtures |
+| Each check item starts with its verdict | `TrustReceipt.statusWords` → `Passed` / `Did not pass` / `Did not run` before the name | `flow.spec.ts` asserts both `h4` headings; `claims.test.ts` covers the partial sentence |
 | Nothing interrupts the reader | one announcer (`src/lib/a11y/announcer.tsx`, `role="status"`, polite); the receipt is static text, deliberately **not** a second live region | `flow.spec.ts` asserts the single region owns the outcome |
 | No screen-reader user yet | `ROADMAP.md` **A-03** / **A-04** are `[ ]`; `docs/ACCESSIBILITY_REPORT.md` lists manual readers as not tested | — |
 
