@@ -1,6 +1,6 @@
 # Sightline
 
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/sightline-team/sightline/badge)](https://securityscorecards.dev/viewer/?run=github.com/sightline-team/sightline)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/sightline-team/sightline/badge)](https://securityscorecards.dev/viewer/?uri=github.com/sightline-team/sightline)
 [![CI](https://github.com/sightline-team/sightline/actions/workflows/ci.yml/badge.svg)](https://github.com/sightline-team/sightline/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Track](https://img.shields.io/badge/NEAR%20Hackathon-Privacy%20%26%20Private%20AI-00EC97?logo=near&logoColor=black)](https://nearhackathon.com)

@@ -1,0 +1,61 @@
+# R-19 — the OpenSSF Scorecard run the README badge reads.
+#
+# Before this file the badge was a promise with nothing behind it: `api.securityscorecards.dev`
+# answered **404** for this project and the badge rendered "invalid repo path" (measured
+# 2026-11-14), because nothing had ever published a score. `publish_results: true` is the whole
+# point — the badge is served from OpenSSF's REST API, which is filled only by a run that
+# publishes, and only from the default branch of a **public** repository.
+#
+# Pinned by commit SHA, not by tag: this job holds `security-events: write` and `id-token: write`,
+# so a moved tag would be a supply-chain hole in the file that measures supply chains.
+name: Scorecard supply-chain security
+
+on:
+  # Branch-Protection is only scored for the default branch.
+  branch_protection_rule:
+  # Maintained is a time-based check, so a repo with no activity would otherwise drift.
+  schedule:
+    - cron: '30 1 * * 1'
+  push:
+    branches: [main]
+
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # `publish_results` only works from the default branch; a pull request may still analyse.
+    if: github.event.repository.default_branch == github.ref_name || github.event_name == 'pull_request'
+    permissions:
+      security-events: write
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@f49aabe0b5af0936a0987cfb85d86b75731b0186 # v2.4.1
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # Public results, which is what the badge reads. `repo_token` is deliberately absent:
+          # it would enable the Branch-Protection check here, and that needs a PAT this repo does
+          # not hold — so this score leaves that check out rather than claiming a branch rule
+          # nobody has verified.
+          publish_results: true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: SARIF file
+          path: results.sarif
+          retention-days: 5
+
+      - name: Upload to code-scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
